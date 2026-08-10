@@ -9,14 +9,14 @@ documentation** into `skill/`.
 
 Vendored / derived files (from the `cua-driver` skill pack, release `cua-driver-rs-v0.19.3`):
 
-- `skill/SKILL.md` — the upstream cross-platform core skill, **modified**: frontmatter `name`
-  changed to `qwen-mm-plugins-cua` (to match the plugin) and a "Qwen-MM-Plugins integration"
-  section added at the top. The rest is upstream text.
+- `skill/SKILL.md` — the upstream cross-platform core skill. **One line changed**: frontmatter
+  `name: cua-driver` → `name: qwen-mm-plugins-cua` (to match the plugin and avoid colliding with
+  the upstream skill). Everything else is upstream text.
 - `skill/MACOS.md`, `skill/WINDOWS.md`, `skill/LINUX.md`, `skill/BROWSER.md`,
   `skill/RECORDING.md`, `skill/EMBEDDING.md` — verbatim companion files from the same pack.
 
 No source code from cua is vendored — the MCP server is the external `cua-driver` binary,
-installed separately (see `README.md` / `docs/en/installation.md`).
+installed separately (see `cookbooks/cua/usage.md` / `docs/en/installation.md`).
 
 The MIT license text of the upstream project applies to the vendored portions above:
 

@@ -1,12 +1,7 @@
 ---
-name: qwen-mm-plugins-cua
-description: Computer-use for the LOCAL desktop — drive any native GUI app (macOS, Windows, Linux) in the background via cua-driver (CLI default, or the `cua-computer-use` MCP server) — snapshot its accessibility tree, act through snapshot-bound element tokens, native menu paths, exact window geometry, or pixel coordinates, and verify from fresh state. Use when the user asks you to operate, drive, automate, or perform a GUI task in a real application on the host (needs a real screen; headless/remote servers can't be driven).
-# Vendored from trycua/cua's cua-driver skill pack (MIT) and customized for Qwen-MM-Plugins:
-# `name` changed to match the plugin, and a "Qwen-MM-Plugins integration" section added below.
-# Upstream: https://github.com/trycua/cua — attribution in ../NOTICE.md. Keep the companion
-# files (MACOS/WINDOWS/LINUX/BROWSER/RECORDING/EMBEDDING.md) in sync when bumping this version.
-upstream: cua-driver skill pack v0.19.3
-version: 0.19.3
+name: qwen-mm-plugins-cua # only change from upstream cua-driver SKILL.md (repo convention: name == plugin name); vendored MIT, see ../NOTICE.md
+description: Drive a native GUI app (macOS, Windows, Linux) via the cua-driver CLI (default) or MCP server; snapshot its accessibility tree, act through snapshot-bound element tokens, native menu paths, exact window geometry, or pixel coordinates, and verify from fresh state. Use when the user asks you to operate, drive, automate, or perform a GUI task in a real application on the host.
+version: 0.19.3 # x-release-please-version
 metadata:
   openclaw:
     requires:
@@ -40,35 +35,6 @@ Orchestrates cross-platform app automation via `cua-driver`. Whenever
 a user asks to drive a native app, follow the loop in this skill
 rather than calling tools ad-hoc — the snapshot-before-action
 invariant is not optional and silently breaks if you skip it.
-
-## Qwen-MM-Plugins integration — read this first
-
-This skill is **vendored** from trycua/cua's `cua-driver` skill pack (MIT) and lightly
-customized for Qwen-MM-Plugins. Everything below the next heading is the upstream skill; this
-section is the local delta.
-
-- **The MCP server is `cua-computer-use`.** Installing the `qwen-mm-plugins-cua` plugin
-  registers it (`command: cua-driver`, `args: ["mcp"]`). Tool names below (`get_window_state`,
-  `click`, `type_text`, `verify_state`, …) are those tools.
-- **Prerequisite: the `cua-driver` binary must be installed** — it is native, cross-OS, and
-  **not** pulled in by `uvx`. If the tools are missing / "command not found":
-  ```bash
-  /bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"   # → ~/.local/bin, no admin
-  # macOS: open -n -g -a CuaDriver --args serve && cua-driver permissions grant
-  cua-driver doctor        # confirms platform + that a display is reachable
-  ```
-  No extra API key — the driving model is your agent harness's. Telemetry is on by default:
-  `cua-driver telemetry disable`.
-- **Do not also run `cua-driver skills install`** if you use this vendored copy — that installs
-  the upstream pack under the name `cua-driver`, duplicating this skill. Pick one.
-- **Real display required.** cua drives the machine this server runs on. On a **headless/remote**
-  box `doctor` warns `DISPLAY`/`WAYLAND_DISPLAY` unset and driving fails — run locally (macOS
-  first) or target an isolated desktop VM (cua + Lume).
-- **Coordinates are pixels, not 0–1000.** `click`/`move_cursor` take raw `x`/`y` with
-  `scope: window|desktop`. Prefer `element_token`; only fall to pixels when the tree is degraded.
-  Qwen-MM-Plugins-core's `grounding` emits **0–1000 normalized** — if you use it to locate a
-  pixel target, denormalize first: `px = norm / 1000 * (window-or-desktop size)`. You can also
-  feed the screenshot from `get_window_state` to core `read_image` / `ocr` for extra perception.
 
 ## Platform-specific reading — read this first
 
