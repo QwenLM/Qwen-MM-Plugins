@@ -1,47 +1,65 @@
 ---
 name: qwen-mm-plugins-cua
-description: Computer-use (CUA) for the LOCAL desktop — capture the screen and (later) click/type/scroll to drive native apps. Use when the task means operating the machine's GUI directly. Only works when this server runs on a local desktop with a real screen (macOS first); it cannot control a headless/remote server.
+description: Computer-use (CUA) for the LOCAL desktop — launch apps and click/type/scroll native GUI apps in the background, via trycua/cua's Cua Driver. Use when a task means operating the machine's desktop directly. This is a passthrough to the external `cua-driver` binary: it must be installed first, and only works on a local desktop with a real screen (macOS first), not a headless/remote server.
 ---
 
-# CUA — local computer use
+# CUA — local computer use (Cua Driver passthrough)
 
-Drive the desktop of the machine this server runs on. First cut ships **screenshot**; the
-action space (click/type/scroll) is coming.
+This capability does not implement computer-use itself. It registers **Cua Driver**
+(from open-source [trycua/cua](https://github.com/trycua/cua), MIT) as the MCP server
+`cua-computer-use`, so your agent can drive native desktop apps in the background.
 
-You have the `qwen-mm-plugins-cua` MCP tools available:
+The driver exposes a window/accessibility-tree action space (not raw pixel clicks), e.g.:
+`launch_app`, `get_window_state`, `click [element_index=…]`, `type`, `scroll`. The agent
+takes a window snapshot, references elements by index, and acts — more reliable than
+pixel-coordinate clicking.
 
-- **screenshot** — capture the local screen as an image and save a full-res PNG. Use it to
-  see the current desktop state before acting. Args: `display` (0=all, 1=primary, …),
-  `max_dimension` (inline preview downscale), `output_path`.
+## Prerequisite: install Cua Driver (once)
+
+The `cua-driver` binary is a native cross-OS tool installed by cua's own script — it is
+**not** bundled with Qwen-MM-Plugins and does not ride the `uvx` install. If the
+`cua-computer-use` tools are missing or error with "command not found", install it:
+
+```bash
+# 1. Install the driver (macOS 14+, Windows, or Linux; no admin needed)
+/bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"
+
+# 2. macOS: start the daemon via the app bundle so permission grants stick to CuaDriver.app
+open -n -g -a CuaDriver --args serve
+cua-driver permissions grant          # grants Accessibility + Screen Recording
+cua-driver permissions status         # verify both landed (rerun grant if one is missing)
+
+# 3. Sanity check: the driver can see your desktop
+cua-driver doctor
+cua-driver call list_apps
+```
+
+No extra API key is needed — the driving model is whatever your agent harness already
+uses. `CUA_API_KEY` and Lume VMs are only for cua's cloud/sandbox targets, not this
+local-driver path.
 
 ## When this works — and when it does not
 
-CUA drives the machine **this server runs on**. It needs a real display:
+Cua Driver drives the machine **this server runs on**, so it needs a real display:
 
-- ✅ Server runs on your **local desktop** (macOS first). Screenshot captures your actual screen.
-- ❌ Server runs on a **headless / remote box** (no display). There is nothing to capture — the
-  tool returns an error explaining this. Run the server locally instead, or use an isolated
-  desktop VM (e.g. trycua/cua + Lume) as the target.
+- ✅ Agent + server run on your **local desktop** (macOS first) → drives your actual apps.
+- ❌ **Headless / remote** box (no display) → nothing to drive. Run locally, or target an
+  isolated desktop VM (cua + Lume) instead.
 
-This is the same trade-off every GUI computer-use tool makes (Anthropic Computer Use, OpenAI
-Operator, Kimi WebBridge): the agent controls a real screen, either a local machine or a sandbox VM.
+This is the trade-off every GUI computer-use tool makes (Anthropic Computer Use, OpenAI
+Operator, Kimi WebBridge): control a real screen — local machine or sandbox VM.
 
-## macOS setup (first target)
+## macOS notes
 
-Screenshot needs **Screen Recording** permission for the process running this server:
-System Settings → Privacy & Security → Screen Recording → enable your terminal / uvx, then restart it.
-Permission is per host app and cannot be granted programmatically — if a capture returns an error
-about permission, walk the user through this. Retina displays report physical pixels; coordinates in
-the screenshot text are in that full-resolution space.
-
-## Locating things on screen
-
-To find where to click, pass the saved PNG to **`grounding`** from **`qwen-mm-plugins-core`**
-(Qwen-VL returns normalized 0–1000 boxes). Convert those to pixels against the full-res size the
-screenshot reports. (Click execution lands with the action-space tools — not shipped yet.)
+Two separate permissions are required and cannot be granted programmatically:
+**Accessibility** (to drive) and **Screen & System Audio Recording** (to see). macOS lists
+CuaDriver with the toggle **off** after the prompt — the user must flip it on, then let
+macOS relaunch the driver so it picks up the grant. If a tool errors about permission,
+walk the user through `cua-driver permissions grant` + toggling both in System Settings.
 
 ## Safety
 
-Computer-use lets the agent act on whatever is on screen, driven by content it reads there — treat
-it as an untrusted-input surface (prompt-injection risk). Use in controlled tasks; don't run it
-against sensitive apps unattended.
+Computer-use lets the agent act on whatever is on screen, driven by content it reads there
+— treat it as an untrusted-input surface (prompt-injection risk). Use in controlled tasks;
+don't run it unattended against sensitive apps. For real workloads consider the driver's
+`bounded` permission mode (see cua docs) rather than `standard`.

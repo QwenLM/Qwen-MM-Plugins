@@ -88,6 +88,11 @@
         "ref": "qwen-mm-plugins-freecad-v1.0.1"
       },
       "description": "FreeCAD parametric CAD: create/edit objects, execute Python, named-view screenshots, parts library, and CalculiX FEM as MCP tools + a skill. Needs a running FreeCAD + addon."
+    },
+    {
+      "name": "qwen-mm-plugins-cua",
+      "source": "./src/capabilities/cua",
+      "description": "Computer-use (CUA) for the local desktop — launch apps and click/type/scroll native GUI apps in the background, via trycua/cua's Cua Driver (passthrough). Needs the cua-driver binary installed (curl -fsSL https://cua.ai/driver/install.sh). macOS first."
     }
   ]
 }

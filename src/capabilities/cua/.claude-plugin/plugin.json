@@ -1,0 +1,12 @@
+{
+  "name": "qwen-mm-plugins-cua",
+  "version": "1.0.0",
+  "description": "Computer-use (CUA) for the local desktop via trycua/cua's Cua Driver: launch apps, read window/accessibility state, click/type/scroll native apps in the background. Passthrough — requires the cua-driver binary installed on this machine (curl -fsSL https://cua.ai/driver/install.sh). macOS first.",
+  "skills": ["./skill"],
+  "mcpServers": {
+    "cua-computer-use": {
+      "command": "cua-driver",
+      "args": ["mcp"]
+    }
+  }
+}

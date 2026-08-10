@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cua-computer-use": {
+      "command": "cua-driver",
+      "args": ["mcp"]
+    }
+  }
+}
