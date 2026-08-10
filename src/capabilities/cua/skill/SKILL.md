@@ -9,10 +9,22 @@ This capability does not implement computer-use itself. It registers **Cua Drive
 (from open-source [trycua/cua](https://github.com/trycua/cua), MIT) as the MCP server
 `cua-computer-use`, so your agent can drive native desktop apps in the background.
 
-The driver exposes a window/accessibility-tree action space (not raw pixel clicks), e.g.:
-`launch_app`, `get_window_state`, `click [element_index=…]`, `type`, `scroll`. The agent
-takes a window snapshot, references elements by index, and acts — more reliable than
-pixel-coordinate clicking.
+The driver exposes a window/accessibility-tree action space (not raw pixel clicks). Per-turn
+workflow (from the server's own `initialize` instructions):
+
+1. `start_session(session)` once; reuse that id, end it when done.
+2. `launch_app`, then `get_window_state(pid, window_id)` to refresh element indices.
+3. Act on the fresh index: `click`, `type_text`, `press_key`, `hotkey`, `scroll`,
+   `set_value`, `set_window_frame`, …
+4. `verify_state(pid, window_id, expect)` to confirm the outcome — `unknown` is not success.
+
+Observation tools: `get_desktop_state`, `get_accessibility_tree`, `get_window_state`,
+`list_apps`, `list_windows`, `get_browser_state`. Referencing elements by AT-SPI index is
+more reliable than pixel-coordinate clicking. Three permission modes exist
+(`standard` / `bounded` / `unrestricted`).
+
+Telemetry note: the driver sends content-free product telemetry **by default** —
+`cua-driver telemetry disable` turns it off (`cua-driver telemetry status` to check).
 
 ## Prerequisite: install Cua Driver (once)
 

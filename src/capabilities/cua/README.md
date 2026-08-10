@@ -35,6 +35,21 @@ installs it elsewhere, they can override with an absolute `command` path, or use
 - The window/accessibility-tree action space it already provides is more robust than a
   screenshot+coordinate approach, so re-implementing in-repo adds little.
 
+## Verified
+
+`cua-driver mcp` was installed (v0.19.3, linux-x86_64) and probed end-to-end:
+`initialize` returns a valid result (protocol `2025-06-18`, serverInfo `cua-driver 0.19.3`)
+and `tools/list` returns the action space (`click`/`type_text`/`press_key`/`scroll`/
+`get_window_state`/`verify_state`/…). This confirms the plugin.json passthrough command
+`{ command: "cua-driver", args: ["mcp"] }` is a working MCP stdio server. Actual
+app-driving needs a real display (on a headless box `doctor` warns `DISPLAY`/`WAYLAND_DISPLAY`
+unset and window-driving tools fail — as expected).
+
+Note: the release tarball is not a single static binary — it ships `libcua_driver_sdk.so`,
+`cua_driver_node_runtime.node`, a cursor theme, and a Wayland helper alongside `cua-driver`.
+The official installer lays these out under `~/.cua-driver/`; users should install via the
+curl script rather than copying the bare binary.
+
 ## Not done / open
 
 - The `command` is `cua-driver` (PATH-relative). Consider documenting the absolute-path
