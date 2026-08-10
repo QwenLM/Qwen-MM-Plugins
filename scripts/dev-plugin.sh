@@ -11,6 +11,9 @@
 # --refresh makes uvx rebuild the local package on every launch (a bit slower, but always current).
 # For rapid server-code iteration prefer `claude mcp add <name> -- python3 <server-dir>` instead
 # (no build step at all — see docs/en/local_development.md).
+#
+# The actual manifest-rewriting lives in scripts/_flip_mcp.py — install.sh's `localize`
+# subcommand reuses the same script so the two paths can never drift.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 cap="${1:?usage: dev-plugin.sh <cap> [--revert]   (cap = core|video-memory|video-edit|example)}"
@@ -27,23 +30,7 @@ if [ "${2:-}" = "--revert" ]; then
     exit 0
 fi
 
-REPO="$repo" python3 - "${files[@]}" <<'PY'
-import json, os, sys
-
-repo = os.environ["REPO"]
-git_ref = "git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main"
-local = f"file://{repo}"
-for path in sys.argv[1:]:
-    data = json.load(open(path))
-    for srv in data.get("mcpServers", {}).values():
-        args = [a.replace(git_ref, local) for a in srv.get("args", [])]
-        if "--refresh" not in args:
-            args.insert(0, "--refresh")
-        srv["args"] = args
-    with open(path, "w") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-PY
+REPO="$repo" FLIP_ADD_REFRESH=1 "$repo/scripts/_flip_mcp.py" "${files[@]}"
 
 echo "✓ flipped $cap manifests → $repo  (file:// + uvx --refresh)"
 echo "  claude plugin marketplace add $repo"

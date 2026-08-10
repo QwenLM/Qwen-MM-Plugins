@@ -46,7 +46,7 @@
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash   # 引导菜单
 ```
 
-也可以只跑单个动作 —— `bash install.sh install` / `configure` / `verify` / `uninstall` / `localize` / `uninstall`（各动作的细节见[配置](#-配置)与[依赖](#-依赖)；`localize` 是给沙盒化 GUI harness 用的逃生口，见[沙盒化 GUI harness 的网络限制](docs/zh/installation.md#沙盒化-gui-harness-的网络限制codex-桌面--claude--qoder-等)）。
+也可以只跑单个动作 —— `bash install.sh install` / `configure` / `verify` / `localize` / `uninstall`（各动作的细节见[配置](#-配置)与[依赖](#-依赖)；`localize` 是给沙盒化 GUI harness 用的逃生口，见[沙盒化 GUI harness 的网络限制](docs/zh/installation.md#沙盒化-gui-harness-的网络限制codex-桌面--claude--qoder-等)）。
 
 **Windows x64：**推荐使用 WSL2（建议 Ubuntu），在 WSL home 目录中 clone 仓库
 （例如 `~/code`），不要放在 `/mnt/c` 这类 Windows 挂载盘下，然后运行相同命令。

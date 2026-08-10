@@ -1087,24 +1087,27 @@ do_uninstall() {
 
 # do_localize — rewrite every src/capabilities/<cap>/.mcp.json so its uvx --from points at a
 # local file:// path instead of git+https://github.com/.../Qwen-MM-Plugins.git. Use this when
-# your harness launches MCP servers as sandboxed stdio children that cannot resolve
-# github.com (e.g. the Codex desktop app on macOS, where the Electron sandbox blocks the
-# spawned uvx from reaching the network). Symptom: every tool call returns "unsupported
-# call" even though `codex mcp list` shows the servers as enabled. Honors QMP_REPO
-# (default: directory holding this install.sh, after symlink resolution); if QMP_REPO is
-# already a file:// URL it is used verbatim. Re-run after each `git pull` so the .mcp.json
-# keeps tracking the live checkout, and restart the GUI app afterwards (Codex spawns stdio
-# servers lazily on first tool call — an in-flight session will still try the old URL).
+# your harness launches MCP servers as sandboxed stdio children that cannot resolve github.com
+# (e.g. the Codex desktop app on macOS, where the Electron sandbox blocks the spawned uvx from
+# reaching the network). Symptom: every tool call returns "unsupported call" even though
+# `codex mcp list` shows the servers as enabled. Honors QMP_REPO (default: directory holding
+# this install.sh, after symlink resolution); if QMP_REPO is already a file:// URL it is used
+# verbatim. Re-run after each `git pull` so the rewritten .mcp.json keeps tracking the live
+# checkout, and restart the GUI app afterwards (Codex spawns stdio servers lazily on first
+# tool call — an in-flight session will still try the old URL).
+#
+# The actual manifest-rewriting is shared with `scripts/dev-plugin.sh` via
+# `scripts/_flip_mcp.py` — dev-plugin adds `--refresh` for source iteration; localize does
+# not, so the uvx cache stays compatible with non-sandboxed installs.
 do_localize() {
-  local repo_path repo_url changed=0 failed=0 already=0
   # Resolve the install.sh directory: BASH_SOURCE survives `bash -c`, `source`, and stdin-piped
   # installs (where $0 is just "bash" and dirname would point at /tmp or similar). -P dereferences
   # any symlink so the file:// URL points at the real checkout, not a wrapper.
-  local here script_path="${BASH_SOURCE[0]:-$0}"
+  local repo_path repo_url here script_path="${BASH_SOURCE[0]:-$0}" flippers=()
   here=$(cd "$(dirname "$script_path")" && pwd -P)
   case "${QMP_REPO:-}" in
     file://*) repo_url=$QMP_REPO ;;
-    "")       repo_url="file://$here/src" ;;            # default: the src/ tree of this checkout
+    "")       repo_url="file://$here" ;;                 # default: this checkout (root, not src/)
     /*|./*|../*)
                 if [ -d "$QMP_REPO" ]; then
                   repo_path=$(cd "$QMP_REPO" 2>/dev/null && pwd -P) || { err "QMP_REPO is not a directory: $QMP_REPO"; return 1; }
@@ -1114,53 +1117,43 @@ do_localize() {
                 fi ;;
     *)        err "QMP_REPO must be a file:// URL or a local directory (got: $QMP_REPO)"; return 1 ;;
   esac
-  # PEP-508 requires escaping in file:// URLs.
-  local esc; esc=$(printf '%s' "$repo_url" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe='/:@!'))")
-  screen; hr "Localize MCP sources → $esc"
-  local cap f
+  # _flip_mcp.py handles the PEP-508 percent-escaping of the path; we hand it the absolute
+  # filesystem path (it prepends file:// itself).
+  local repo_path_for_py
+  case "$repo_url" in
+    file://*) repo_path_for_py=${repo_url#file://} ;;
+    *)        repo_path_for_py=$repo_url ;;
+  esac
+  screen; hr "Localize MCP sources → $repo_url"
+  local cap f status
   for cap in "${CAP_ITEMS[@]}"; do
     is_skill_only "$cap" && continue
     f="src/capabilities/$cap/.mcp.json"
     [ -f "$f" ] || continue
-    if grep -qF "file://" "$f" && ! grep -qF "git+https://github.com/QwenLM/Qwen-MM-Plugins.git" "$f"; then
-      # Already on a file:// URL (path may differ from this run's QMP_REPO — that's fine, just
-      # reports `unchanged`. User can `git pull` and re-run to pick up the new path).
-      already=$((already + 1))
-      printf '  %b✓%b %s (already on file://)\n' "$CG" "$C0" "$f"
-      continue
-    fi
-    if grep -qF "git+https://github.com/QwenLM/Qwen-MM-Plugins.git" "$f"; then
-      # in-place replace the hardcoded git URL with the file:// URL on every .mcp.json
-      python3 - "$f" "$esc" <<'PYEOF'
-import json, sys, pathlib
-fp, new_url = sys.argv[1], sys.argv[2]
-data = json.loads(pathlib.Path(fp).read_text())
-for srv in data.get("mcpServers", {}).values():
-    args = srv.get("args", [])
-    for i, a in enumerate(args):
-        if isinstance(a, str) and a.startswith("qwen-mm-plugins[") and "@ git+" in a:
-            cap = a.split("[", 1)[1].split("]", 1)[0]
-            args[i] = f"qwen-mm-plugins[{cap}] @ {new_url}"
-pathlib.Path(fp).write_text(json.dumps(data, indent=2) + "\n")
-PYEOF
-      if [ $? -eq 0 ]; then
-        changed=$((changed + 1))
-        printf '  %b✓%b %s\n' "$CG" "$C0" "$f"
-      else
-        failed=$((failed + 1))
-        printf '  %b✗%b %s (rewrite failed)\n' "$CR" "$C0" "$f"
-      fi
-    else
-      printf '  %b-%b %s (no git+https URL found — already custom?)\n' "$CY" "$C0" "$f"
-    fi
+    flippers+=("$f")
   done
+  [ ${#flippers[@]} -gt 0 ] || { warn "no .mcp.json files found under src/capabilities/ — nothing to localize"; pause; return 0; }
+  # Run the shared flipper once for every file; it prints "<status>\t<path>" per line, where
+  # status ∈ {ok, unchanged, skip:..., fail:...}. We tally and render a summary box.
+  local rewrote=0 unchanged=0 failed=0 line status_color
+  while IFS= read -r line; do
+    status=${line%%	*}
+    f=${line##*	}
+    case "$status" in
+      ok)        rewrote=$((rewrote+1));    status_color="${CG}✓${C0} $f" ;;
+      unchanged) unchanged=$((unchanged+1)); status_color="${CG}✓${C0} $f (already on file://)" ;;
+      skip:*)    status_color="${CD}-${C0} $f (${status#skip:})" ;;
+      *)         failed=$((failed+1));       status_color="${CR}✗${C0} $f ($status)" ;;
+    esac
+    printf '  %b\n' "$status_color"
+  done < <(REPO="$repo_path_for_py" "$here/scripts/_flip_mcp.py" "${flippers[@]}")
   printf '\n'
   box_open "Localize summary"
-  box_row "rewrote   ${CG}$changed${C0}"
-  box_row "unchanged ${CD}$already${C0} (already file://)"
+  box_row "rewrote   ${CG}$rewrote${C0}"
+  box_row "unchanged ${CD}$unchanged${C0} (already on file://)"
   [ "$failed" -gt 0 ] && box_row "failed    ${CR}$failed${C0}"
   box_close
-  if [ "$changed" -gt 0 ]; then
+  if [ "$rewrote" -gt 0 ]; then
     printf '\n  %bNext:%b restart your GUI harness (Codex desktop, Claude, Qoder, etc.) so it re-reads .mcp.json.\n' "$CB" "$C0"
     printf '  Each new turn spawns a fresh stdio child, so an in-flight session will still hit the old URL.\n'
   fi
@@ -1192,6 +1185,6 @@ case "${1:-}" in
   localize)  do_localize ;;
   uninstall) do_uninstall ;;
   --verify)  shift; run_caps_noninteractive "$@" ;;
-  -h|--help) banner; printf '\n  Usage: install.sh [install|configure|verify|localize|uninstall]   (no arg = interactive menu)\n         install.sh --verify [caps]   # non-interactive: check installed (or listed) caps\n         install.sh localize            # rewrite .mcp.json to a local file:// URL (sandboxed GUI)\n\n  (No update action — uvx re-resolves the pinned git ref and pulls new commits on each launch.)\n  "localize" is the escape hatch when a sandboxed GUI (Codex desktop, etc.) blocks stdio\n  children from reaching github.com — see docs/en/installation.md → "Sandboxed GUI harnesses".\n\n' ;;
+  -h|--help) banner; printf '\n  Usage: install.sh [install|configure|verify|localize|uninstall]   (no arg = interactive menu)\n         install.sh --verify [caps]   # non-interactive: check installed (or listed) caps\n         install.sh localize            # rewrite .mcp.json to a local file:// URL (sandboxed GUI)\n\n  (No update action — uvx re-resolves the pinned git ref and pulls new commits on each launch.)\n  "localize" is the escape hatch when a sandboxed GUI (Codex desktop, etc.) blocks stdio\n  children from reaching github.com — see docs/en/installation.md → "Sandboxed GUI harnesses".\n  The same flip happens automatically when you run scripts/dev-plugin.sh <cap> for source-iter.\n\n' ;;
   *)         menu ;;
 esac

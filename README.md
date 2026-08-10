@@ -46,7 +46,7 @@ One script handles **install · configure · verify · uninstall** across every 
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash
 ```
 
-Or run one action at a time — `bash install.sh install` / `configure` / `verify` / `uninstall` / `localize` / `uninstall` (what each does is detailed under [Configuration](#-configuration) and [Dependencies](#-dependencies); `localize` is the escape hatch for sandboxed GUI harnesses — see [Sandboxed GUI harnesses](docs/en/installation.md#sandboxed-gui-harnesses-codex-desktop-claude-qoder--network-restrictions)).
+Or run one action at a time — `bash install.sh install` / `configure` / `verify` / `localize` / `uninstall` (what each does is detailed under [Configuration](#-configuration) and [Dependencies](#-dependencies); `localize` is the escape hatch for sandboxed GUI harnesses — see [Sandboxed GUI harnesses](docs/en/installation.md#sandboxed-gui-harnesses-codex-desktop-claude-qoder--network-restrictions)).
 
 **Windows x64:** use WSL2 (Ubuntu recommended) and clone the repository inside your WSL
 home directory (for example `~/code`), rather than under a mounted Windows drive such as

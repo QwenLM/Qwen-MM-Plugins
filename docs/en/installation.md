@@ -239,6 +239,8 @@ Idempotent: a second `localize` reports `unchanged 6 (already on file://)` and r
 
 Roll back: manually replace each `file://...` in `src/capabilities/<cap>/.mcp.json` with `qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main`, or `git checkout -- src/capabilities/*/.mcp.json`.
 
+> **Relationship to `scripts/dev-plugin.sh`.** `dev-plugin.sh` was the first tool in the repo to flip plugin manifests to `file://` (it was for the dev-time `claude plugin install` flow). With this PR, both `dev-plugin.sh` and the new `install.sh localize` delegate to a single shared helper — `scripts/_flip_mcp.py` — so the rewrite logic lives in exactly one place and can never drift. `dev-plugin.sh` keeps the dev-time `--refresh` flag and per-cap scope; `localize` runs across all caps and stays `--refresh`-free so the uvx cache stays compatible with non-sandboxed installs.
+
 > **Why do I need a second `localize` after `install.sh install`?** `install` only drives the harness's native `plugin install` flow, which reads the `git+https://...` URL baked into `.mcp.json` in the repo. To make stdio children use a local path you have to rewrite `.mcp.json` afterwards, and relaunch the GUI harness to pick the change up.
 
 ## Repository layout

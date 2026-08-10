@@ -236,6 +236,8 @@ bash install.sh localize
 
 回滚：手动把每个 `src/capabilities/<cap>/.mcp.json` 里的 `file://...` 改回 `qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main`，或者 `git checkout -- src/capabilities/*/.mcp.json`。
 
+> **与 `scripts/dev-plugin.sh` 的关系。** `dev-plugin.sh` 是仓库里最早把 plugin manifest 切到 `file://` 的工具(为了 dev-time 的 `claude plugin install` 流)。本 PR 之后,`dev-plugin.sh` 和新加的 `install.sh localize` 都委托给同一个共享脚本 `scripts/_flip_mcp.py`,改写逻辑只在一处维护,两路永远不会漂移。`dev-plugin.sh` 保留 dev-time 的 `--refresh` 标志和单 cap 粒度;`localize` 跨所有 cap 批量跑,且不加 `--refresh`,让 uvx 缓存跟非沙盒安装兼容。
+
 > **为什么 `install.sh install` 之后还要再跑一次 `localize`？** `install` 只调用 harness 的 `plugin install` 流程，那个流程直接读仓库里写死的 `.mcp.json`（默认是 `git+https://...`）；要让 stdio 子进程用本地路径，必须额外跑 `localize` 改写 `.mcp.json`。改完请重启 GUI harness 才会生效。
 
 ## 目录结构
