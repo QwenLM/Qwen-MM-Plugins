@@ -7,7 +7,12 @@ no code of its own — it registers the external `cua-driver` binary as the MCP 
 
 ## Shape
 
-- `skill/SKILL.md` — when to use it, the install prerequisite, macOS permissions, safety.
+- `skill/SKILL.md` — a **thin router**: when to use it, the install prerequisite, and the core
+  invariants (snapshot-before / verify-after, narrowest-route-first, no-foreground, `element_token`
+  over pixels, coordinates are pixels not 0–1000). It defers to cua's own authoritative multi-file
+  skill pack (`SKILL.md` + `MACOS/WINDOWS/LINUX/BROWSER.md`, frontmatter `name: cua-driver`),
+  installed via `cua-driver skills install`. We intentionally do **not** duplicate that pack — ours
+  just routes to it and keeps behaviour safe before it's loaded.
 - `.claude-plugin/plugin.json` — skill + inline `mcpServers` → `cua-driver mcp`.
 - `.codex-plugin/plugin.json` + `.mcp.json` — same for codex.
 - **No** `qwen_mm_plugins_cua/` Python package, **no** pyproject entry, **no** extras group:
