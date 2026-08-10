@@ -116,7 +116,7 @@ export PATH
 # Non-interactive forms (--verify / --help) run headless (CI, curl|bash -s -- --verify) and need no
 # terminal; every other invocation is an interactive TUI that reads keys from the tty (fd 3).
 NONINTERACTIVE=0
-case "${1:-}" in --verify|-h|--help) NONINTERACTIVE=1; QMP_NO_TUI=1 ;; esac
+case "${1:-}" in --verify|-h|--help|localize) NONINTERACTIVE=1; QMP_NO_TUI=1 ;; esac
 # ── an interactive terminal, even under `curl | bash` (stdin is the pipe → read from /dev/tty) ──
 if [ "$NONINTERACTIVE" = 1 ]; then
   exec 3</dev/null                                   # headless: no prompts, no terminal required
@@ -1085,17 +1085,100 @@ do_uninstall() {
   pause   # hold the uninstall result on screen before the menu reclears
 }
 
+# do_localize — rewrite every src/capabilities/<cap>/.mcp.json so its uvx --from points at a
+# local file:// path instead of git+https://github.com/.../Qwen-MM-Plugins.git. Use this when
+# your harness launches MCP servers as sandboxed stdio children that cannot resolve
+# github.com (e.g. the Codex desktop app on macOS, where the Electron sandbox blocks the
+# spawned uvx from reaching the network). Symptom: every tool call returns "unsupported
+# call" even though `codex mcp list` shows the servers as enabled. Honors QMP_REPO
+# (default: directory holding this install.sh, after symlink resolution); if QMP_REPO is
+# already a file:// URL it is used verbatim. Re-run after each `git pull` so the .mcp.json
+# keeps tracking the live checkout, and restart the GUI app afterwards (Codex spawns stdio
+# servers lazily on first tool call — an in-flight session will still try the old URL).
+do_localize() {
+  local repo_path repo_url changed=0 failed=0 already=0
+  # Resolve the install.sh directory: BASH_SOURCE survives `bash -c`, `source`, and stdin-piped
+  # installs (where $0 is just "bash" and dirname would point at /tmp or similar). -P dereferences
+  # any symlink so the file:// URL points at the real checkout, not a wrapper.
+  local here script_path="${BASH_SOURCE[0]:-$0}"
+  here=$(cd "$(dirname "$script_path")" && pwd -P)
+  case "${QMP_REPO:-}" in
+    file://*) repo_url=$QMP_REPO ;;
+    "")       repo_url="file://$here/src" ;;            # default: the src/ tree of this checkout
+    /*|./*|../*)
+                if [ -d "$QMP_REPO" ]; then
+                  repo_path=$(cd "$QMP_REPO" 2>/dev/null && pwd -P) || { err "QMP_REPO is not a directory: $QMP_REPO"; return 1; }
+                  repo_url="file://$repo_path"
+                else
+                  err "QMP_REPO is set to a non-directory path: $QMP_REPO"; return 1
+                fi ;;
+    *)        err "QMP_REPO must be a file:// URL or a local directory (got: $QMP_REPO)"; return 1 ;;
+  esac
+  # PEP-508 requires escaping in file:// URLs.
+  local esc; esc=$(printf '%s' "$repo_url" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe='/:@!'))")
+  screen; hr "Localize MCP sources → $esc"
+  local cap f
+  for cap in "${CAP_ITEMS[@]}"; do
+    is_skill_only "$cap" && continue
+    f="src/capabilities/$cap/.mcp.json"
+    [ -f "$f" ] || continue
+    if grep -qF "file://" "$f" && ! grep -qF "git+https://github.com/QwenLM/Qwen-MM-Plugins.git" "$f"; then
+      # Already on a file:// URL (path may differ from this run's QMP_REPO — that's fine, just
+      # reports `unchanged`. User can `git pull` and re-run to pick up the new path).
+      already=$((already + 1))
+      printf '  %b✓%b %s (already on file://)\n' "$CG" "$C0" "$f"
+      continue
+    fi
+    if grep -qF "git+https://github.com/QwenLM/Qwen-MM-Plugins.git" "$f"; then
+      # in-place replace the hardcoded git URL with the file:// URL on every .mcp.json
+      python3 - "$f" "$esc" <<'PYEOF'
+import json, sys, pathlib
+fp, new_url = sys.argv[1], sys.argv[2]
+data = json.loads(pathlib.Path(fp).read_text())
+for srv in data.get("mcpServers", {}).values():
+    args = srv.get("args", [])
+    for i, a in enumerate(args):
+        if isinstance(a, str) and a.startswith("qwen-mm-plugins[") and "@ git+" in a:
+            cap = a.split("[", 1)[1].split("]", 1)[0]
+            args[i] = f"qwen-mm-plugins[{cap}] @ {new_url}"
+pathlib.Path(fp).write_text(json.dumps(data, indent=2) + "\n")
+PYEOF
+      if [ $? -eq 0 ]; then
+        changed=$((changed + 1))
+        printf '  %b✓%b %s\n' "$CG" "$C0" "$f"
+      else
+        failed=$((failed + 1))
+        printf '  %b✗%b %s (rewrite failed)\n' "$CR" "$C0" "$f"
+      fi
+    else
+      printf '  %b-%b %s (no git+https URL found — already custom?)\n' "$CY" "$C0" "$f"
+    fi
+  done
+  printf '\n'
+  box_open "Localize summary"
+  box_row "rewrote   ${CG}$changed${C0}"
+  box_row "unchanged ${CD}$already${C0} (already file://)"
+  [ "$failed" -gt 0 ] && box_row "failed    ${CR}$failed${C0}"
+  box_close
+  if [ "$changed" -gt 0 ]; then
+    printf '\n  %bNext:%b restart your GUI harness (Codex desktop, Claude, Qoder, etc.) so it re-reads .mcp.json.\n' "$CB" "$C0"
+    printf '  Each new turn spawns a fresh stdio child, so an in-flight session will still hit the old URL.\n'
+  fi
+  pause
+}
+
 menu() {
   while :; do
     screen
     status
     menu_pick "What would you like to do?" \
-      "Install plugin" "Configure (API key + all settings)" "Verify" "Uninstall" "Quit"
+      "Install plugin" "Configure (API key + all settings)" "Verify" "Localize (sandboxed GUI)" "Uninstall" "Quit"
     case "$PICK_I" in
       0) do_install ;;
       1) do_configure ;;
       2) do_verify ;;
-      3) do_uninstall ;;
+      3) do_localize ;;
+      4) do_uninstall ;;
       *) printf '\n  bye 👋\n\n'; exit 0 ;;   # "Quit" or cancelled (q/Esc)
     esac
     # Each action pauses on its own result screen; only cancel/back paths return straight here.
@@ -1106,8 +1189,9 @@ case "${1:-}" in
   install)   do_install ;;
   configure) do_configure ;;
   verify)    do_verify ;;
+  localize)  do_localize ;;
   uninstall) do_uninstall ;;
   --verify)  shift; run_caps_noninteractive "$@" ;;
-  -h|--help) banner; printf '\n  Usage: install.sh [install|configure|verify|uninstall]   (no arg = interactive menu)\n         install.sh --verify [caps]   # non-interactive: check installed (or listed) caps\n\n  (No update action — uvx re-resolves the pinned git ref and pulls new commits on each launch.)\n\n' ;;
+  -h|--help) banner; printf '\n  Usage: install.sh [install|configure|verify|localize|uninstall]   (no arg = interactive menu)\n         install.sh --verify [caps]   # non-interactive: check installed (or listed) caps\n         install.sh localize            # rewrite .mcp.json to a local file:// URL (sandboxed GUI)\n\n  (No update action — uvx re-resolves the pinned git ref and pulls new commits on each launch.)\n  "localize" is the escape hatch when a sandboxed GUI (Codex desktop, etc.) blocks stdio\n  children from reaching github.com — see docs/en/installation.md → "Sandboxed GUI harnesses".\n\n' ;;
   *)         menu ;;
 esac

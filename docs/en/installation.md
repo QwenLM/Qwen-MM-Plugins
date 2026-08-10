@@ -208,6 +208,39 @@ Config is read from the shell environment, falling back to `~/.qwen-mm-plugins/c
 
 > **blender / freecad** are thin clients — they connect to a **running** Blender / FreeCAD carrying the bundled addon. `QWEN_MM_AUTOLAUNCH=1` (preset in the plugin manifests) brings the app up on the first tool call, auto-downloading it on Linux-x86_64 if missing. See [`cookbooks/blender`](../../cookbooks/blender/usage.md) / [`cookbooks/freecad`](../../cookbooks/freecad/usage.md) for the full setup, env vars, and troubleshooting.
 
+## Sandboxed GUI harnesses (Codex desktop, Claude, Qoder) — network restrictions
+
+When you use **Codex desktop** (the macOS / Windows sandboxed Electron build), Claude Desktop, Qoder, or any GUI client that spawns stdio MCP servers as restricted children, you may hit this symptom:
+
+- `codex mcp list` (or the equivalent on your harness) shows every `qwen-mm-plugins-*` server as `enabled`
+- The tools appear in the LLM's tool list, but **every call returns `unsupported call`**
+- The same `uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-<cap>` works fine when run by hand in your shell
+
+Root cause: the harness's Electron sandbox **blocks the spawned stdio child from reaching the public network** (a tell-tale is `codex plugin marketplace upgrade qwen-mm-plugins` also failing with `Could not resolve host: github.com`). The child `uvx` first run needs to fetch the package from `git+https://github.com/...`, hits a DNS failure, exits silently, and the harness falls back to reporting `unsupported call`.
+
+Fix: rewrite `.mcp.json` to use a `file://<local checkout>` URL so `uvx` installs from disk and never reaches GitHub. `install.sh` ships a `localize` subcommand that does this in place:
+
+```bash
+# 1) Grab a local checkout by any means (git clone, Codex marketplace, curl|bash, …)
+git clone https://github.com/QwenLM/Qwen-MM-Plugins.git ~/qwen-mm-plugins
+cd ~/qwen-mm-plugins
+
+# 2) Run install.sh localize — defaults to this repo's src/ tree
+bash install.sh localize
+# or point it at a different checkout:
+# QMP_REPO=file:///path/to/another/checkout/src bash install.sh localize
+
+# 3) **Fully quit and relaunch your GUI harness** (Codex desktop, Claude, Qoder, …).
+# A fresh stdio child is only spawned on the first call of a new session —
+# any session that was already open will keep using the old URL.
+```
+
+Idempotent: a second `localize` reports `unchanged 6 (already on file://)` and rewrites nothing. After `git pull` just re-run `localize` to repoint at the updated checkout (no need to re-run `plugin install`).
+
+Roll back: manually replace each `file://...` in `src/capabilities/<cap>/.mcp.json` with `qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main`, or `git checkout -- src/capabilities/*/.mcp.json`.
+
+> **Why do I need a second `localize` after `install.sh install`?** `install` only drives the harness's native `plugin install` flow, which reads the `git+https://...` URL baked into `.mcp.json` in the repo. To make stdio children use a local path you have to rewrite `.mcp.json` afterwards, and relaunch the GUI harness to pick the change up.
+
 ## Repository layout
 
 ```

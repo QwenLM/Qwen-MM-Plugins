@@ -206,6 +206,38 @@ qwenpaw skills config    # 交互勾选启用
 
 > **blender / freecad** 是瘦客户端 —— 它们连接到一台**正在运行**、装好随包 addon 的 Blender / FreeCAD。`QWEN_MM_AUTOLAUNCH=1`（插件清单里默认预设）会在第一次工具调用时把应用拉起来，Linux-x86_64 上缺应用时自动下载。完整安装、环境变量与排障见 [`cookbooks/blender`](../../cookbooks/blender/usage.md) / [`cookbooks/freecad`](../../cookbooks/freecad/usage.md)。
 
+## 沙盒化 GUI harness 的网络限制（Codex 桌面 / Claude / Qoder 等）
+
+当你用 **Codex 桌面**（macOS / Windows 沙盒化的 Electron 应用）、Claude Desktop、Qoder 或任何把 stdio MCP server 当作受限子进程拉起的 GUI 客户端时，可能遇到这个症状：
+
+- `codex mcp list`（或对应 harness 的 mcp 列表命令）里所有 `qwen-mm-plugins-*` server 状态都是 `enabled`
+- 工具在 LLM 端能看到，**但每次调用都返回 `unsupported call`**
+- 单独在 shell 里跑 `uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-<cap>` 是正常的
+
+根因是：harness 的 Electron 沙盒在 spawn stdio 子进程时**禁止访问公网**（典型表现是 `codex plugin marketplace upgrade qwen-mm-plugins` 也报 `Could not resolve host: github.com`）。子进程 `uvx` 第一次启动需要从 `git+https://github.com/...` 拉包 → DNS 解析失败 → 进程静默退出 → harness 把这次调用回退成 "unsupported call"。
+
+修复：把 `.mcp.json` 里的 `git+https://...` 改写为 `file://<本地 checkout>`，让 `uvx` 直接从本地装，不再访问 GitHub。`install.sh` 已经把这个流程封装成 `localize` 子命令：
+
+```bash
+# 1) 拿一份本地 checkout（任何方式都行：git clone、Codex marketplace、curl|bash）
+git clone https://github.com/QwenLM/Qwen-MM-Plugins.git ~/qwen-mm-plugins
+cd ~/qwen-mm-plugins
+
+# 2) 跑 install.sh localize —— 默认就用本仓库的 src/ 目录
+bash install.sh localize
+# 或显式指定一个不同的 checkout：
+# QMP_REPO=file:///path/to/another/checkout/src bash install.sh localize
+
+# 3) **完全退出并重启你的 GUI harness**（Codex 桌面、Claude、Qoder 等）
+# 每个新会话首次调用才 spawn stdio 子进程 —— 已经打开的会话仍会用旧 URL。
+```
+
+幂等：再跑一次 `localize` 会显示 `unchanged 6 (already on file://)`，不会重复改写。`git pull` 之后再跑一次即可让本地路径指向最新代码（不需要重新 `plugin install`）。
+
+回滚：手动把每个 `src/capabilities/<cap>/.mcp.json` 里的 `file://...` 改回 `qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main`，或者 `git checkout -- src/capabilities/*/.mcp.json`。
+
+> **为什么 `install.sh install` 之后还要再跑一次 `localize`？** `install` 只调用 harness 的 `plugin install` 流程，那个流程直接读仓库里写死的 `.mcp.json`（默认是 `git+https://...`）；要让 stdio 子进程用本地路径，必须额外跑 `localize` 改写 `.mcp.json`。改完请重启 GUI harness 才会生效。
+
 ## 目录结构
 
 ```

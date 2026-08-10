@@ -46,12 +46,19 @@
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash   # 引导菜单
 ```
 
-也可以只跑单个动作 —— `bash install.sh install` / `configure` / `verify` / `uninstall`（`configure` 和 `verify` 各自做什么，见下面的[配置](#-配置)与[依赖](#-依赖)）。
+也可以只跑单个动作 —— `bash install.sh install` / `configure` / `verify` / `uninstall` / `localize` / `uninstall`（各动作的细节见[配置](#-配置)与[依赖](#-依赖)；`localize` 是给沙盒化 GUI harness 用的逃生口，见[沙盒化 GUI harness 的网络限制](docs/zh/installation.md#沙盒化-gui-harness-的网络限制codex-桌面--claude--qoder-等)）。
 
 **Windows x64：**推荐使用 WSL2（建议 Ubuntu），在 WSL home 目录中 clone 仓库
 （例如 `~/code`），不要放在 `/mnt/c` 这类 Windows 挂载盘下，然后运行相同命令。
 当前 Windows 仅支持 WSL2；原生 Windows 尚未完成验证。简要说明见
 [Windows 安装说明](docs/zh/installation.md#windows-wsl2)。
+
+> **在 Codex 桌面 / Claude / Qoder 里看到工具调用返回 `unsupported call`？**
+> 它们的 Electron 沙盒禁止子进程访问 `github.com`。在本仓库的 checkout 里跑一次
+> `bash install.sh localize` 把 stdio URL 改写成 `file://…`，然后**完全退出并重启** GUI 即可。
+> 详见 [沙盒化 GUI harness 的网络限制](docs/zh/installation.md#沙盒化-gui-harness-的网络限制codex-桌面--claude--qoder-等)。
+
+
 
 ### 手动（逐 harness）
 
