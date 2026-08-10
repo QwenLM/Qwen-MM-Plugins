@@ -1,23 +1,28 @@
 # qwen-mm-plugins-cua
 
 Computer-use (CUA) for the local desktop, as a **passthrough** to
-[trycua/cua](https://github.com/trycua/cua)'s **Cua Driver** (MIT). This capability ships
-no code of its own — it registers the external `cua-driver` binary as the MCP server
-`cua-computer-use` and provides a thin skill covering install + usage.
+[trycua/cua](https://github.com/trycua/cua)'s **Cua Driver** (MIT). This capability ships no
+code of its own — it registers the external `cua-driver` binary as the MCP server
+`cua-computer-use`, and **vendors cua's official skill pack** into `skill/` (customized for
+this repo).
 
 ## Shape
 
-- `skill/SKILL.md` — a **thin router**: when to use it, the install prerequisite, and the core
-  invariants (snapshot-before / verify-after, narrowest-route-first, no-foreground, `element_token`
-  over pixels, coordinates are pixels not 0–1000). It defers to cua's own authoritative multi-file
-  skill pack (`SKILL.md` + `MACOS/WINDOWS/LINUX/BROWSER.md`, frontmatter `name: cua-driver`),
-  installed via `cua-driver skills install`. We intentionally do **not** duplicate that pack — ours
-  just routes to it and keeps behaviour safe before it's loaded.
+- `skill/SKILL.md` + `MACOS.md` / `WINDOWS.md` / `LINUX.md` / `BROWSER.md` / `RECORDING.md` /
+  `EMBEDDING.md` — **vendored** from cua's `cua-driver` skill pack (v0.19.3, MIT; see
+  `NOTICE.md`). The only edits to `SKILL.md`: frontmatter `name` → `qwen-mm-plugins-cua` (to
+  match the plugin) and a prepended "Qwen-MM-Plugins integration" section (install prerequisite,
+  the `cua-computer-use` server name, headless caveat, and the `grounding`→pixel denormalize
+  note). Companion files are verbatim. To bump: re-fetch the pack, re-apply those two edits, and
+  update the version in `NOTICE.md` + the SKILL.md frontmatter.
 - `.claude-plugin/plugin.json` — skill + inline `mcpServers` → `cua-driver mcp`.
 - `.codex-plugin/plugin.json` + `.mcp.json` — same for codex.
 - **No** `qwen_mm_plugins_cua/` Python package, **no** pyproject entry, **no** extras group:
   the MCP server is the external `cua-driver` binary, not an in-repo uvx server. (This is
-  why the capability is manifest-only, unlike blender/freecad which ship a Python client.)
+  why the capability is manifest + skill only, unlike blender/freecad which ship a Python client.)
+
+> Because we vendor the pack under our own name, **don't also run `cua-driver skills install`** —
+> that installs the same content under the name `cua-driver` and duplicates this skill.
 
 ## Prerequisite
 
