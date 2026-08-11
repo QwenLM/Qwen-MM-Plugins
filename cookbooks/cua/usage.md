@@ -4,17 +4,18 @@ Computer-use for the **local desktop** with `qwen-mm-plugins-cua`: the model lau
 **any** native GUI app in the background (whole desktop, not just the browser) — snapshot the
 accessibility tree, act on elements / menus / geometry / pixels, and verify from fresh state.
 
-> **Passthrough.** This capability ships no server of its own — it registers **trycua/cua**'s
-> **Cua Driver** (MIT) as the MCP server `cua-computer-use`. The external `cua-driver` binary must
-> be installed (below), and it only works on a machine with a **real display** (macOS first) — a
+> **First-party proxy.** This capability registers the Qwen-MM-Plugins MCP server
+> `qwen-mm-plugins-cua`. It resolves the locally installed **trycua/cua** Cua Driver (MIT), then
+> forwards its native MCP tool surface without copying it. The external `cua-driver` binary must be
+> installed (below), and it only works on a machine with a **real display** (macOS first) — a
 > headless/remote server has no screen to drive.
 
 ---
 
 ## Tools
 
-The MCP server is the external `cua-driver mcp`. Its action space (window / accessibility-tree
-first, pixels as fallback):
+The Qwen MCP proxy launches `cua-driver mcp`; its action space is Cua Driver's native surface
+(window / accessibility-tree first, pixels as fallback):
 
 **Session & apps** — `start_session`, `launch_app`, `list_apps`, `list_windows`
 **Perceive** — `get_window_state` (accessibility tree **and** a screenshot together),
@@ -51,6 +52,11 @@ cua-driver permissions grant                  # Accessibility (drive) + Screen R
 cua-driver doctor                             # confirms platform + a reachable display
 ```
 
+The plugin automatically starts the first-party proxy. It resolves the driver in this order:
+`QWEN_MM_CUA_DRIVER_PATH`, `CUA_DRIVER_PATH`, `~/.local/bin/cua-driver`, the macOS
+`CuaDriver.app` bundle, then `PATH`. For a custom GUI-host install, set
+`QWEN_MM_CUA_DRIVER_PATH=/absolute/path/to/cua-driver` in `~/.qwen-mm-plugins/config`.
+
 > **Don't also run `cua-driver skills install`** — this plugin already vendors that skill (under
 > the name `qwen-mm-plugins-cua`); installing the upstream pack too would duplicate it.
 
@@ -82,8 +88,9 @@ No case recorded yet. Add one in either style — see [core](../core/usage.md) f
 
 ## Troubleshooting
 
-- **`cua-computer-use` tools missing / "command not found"**: install `cua-driver` (above) and make
-  sure `~/.local/bin` is on `PATH`; or register it directly with `cua-driver mcp-config --client claude`.
+- **`qwen-mm-plugins-cua` tools missing / Cua Driver not found**: install `cua-driver` (above), then
+  restart the harness and start a new task. For a custom location, set `QWEN_MM_CUA_DRIVER_PATH` in
+  the shared Qwen-MM-Plugins config; GUI hosts do not need to inherit shell `PATH`.
 - **macOS "not permitted" / blank screenshots**: grant Accessibility + Screen Recording via
   `cua-driver permissions grant`, toggle both on in System Settings, let CuaDriver relaunch.
 - **Headless / `DISPLAY` unset**: expected — GUI driving needs a real screen; use a local desktop or a VM.

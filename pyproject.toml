@@ -10,11 +10,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 # Ship this project's LICENSE plus third-party attribution + vendored MIT license texts
-# (Blender/FreeCAD addons) into the wheel's .dist-info/licenses/.
+# (Blender/FreeCAD addons and the CUA skill) into the wheel's .dist-info/licenses/.
 license-files = [
     "LICENSE",
     "src/capabilities/blender/NOTICE.md",
     "src/capabilities/freecad/NOTICE.md",
+    "src/capabilities/cua/NOTICE.md",
     "src/capabilities/blender/qwen_mm_plugins_blender/vendor/LICENSE",
     "src/capabilities/freecad/qwen_mm_plugins_freecad/vendor/FreeCADMCP/LICENSE",
 ]
@@ -64,11 +65,12 @@ example = ["openai"]                           # template capability — base de
 oss = ["oss2"]                                 # optional: upload large media to OSS for a signed URL (memory-build clip upload, api oversized-video upload)
 blender = []                                   # Blender live-session MCP client (stdlib socket; needs a running Blender + addon)
 freecad = []                                   # FreeCAD live-session MCP client (stdlib xml-rpc; needs a running FreeCAD + addon)
+cua = []                                       # Cua Driver MCP proxy (stdlib; needs the separately installed cua-driver binary)
 # profiles — install ONE. `core` is now local-only (no API key); cloud tools are the api/search
 # capabilities. `all` layers every server on top.
 core = ["qwen-mm-plugins[viz]"]
 memory = ["qwen-mm-plugins[core,video-memory]"]
-all = ["qwen-mm-plugins[core,api,search,video-memory,video-edit,blender,freecad]"]
+all = ["qwen-mm-plugins[core,api,search,video-memory,video-edit,blender,freecad,cua]"]
 
 [project.scripts]
 qwen-mm-plugins-core = "qwen_mm_plugins_core.__main__:main"
@@ -79,6 +81,7 @@ qwen-mm-plugins-video-edit = "qwen_mm_plugins_video_edit.__main__:main"
 qwen-mm-plugins-example = "qwen_mm_plugins_example.__main__:main"
 qwen-mm-plugins-blender = "qwen_mm_plugins_blender.__main__:main"
 qwen-mm-plugins-freecad = "qwen_mm_plugins_freecad.__main__:main"
+qwen-mm-plugins-cua = "qwen_mm_plugins_cua.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -106,10 +109,11 @@ qwen_mm_plugins_video_edit = "src/capabilities/video-edit/qwen_mm_plugins_video_
 qwen_mm_plugins_example = "src/capabilities/example/qwen_mm_plugins_example"
 qwen_mm_plugins_blender = "src/capabilities/blender/qwen_mm_plugins_blender"
 qwen_mm_plugins_freecad = "src/capabilities/freecad/qwen_mm_plugins_freecad"
+qwen_mm_plugins_cua = "src/capabilities/cua/qwen_mm_plugins_cua"
 shared = "src/shared"
 
 [tool.setuptools.packages.find]
-where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/video-edit", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src"]
+where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/video-edit", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src/capabilities/cua", "src"]
 include = ["qwen_mm_plugins*", "shared*"]
 
 # The vendored live-session addons ship as package DATA (not importable subpackages — no __init__ on

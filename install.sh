@@ -26,10 +26,10 @@ QMP_DRY=0
 LOCAL_REPO_ROOT=''
 
 # ── capability catalog — the ONE place capabilities are declared; every menu iterates this ──
-CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent)
+CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent cua)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.1 1.0.1 1.0.2 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1)
+CAP_VERSIONS=(1.0.1 1.0.1 1.0.2 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.1.1)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
@@ -37,7 +37,8 @@ CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "video-edit + image/video/audio generation"
           "drive a running Blender: 3D modeling / materials / render (thin client)"
           "drive a running FreeCAD: parametric CAD / STEP·STL / FEM (thin client)"
-          "step-by-step Chinese math/science tutorial videos (skill-only)")
+          "step-by-step Chinese math/science tutorial videos (skill-only)"
+          "drive local native GUI apps via the visual-first open-computer-use MCP proxy")
 # Skill-only capabilities have NO MCP server / pyproject extra / console entry: they install via
 # the marketplace like any plugin, but the uvx --check-system self-test doesn't apply to them.
 CAP_SKILL_ONLY=" edu-agent "
@@ -74,6 +75,7 @@ CONFIG_SPEC=(
   "QWEN_MM_FFMPEG_TIMEOUT|0|runtime|120|ffmpeg/ffprobe timeout seconds"
   "QWEN_MM_CHAT_TIMEOUT|0|runtime|tool-specific (600; Omni 1800)|OpenAI-compatible chat request timeout seconds"
   "QWEN_MM_MAX_TOTAL_FRAMES|0|runtime|600|max frames sampled from a video"
+  "QWEN_MM_OPEN_COMPUTER_USE_PATH|0|runtime||absolute path to open-computer-use (overrides PATH and npx fallback)"
   "OSS_AK|1|oss||OSS access key id"
   "OSS_SK|1|oss||OSS access key secret"
   "OSS_ENDPOINT|0|oss||OSS endpoint"

@@ -1,7 +1,7 @@
 # Third-party attribution — CUA capability
 
-This capability is a passthrough to **trycua/cua**'s Cua Driver, and **vendors its Agent Skill
-documentation** into `skill/`.
+This capability contains a Qwen-MM-Plugins MCP proxy for **trycua/cua**'s Cua Driver, and
+**vendors its Agent Skill documentation** into `skill/`.
 
 - Upstream: cua (trycua) — https://github.com/trycua/cua
 - Copyright: (c) 2025 Cua AI, Inc.
@@ -9,14 +9,13 @@ documentation** into `skill/`.
 
 Vendored / derived files (from the `cua-driver` skill pack, release `cua-driver-rs-v0.19.3`):
 
-- `skill/SKILL.md` — the upstream cross-platform core skill. **One line changed**: frontmatter
-  `name: cua-driver` → `name: qwen-mm-plugins-cua` (to match the plugin and avoid colliding with
-  the upstream skill). Everything else is upstream text.
+- `skill/SKILL.md` — the upstream cross-platform core skill, adapted only for the Qwen plugin name
+  and the first-party MCP-proxy namespace.
 - `skill/MACOS.md`, `skill/WINDOWS.md`, `skill/LINUX.md`, `skill/BROWSER.md`,
   `skill/RECORDING.md`, `skill/EMBEDDING.md` — verbatim companion files from the same pack.
 
-No source code from cua is vendored — the MCP server is the external `cua-driver` binary,
-installed separately (see `cookbooks/cua/usage.md` / `docs/en/installation.md`).
+No Cua Driver source code is vendored. The Qwen proxy launches the external `cua-driver` binary,
+which remains installed separately (see `cookbooks/cua/usage.md` / `docs/en/installation.md`).
 
 The MIT license text of the upstream project applies to the vendored portions above:
 

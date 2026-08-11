@@ -166,8 +166,9 @@ failed action or a proxy/transport session id.
 ## GUI transport defaults — prefer cua-driver over GUI shell shims
 
 **Default transport is the `cua-driver` CLI** — `Bash` shelling out
-to `cua-driver <tool-name> '<JSON-args>'`. MCP tools (prefix
-`mcp__cua-driver__*`) only when the user explicitly asks for them.
+to `cua-driver <tool-name> '<JSON-args>'`. When this Qwen-MM-Plugins capability is installed,
+its MCP tools use the `mcp__qwen_mm_plugins_cua__*` namespace; use MCP only when the user
+explicitly asks for it.
 CLI wins because it picks up rebuilds instantly, failures are
 easier to diagnose, and there's no per-tool schema-load overhead.
 
@@ -177,13 +178,10 @@ when MCP is requested.
 
 ### Claude Code computer-use compatibility mode
 
-For normal Claude Code use, keep the default CLI or `cua-driver` MCP
-server path above. If the user explicitly wants Claude Code's
-vision/computer-use-style flow, they can register:
-
-```bash
-cua-driver mcp-config --client claude   # then paste + run the printed line
-```
+For normal Claude Code use, keep the default CLI or the installed
+`qwen-mm-plugins-cua` MCP proxy above. Do not additionally run
+`cua-driver mcp-config --client claude`: that would register a second Cua MCP server with a
+different namespace.
 
 Observation: Claude Code vision flows appear to treat a screenshot
 MCP tool as the image-grounding anchor. This compatibility mode keeps
@@ -197,7 +195,7 @@ coordinates or a full-screen capture.
 Use MCP for this Claude Code vision/computer-use-style path. Do not
 shell out to `cua-driver screenshot` as a substitute: CLI screenshots
 still work as CuaDriver calls, but they do not expose the
-`mcp__cua-computer-use__screenshot` tool name that Claude Code
+`mcp__qwen_mm_plugins_cua__screenshot` tool name that Claude Code
 appears to use as the image-grounding cue.
 
 ## Using cua-driver from the shell

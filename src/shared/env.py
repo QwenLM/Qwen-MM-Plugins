@@ -214,6 +214,14 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "",
         "headless Chromium executable for Puppeteer",
     ),
+    # CUA proxy (the external driver itself owns OS permissions)
+    (
+        "QWEN_MM_CUA_DRIVER_PATH",
+        False,
+        "CUA proxy",
+        "",
+        "absolute path to cua-driver (overrides default locations and PATH)",
+    ),
 ]
 
 

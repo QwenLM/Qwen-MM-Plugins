@@ -1,8 +1,12 @@
 {
   "mcpServers": {
-    "cua-computer-use": {
-      "command": "cua-driver",
-      "args": ["mcp"]
+    "qwen-mm-plugins-cua": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "qwen-mm-plugins[cua] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main",
+        "qwen-mm-plugins-cua"
+      ]
     }
   }
 }

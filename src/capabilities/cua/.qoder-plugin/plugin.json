@@ -1,0 +1,8 @@
+{
+  "name": "qwen-mm-plugins-cua",
+  "displayName": "Qwen MM Plugins CUA",
+  "version": "1.1.0",
+  "description": "Computer-use (CUA) for the local desktop via Qwen-MM-Plugins' MCP proxy and trycua/cua's Cua Driver. Requires the separately installed cua-driver binary; macOS first.",
+  "skills": "./skill",
+  "mcp": ".mcp.json"
+}

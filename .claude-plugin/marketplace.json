@@ -92,7 +92,7 @@
     {
       "name": "qwen-mm-plugins-cua",
       "source": "./src/capabilities/cua",
-      "description": "Computer-use (CUA) for the local desktop — launch apps and click/type/scroll native GUI apps in the background, via trycua/cua's Cua Driver (passthrough). Needs the cua-driver binary installed (curl -fsSL https://cua.ai/driver/install.sh). macOS first."
+      "description": "Computer-use (CUA) for the local desktop — a first-party Qwen-MM-Plugins MCP proxy launches trycua/cua's Cua Driver to read and drive native GUI apps in the background. Needs the cua-driver binary installed (curl -fsSL https://cua.ai/driver/install.sh). macOS first."
     }
   ]
 }
