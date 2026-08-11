@@ -150,7 +150,255 @@ The tools work the same in Chinese — the prompt language mainly steers the wor
 
 ## Cases
 
-No case recorded yet. Add one in either style — see [core](../core/usage.md) for worked examples:
+Each case below was recorded against a live DashScope endpoint: the **Call** shows the exact
+arguments passed to the tool. Every tool returns the same shape — one JSON block carrying the
+structured result, then a short plain-text summary — and the **Output** reproduces the returned
+blocks verbatim. The clips live in [assets/](assets/); provenance and trimming notes are in
+[assets/SOURCES.md](assets/SOURCES.md).
 
-- **Trace** — a full session rendered to a self-contained HTML page, linked by URL.
-- **Result** — the query plus a public link to the produced artifact and/or a preview screenshot.
+### Case 1 — transcribe and timestamp a short English clip (`omni_asr` + `omni_asr_timestamped`)
+
+`guess_age_gender.wav` (9 s) — a single English question about guessing age/gender from voice.
+
+**Call**
+
+```python
+omni_asr(
+    file_path="assets/guess_age_gender.wav",
+    language="en",
+)
+```
+
+**Output** — JSON block, then summary block
+
+```json
+{ "text": "I heard that you can understand what people say and even know their age and gender. So can you guess my age and gender from my voice?" }
+```
+
+```text
+I heard that you can understand what people say and even know their age and gender.
+So can you guess my age and gender from my voice?
+```
+
+**Call** — sentence-level timestamps, SRT format
+
+```python
+omni_asr_timestamped(
+    file_path="assets/guess_age_gender.wav",
+    language="en",
+    granularity="sentence",
+    format="srt",
+)
+```
+
+**Output** — JSON block (segment detail), then SRT block
+
+```json
+{
+  "granularity": "sentence",
+  "segments": [
+    { "start": 0.647, "end": 5.387,
+      "text": "I heard that you can understand what people say and even know their age and gender." },
+    { "start": 5.907, "end": 9.017,
+      "text": "So can you guess my age and gender from my voice?" }
+  ]
+}
+```
+
+```text
+1
+00:00:00,647 --> 00:00:05,387
+I heard that you can understand what people say and even know their age and gender.
+
+2
+00:00:05,907 --> 00:00:09,017
+So can you guess my age and gender from my voice?
+```
+
+### Case 2 — speaker diarization on a two-person interview (`omni_multi_speaker_asr`)
+
+`interview_clip.wav` (35 s) — one interviewer, one interviewee; the tool splits the speech by
+speaker without being told how many there are.
+
+**Call**
+
+```python
+omni_multi_speaker_asr(
+    file_path="assets/interview_clip.wav",
+    format="json",
+)
+```
+
+**Output** — JSON block (speaker detail), then SRT block
+
+```json
+{
+  "speakers": ["Speaker 1", "Speaker 2"],
+  "segments": [
+    { "speaker": "Speaker 1", "start": 0.0,  "end": 26.38,
+      "text": "you cut yourself but you don't mind and so you're not going to do a lot to avoid being cut again. So this region exists also in the rat and it's a relatively deep brain region so therefore we turn to the rat and figured in the rat we can change the activity in that brain region and see whether that would then change how much a rat would be averse to harming other rats or not." },
+    { "speaker": "Speaker 2", "start": 29.87, "end": 32.95,
+      "text": "Could you briefly explain this study and its findings?" },
+    { "speaker": "Speaker 1", "start": 34.33, "end": 34.83, "text": "Ah." }
+  ]
+}
+```
+
+```text
+1
+00:00:00,000 --> 00:00:26,380
+[Speaker 1] you cut yourself but you don't mind and so you're not going to do a lot to avoid being cut again. So this region exists also in the rat and it's a relatively deep brain region so therefore we turn to the rat and figured in the rat we can change the activity in that brain region and see whether that would then change how much a rat would be averse to harming other rats or not.
+
+2
+00:00:29,870 --> 00:00:32,950
+[Speaker 2] Could you briefly explain this study and its findings?
+
+3
+00:00:34,330 --> 00:00:34,830
+[Speaker 1] Ah.
+```
+
+### Case 3 — understand a video over time (`omni_av_caption`)
+
+`draw1_clip.mp4` (15 s) — a tablet screen-recording of someone drawing a ukulele. The tool returns
+per-span descriptions plus speaker/transcript, visible-text, and safety sections; it reads the
+drawn object, the canvas UI, the artist's gestures, and the voice-over.
+
+<p align="center">
+  <img src="assets/case-video-caption.png" alt="draw1_clip.mp4 key frames" width="520">
+</p>
+
+**Call**
+
+```python
+omni_av_caption(
+    file_path="assets/draw1_clip.mp4",
+)
+```
+
+**Output** (abridged — full block is ~4,400 chars)
+
+```text
+## Storyline
+
+00:00.000 – 00:02.500
+... On the tablet's screen is a cartoon-style drawing of a small guitar-like instrument (ukulele
+or acoustic guitar) ... At this moment a young female voice ... says, "Hello, take a look at what
+I'm drawing." ...
+
+00:02.500 – 00:06.500
+... she traces and refines the existing black outline around the guitar's body, neck, and
+headstock, making deliberate strokes ...
+
+00:06.500 – 00:10.000
+... she fills the interior of the guitar's body more completely with the same tan hue, smoothing
+out any gaps ...
+
+00:10.000 – 00:13.000
+The artist taps an icon ... a vertical color-selection panel slides out ... Across the top of the
+panel appears the Chinese word "颜色," meaning "Color." ...
+
+00:13.000 – 00:15.000
+The color panel retracts ... The video ends with the completed illustration still centered on the
+screen ...
+
+## Speakers and Transcript
+
+Speaker profiles:
+Artist/Narrator – Young adult female; clear diction, slight East-Asian accent ...
+
+00:00.588 – 00:03.228
+Speaker: Artist/Narrator
+Content: "Hello, take a look at what I'm drawing."
+```
+
+### Case 4 — locate and count a temporal event (`omni_av_grounding` + `omni_av_counting`)
+
+`basketball_clip.mp4` (20 s) — one made basket mid-clip. Grounding finds **when** the event
+happens; counting reports **how many** and where each occurrence is.
+
+<p align="center">
+  <img src="assets/case-video-grounding.png" alt="basketball_clip.mp4 key frames" width="520">
+</p>
+
+**Call**
+
+```python
+omni_av_grounding(
+    file_path="assets/basketball_clip.mp4",
+    query="a player making a basket",
+)
+```
+
+**Output** — JSON block, then summary block
+
+```json
+{
+  "query": "a player making a basket",
+  "matches": [
+    { "start": 13.0, "end": 17.0, "score": 0.95,
+      "reason": "The video shows a player shooting the basketball and it successfully going through the hoop." }
+  ]
+}
+```
+
+```text
+1 matching segment(s) for 'a player making a basket'.
+```
+
+**Call**
+
+```python
+omni_av_counting(
+    file_path="assets/basketball_clip.mp4",
+    target="dunk or made basket",
+)
+```
+
+**Output** — JSON block, then summary block
+
+```json
+{
+  "target": "dunk or made basket",
+  "count": 1,
+  "occurrences": [ { "start": 14.0, "end": 16.0, "note": "dunk or made basket" } ]
+}
+```
+
+```text
+Counted 1 occurrence(s) of 'dunk or made basket'.
+```
+
+### Case 5 — analyze a music track (`omni_music_caption`)
+
+`music_40s.wav` (27 s) — acoustic-folk song with a female voice. The tool returns structured tags
+plus a dense English caption that can feed straight into a music-generation model.
+
+**Call**
+
+```python
+omni_music_caption(
+    file_path="assets/music_40s.wav",
+)
+```
+
+**Output** — JSON block (structured tags), then summary block (caption)
+
+```json
+{
+  "genre": ["folk", "acoustic", "singer-songwriter"],
+  "moods": ["calm", "gentle", "reflective", "intimate"],
+  "instruments": ["piano", "acoustic guitar", "xylophone"],
+  "has_vocals": true,
+  "vocal_language": "english",
+  "vocal_gender": "female",
+  "vocal_timbre": ["soft", "clear", "conversational"],
+  "key": "c major",
+  "time_signature": "4/4",
+  "caption": "A gentle and reflective acoustic folk piece featuring a simple, repeating piano melody accompanied by the bright, percussive tones of a xylophone. An acoustic guitar enters with warm, strummed chords, creating an intimate and calming atmosphere. The arrangement is sparse and organic, focusing on the natural timbres of the instruments. A soft, clear female voice speaks conversationally over the music, adding a personal and narrative layer to the serene soundscape."
+}
+```
+
+```text
+A gentle and reflective acoustic folk piece featuring a simple, repeating piano melody accompanied by the bright, percussive tones of a xylophone. An acoustic guitar enters with warm, strummed chords, creating an intimate and calming atmosphere. The arrangement is sparse and organic, focusing on the natural timbres of the instruments. A soft, clear female voice speaks conversationally over the music, adding a personal and narrative layer to the serene soundscape.
+```
