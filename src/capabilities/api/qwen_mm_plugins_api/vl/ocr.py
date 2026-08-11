@@ -38,12 +38,12 @@ DEFAULT_PROMPT = "请对这张图片进行OCR文字识别，提取图片中所�
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    from shared.api_openai import DEFAULT_MODEL, call_openai_chat, resolve_openai_endpoint
+    from shared.api_openai import call_openai_chat, resolve_vl_model, resolve_openai_endpoint
     from shared.content import require_dep, require_file
 
     image_path = arguments.get("image_path", "")
     prompt = arguments.get("prompt") or DEFAULT_PROMPT
-    model = arguments.get("model") or DEFAULT_MODEL
+    model = arguments.get("model") or resolve_vl_model()
     base_url, api_key = resolve_openai_endpoint(arguments)
 
     if err := require_file(image_path):

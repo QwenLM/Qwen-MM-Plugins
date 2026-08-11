@@ -35,6 +35,15 @@ log = logging.getLogger(__name__)
 DEFAULT_OMNI_MODEL = "qwen3.5-omni-plus"
 DEFAULT_MAX_RETRIES = 4
 DEFAULT_RETRY_BACKOFF = 1.0
+
+
+def resolve_omni_model() -> str:
+    """Default Omni model, read at call time.
+
+    Precedence: QWEN_MM_API_OMNI_MODEL env var → DEFAULT_OMNI_MODEL constant. Keeps the relay/provider
+    swap a config change instead of an edit (the constant is only the last-resort fallback).
+    """
+    return get_env("QWEN_MM_API_OMNI_MODEL") or DEFAULT_OMNI_MODEL
 DEFAULT_OMNI_TIMEOUT = 1800  # streaming A/V completions can run long; overridable via QWEN_MM_CHAT_TIMEOUT
 
 # Default video sampling knobs (must sit at the content-part TOP level to take effect — see

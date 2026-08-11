@@ -58,14 +58,14 @@ TOOL: dict[str, Any] = {
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     from shared.api_openai import (
-        DEFAULT_MODEL,
         call_openai_chat,
         encode_image_source,
         encode_video_source,
+        resolve_vl_model,
         resolve_openai_endpoint,
     )
 
-    model = arguments.get("model") or DEFAULT_MODEL
+    model = arguments.get("model") or resolve_vl_model()
     text = arguments.get("text", "Describe the visual content.")
     images = arguments.get("images", [])
     videos = arguments.get("videos", [])
