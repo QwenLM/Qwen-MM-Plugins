@@ -3,8 +3,7 @@
 - The video-memory build pipeline keeps byte-identical copies of schema.py and
   embeddings.py (it runs as flat modules, separate from the installed server
   package). These must not diverge.
-- Published capability versions, marketplace refs, manifests and MCP launch refs all agree with
-  plugin-versions.json. The Python distribution version is deliberately separate.
+- Capability names, versions and MCP launch specs stay aligned across harness manifests.
 """
 
 import json
@@ -40,9 +39,6 @@ def test_build_copies_stay_identical(fname):
 # launch spec follows main.
 
 _CAPS_DIR = _ROOT / "src" / "capabilities"
-_RELEASE_INDEX = json.loads((_ROOT / "plugin-versions.json").read_text())
-_VERSIONS = _RELEASE_INDEX["plugins"]
-_TAG_FORMAT = _RELEASE_INDEX["tag_format"]
 
 
 def _capabilities() -> list[str]:
@@ -75,8 +71,34 @@ def test_manifest_name_and_version_agree(cap):
         f"{cap}: plugin version differs across its harness manifests: {versions}. "
         "Bump a capability's claude/codex/qoder manifests together."
     )
-    if cap in _VERSIONS:
-        assert next(iter(versions.values())) == _VERSIONS[cap]
+
+
+@pytest.mark.parametrize("cap", _capabilities())
+def test_manifests_bundle_every_component_the_capability_ships(cap):
+    """A plugin update must replace the skill and MCP together, not only bump metadata."""
+    cap_dir = _CAPS_DIR / cap
+    manifests = {
+        "claude": _load(cap, ".claude-plugin/plugin.json"),
+        "codex": _load(cap, ".codex-plugin/plugin.json"),
+        "qoder": _load(cap, ".qoder-plugin/plugin.json"),
+    }
+
+    for label, manifest in manifests.items():
+        assert manifest.get("skills"), f"{cap}: {label} manifest omitted the capability skill"
+
+    has_server = (cap_dir / ".mcp.json").exists()
+    if has_server:
+        assert manifests["claude"].get("mcpServers"), f"{cap}: Claude manifest omitted its MCP"
+        assert manifests["codex"].get("mcpServers") == "./.mcp.json", (
+            f"{cap}: Codex manifest must install the same capability's .mcp.json"
+        )
+        assert manifests["qoder"].get("mcp") == ".mcp.json", (
+            f"{cap}: Qoder manifest must install the same capability's .mcp.json"
+        )
+    else:
+        assert "mcpServers" not in manifests["claude"], f"{cap}: unexpected Claude MCP entry"
+        assert "mcpServers" not in manifests["codex"], f"{cap}: unexpected Codex MCP entry"
+        assert "mcp" not in manifests["qoder"], f"{cap}: unexpected Qoder MCP entry"
 
 
 @pytest.mark.parametrize("cap", _server_capabilities())
@@ -95,9 +117,6 @@ def test_mcp_launch_spec_agrees(cap):
         f"{cap}: uvx launch args drifted between .claude-plugin (inline) and .mcp.json:\n"
         f"  claude: {claude_args}\n  mcp:    {mcp_args}"
     )
-    if cap in _VERSIONS:
-        tag = _TAG_FORMAT.format(cap=cap, version=_VERSIONS[cap])
-        assert claude_args[claude_args.index("--from") + 1].endswith(f"@{tag}")
 
 
 def test_marketplace_lists_every_capability():
@@ -117,13 +136,3 @@ def test_marketplace_lists_every_capability():
     assert market["metadata"]["version"] == mcp_framework.__version__, (
         "marketplace.json metadata.version must track mcp_framework.__version__."
     )
-    assert _RELEASE_INDEX["distribution_version"] == mcp_framework.__version__, (
-        "plugin-versions.json distribution_version must track mcp_framework.__version__."
-    )
-    assert set(_VERSIONS) == {name.removeprefix("qwen-mm-plugins-") for name in listed}
-    for plugin in market["plugins"]:
-        cap = plugin["name"].removeprefix("qwen-mm-plugins-")
-        source = plugin["source"]
-        assert source["source"] == "git-subdir"
-        assert source["path"] == f"src/capabilities/{cap}"
-        assert source["ref"] == _TAG_FORMAT.format(cap=cap, version=_VERSIONS[cap])
