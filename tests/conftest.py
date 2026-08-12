@@ -120,6 +120,39 @@ def sample_video(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="session")
+def rotated_video(tmp_path_factory) -> str:
+    """A 2s, 320×120 clip with a centered 100×100 white square, tagged rotation 90 — the shape a
+    portrait phone video has on disk: sideways stored pixels plus a display-matrix flag."""
+    if not HAS_FFMPEG:
+        pytest.skip("ffmpeg not available")
+    media = tmp_path_factory.mktemp("media")
+    plain, path = media / "plain.mp4", media / "rotated.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:size=320x120:rate=10:duration=2,drawbox=x=110:y=10:w=100:h=100:color=white:t=fill",
+            "-pix_fmt",
+            "yuv420p",
+            str(plain),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # -display_rotation needs ffmpeg >= 6.0; skip rather than fail on an older build.
+    tagged = subprocess.run(
+        ["ffmpeg", "-y", "-display_rotation", "90", "-i", str(plain), "-c", "copy", str(path)],
+        capture_output=True,
+    )
+    if tagged.returncode != 0:
+        pytest.skip("ffmpeg cannot tag display rotation (needs -display_rotation, ffmpeg >= 6.0)")
+    return str(path)
+
+
+@pytest.fixture(scope="session")
 def sample_media_av(tmp_path_factory) -> str:
     """A 3s MP4 with both tracks: video (testsrc 160×120 @ 10fps) + audio (440 Hz sine, AAC)."""
     if not HAS_FFMPEG:
