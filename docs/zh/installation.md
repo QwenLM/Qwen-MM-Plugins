@@ -117,10 +117,18 @@ wsl --install -d Ubuntu
 | 变量 | 用途 |
 |---|---|
 | `DASHSCOPE_API_KEY` | 云端媒体 API、内容生成和 video-memory 构建 |
-| `SERPER_API_KEY` | 使用 Serper 时的网页、页面抽取和反向图像搜索 |
+| `QWEN_MM_SEARCH_BACKEND` | 可选的文本搜索覆盖项：`serper`、`tavily`、`exa` 或 `auto` |
+| `SERPER_API_KEY` | Serper 网页搜索/抽取，以及所有反向图像搜索 |
+| `EXA_API_KEY` | Exa 网页搜索和页面抽取 |
+| `TAVILY_API_KEY` | Tavily 网页搜索和页面抽取 |
 
 本地 `core` 文件读取无需 API key。可通过安装器的 **Configure**、shell 环境变量或
 `~/.qwen-mm-plugins/config` 设置；环境变量优先。
+未设置该变量或设为 `auto` 时，文本搜索按固定顺序选择第一个已配置 key 的后端：
+Serper、Tavily、Exa。显式指定后端时会严格使用该后端；如果缺少对应 key，则直接报错，
+不会回退。
+`image_search` 独立于 `QWEN_MM_SEARCH_BACKEND`，始终使用 Serper Lens；缺少
+`SERPER_API_KEY` 时会直接报错。
 
 ### 常用系统工具
 

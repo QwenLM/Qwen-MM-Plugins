@@ -29,10 +29,10 @@ LOCAL_REPO_ROOT=''
 CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1)
+CAP_VERSIONS=(1.0.1 1.0.1 1.0.2 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
-          "web + reverse-image search (Serper) to confirm facts"
+          "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
           "hierarchical graph memory for long-video QA"
           "video-edit + image/video/audio generation"
           "drive a running Blender: 3D modeling / materials / render (thin client)"
@@ -63,7 +63,10 @@ ALL_HARNESSES="$MP_HARNESSES $CFG_HARNESSES"
 CONFIG_SPEC=(
   "DASHSCOPE_API_KEY|1|cred||vision, OCR, grounding, ASR, generation, memory builds"
   "DASHSCOPE_BASE_URL|0|cred|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
-  "SERPER_API_KEY|1|cred||web_search / web_extractor / image_search"
+  "QWEN_MM_SEARCH_BACKEND|0|cred|auto|text search backend (auto: serper > tavily > exa; or choose one)"
+  "SERPER_API_KEY|1|cred||Serper web_search / web_extractor and Serper-only image_search"
+  "EXA_API_KEY|1|cred||Exa web_search / web_extractor"
+  "TAVILY_API_KEY|1|cred||Tavily web_search / web_extractor"
   "SAM3_SERVER_URL|0|cred||segmentation SAM3 server URL"
   "ASR_SERVER_URLS|0|cred||self-hosted ASR fallback URLs (comma-separated)"
   "QWEN_MM_CACHE|0|dirs|OS cache dir|cache dir for derived render artifacts"

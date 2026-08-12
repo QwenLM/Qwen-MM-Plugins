@@ -1,4 +1,4 @@
-"""MCP tool: web page content extraction via the public Serper scrape API."""
+"""MCP tool: web page extraction through the configured search backend."""
 
 from __future__ import annotations
 
@@ -12,7 +12,10 @@ CONTENT_LIMIT = 8000  # chars of scraped page kept per URL
 class WebExtractorArgs(BaseModel):
     urls: list[str] = Field(description="URLs to crawl and extract content from.", min_length=1)
     goal: str = Field(description="What information to extract or focus on.")
-    api_key: Optional[str] = Field(default=None, description="Serper API key (defaults to SERPER_API_KEY).")
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API key for the selected search backend (defaults to its backend-specific environment key).",
+    )
 
 
 TOOL: dict[str, Any] = {
@@ -25,18 +28,14 @@ TOOL: dict[str, Any] = {
 }
 
 
-def _scrape_page(url: str, api_key: str) -> str:
-    """Scrape a URL via Serper; returns its markdown/text, or an error/empty note."""
-    from qwen_mm_plugins_search.serper import post_serper
-
-    data = post_serper("scrape", {"url": url, "includeMarkdown": True}, api_key, max_retries=3)
-    if data is None:
-        return f"Error scraping {url}"
-    return data.get("markdown") or data.get("text") or "No content extracted."
-
-
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    from qwen_mm_plugins_search.serper import resolve_serper_key
+    from qwen_mm_plugins_search.backends import (
+        backend_error,
+        extract_page,
+        missing_key_error,
+        resolve_api_key,
+        resolve_backend,
+    )
     from shared.content import require_dep, text_error
 
     urls = arguments.get("urls", [])
@@ -46,13 +45,17 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     if err := require_dep("requests"):
         return err
 
-    api_key = resolve_serper_key(arguments)
+    backend = resolve_backend()
+    if error := backend_error(backend):
+        return text_error(error)
+
+    api_key = resolve_api_key(arguments, backend)
     if not api_key:
-        return text_error("no API key. Set SERPER_API_KEY or pass api_key.")
+        return text_error(missing_key_error(backend))
 
     results = []
     for url in urls:
-        content = _scrape_page(url, api_key)
+        content = extract_page(url, backend, api_key)
         if content and not content.startswith("Error"):
             truncated = content[:CONTENT_LIMIT]
             results.append(f"## {url}\n(Goal: {goal})\n\n{truncated}" if goal else f"## {url}\n\n{truncated}")

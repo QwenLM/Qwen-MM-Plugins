@@ -14,7 +14,7 @@ Depends only on the `mcp` SDK (bundles FastMCP + pydantic) + anyio, so servers s
 
 from __future__ import annotations
 
-__version__ = "1.0.1"  # distribution/release-train version; plugin versions are per capability
+__version__ = "1.0.2"  # distribution/release-train version; plugin versions are per capability
 
 import asyncio
 import importlib

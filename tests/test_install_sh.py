@@ -29,6 +29,16 @@ def test_run_cmd_propagates_command_failure():
     assert result.returncode == 0, result.stderr
 
 
+def test_config_spec_lists_search_backend_selector_and_keys():
+    result = _bash('printf "%s\\n" "${CONFIG_SPEC[@]}"')
+    assert result.returncode == 0, result.stderr
+    rows = result.stdout.splitlines()
+    assert any(row.startswith("QWEN_MM_SEARCH_BACKEND|0|cred|auto|") for row in rows)
+    assert any(row.startswith("SERPER_API_KEY|1|cred||") for row in rows)
+    assert any(row.startswith("EXA_API_KEY|1|cred||") for row in rows)
+    assert any(row.startswith("TAVILY_API_KEY|1|cred||") for row in rows)
+
+
 def test_cap_spec_uses_file_url_for_local_checkout(tmp_path):
     checkout = tmp_path / "checkout with spaces"
     checkout.mkdir()
@@ -313,7 +323,7 @@ test "$?" -eq 1
 def test_cap_spec_defaults_to_capability_stable_tag():
     result = _bash("REPO_REF=; cap_spec search")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.endswith("@qwen-mm-plugins-search-v1.0.1")
+    assert result.stdout.endswith("@qwen-mm-plugins-search-v1.0.2")
 
 
 def test_explicit_ref_overrides_package_and_marketplace():
@@ -329,7 +339,7 @@ def test_explicit_ref_overrides_package_and_marketplace():
 def test_gemini_skill_checkout_uses_same_stable_tag():
     result = _bash("QMP_DRY=1; REPO_REF=; install_gemini_skill gemini search")
     assert result.returncode == 0, result.stderr
-    assert "fetch --depth 1 origin qwen-mm-plugins-search-v1.0.1" in result.stdout
+    assert "fetch --depth 1 origin qwen-mm-plugins-search-v1.0.2" in result.stdout
     assert "--path src/capabilities/search/skill" in result.stdout
 
 
@@ -353,7 +363,7 @@ def test_post_update_hint_explains_how_to_activate_updated_components(harness, e
 def test_manual_update_prints_same_tag_for_skill_and_mcp_without_claiming_detection():
     result = _bash("show_manual update qwen-mm-plugins-search")
     assert result.returncode == 0, result.stderr
-    tag = "qwen-mm-plugins-search-v1.0.1"
+    tag = "qwen-mm-plugins-search-v1.0.2"
     repo = "https://github.com/QwenLM/Qwen-MM-Plugins.git"
     assert f"/tree/{tag}/src/capabilities/search/skill" in result.stdout
     assert f"qwen-mm-plugins[search] @ git+{repo}@{tag}" in result.stdout

@@ -6,7 +6,8 @@ They require an explicit opt-in in addition to the relevant key, so a plain
 `pytest tests/` stays offline even on a configured developer machine.
 
 Run them explicitly with real creds:
-    QWEN_MM_RUN_REACHABILITY=1 DASHSCOPE_API_KEY=... SERPER_API_KEY=... \
+    QWEN_MM_RUN_REACHABILITY=1 DASHSCOPE_API_KEY=... \
+        QWEN_MM_SEARCH_BACKEND=exa EXA_API_KEY=... \
         pytest -m reachability tests/
 Skip them even when keys are present:
     pytest -m "not reachability" tests/
@@ -23,22 +24,27 @@ import subprocess
 
 import pytest
 
+from qwen_mm_plugins_search.backends import BACKEND_KEY_ENVS, resolve_backend
 from shared.env import get_env
 
 pytestmark = pytest.mark.reachability
 
 RUN_REACHABILITY = os.environ.get("QWEN_MM_RUN_REACHABILITY") == "1"
 HAS_DASHSCOPE = bool(get_env("DASHSCOPE_API_KEY"))
-HAS_SERPER = bool(get_env("SERPER_API_KEY"))
+SEARCH_BACKEND = resolve_backend()
+SEARCH_KEY_ENV = BACKEND_KEY_ENVS.get(SEARCH_BACKEND)
+HAS_SEARCH_KEY = bool(SEARCH_KEY_ENV and get_env(SEARCH_KEY_ENV))
 HAS_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 requires_dashscope = pytest.mark.skipif(
     not RUN_REACHABILITY or not HAS_DASHSCOPE,
     reason="set QWEN_MM_RUN_REACHABILITY=1 and DASHSCOPE_API_KEY to run live checks",
 )
-requires_serper = pytest.mark.skipif(
-    not RUN_REACHABILITY or not HAS_SERPER,
-    reason="set QWEN_MM_RUN_REACHABILITY=1 and SERPER_API_KEY to run live checks",
+requires_search = pytest.mark.skipif(
+    not RUN_REACHABILITY or not HAS_SEARCH_KEY,
+    reason=(
+        "set QWEN_MM_RUN_REACHABILITY=1 and a search API key; optionally set QWEN_MM_SEARCH_BACKEND to pin a provider"
+    ),
 )
 
 
@@ -113,10 +119,10 @@ def test_transcribe_audio_reachable(tmp_path):
     _assert_reached(blocks)
 
 
-# ── Serper (web_search) ──────────────────────────────────────────────
+# ── Selected search backend (web_search) ─────────────────────────────
 
 
-@requires_serper
+@requires_search
 def test_web_search_reachable():
     from qwen_mm_plugins_search.tools import web_search
 
