@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-core",
   "version": "1.0.1",
-  "description": "Qwen-MM-Plugins — read/visualize any file (images, video, PDF, Office, code, SVG, 3D, GIS, notebooks) plus OCR, grounding, segmentation, ASR and vision-chat, exposed as an MCP server.",
+  "description": "Qwen-MM-Plugins — read/visualize any file (images, video, PDF, Office, code, SVG, 3D, GIS, notebooks) plus crop, annotate, and extract frames, exposed as an MCP server.",
   "skills": "./skill",
   "mcpServers": "./.mcp.json"
 }
