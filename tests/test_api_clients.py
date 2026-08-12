@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 import shared.api_dashscope as dsc
+import shared.api_omni as omni
 import shared.api_openai as oa
 import shared.retry as sr
 
@@ -81,6 +82,24 @@ def test_poll_returns_synthetic_timeout():
 
 
 # ── api_openai.call_openai_chat ──────────────────────────────────────
+
+
+def test_model_resolvers_use_explicit_env_then_builtin(monkeypatch):
+    values = {}
+    monkeypatch.setattr(oa, "get_env", values.get)
+    monkeypatch.setattr(omni, "get_env", values.get)
+    assert oa.resolve_vl_model() == oa.DEFAULT_MODEL
+    assert omni.resolve_omni_model() == omni.DEFAULT_OMNI_MODEL
+
+    values["QWEN_MM_API_VL_MODEL"] = "env-vl"
+    assert oa.resolve_vl_model() == "env-vl"
+    assert omni.resolve_omni_model() == omni.DEFAULT_OMNI_MODEL
+
+    values["QWEN_MM_API_OMNI_MODEL"] = "env-omni"
+    assert oa.resolve_vl_model() == "env-vl"
+    assert omni.resolve_omni_model() == "env-omni"
+    assert oa.resolve_vl_model("explicit-vl") == "explicit-vl"
+    assert omni.resolve_omni_model("explicit-omni") == "explicit-omni"
 
 
 def test_call_openai_chat_missing_key_guard():

@@ -11,6 +11,7 @@ import base64
 import json
 import os
 import tempfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -54,6 +55,7 @@ def test_every_tool_has_schema_and_handler():
     for name in _EXPECTED:
         tool = next(t for t in oav.list_tools() if t["name"] == name)
         assert tool["inputSchema"]["type"] == "object"
+        assert "QWEN_MM_API_OMNI_MODEL" in tool["inputSchema"]["properties"]["model"]["description"]
         assert callable(oav.get_handler(name))
 
 
@@ -67,6 +69,51 @@ def test_asr_dry_run_sends_audio_and_streaming_flags():
     assert prev["stream"] is True
     assert prev["modalities"] == ["text"]
     assert prev["messages"][0]["content"][0]["type"] == "input_audio"
+
+
+def test_omni_model_precedence(monkeypatch):
+    monkeypatch.setenv("QWEN_MM_API_OMNI_MODEL", "env-omni")
+    env_preview = _preview(oav.get_handler("omni_asr")({"file_path": "https://example.com/audio.mp3", "dry_run": True}))
+    explicit_preview = _preview(
+        oav.get_handler("omni_asr")(
+            {"file_path": "https://example.com/audio.mp3", "model": "explicit-omni", "dry_run": True}
+        )
+    )
+    assert env_preview["model"] == "env-omni"
+    assert explicit_preview["model"] == "explicit-omni"
+
+
+def test_call_omni_resolves_env_default(monkeypatch):
+    import openai
+
+    captured = {}
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        choice = SimpleNamespace(delta=SimpleNamespace(content="ok"))
+        return [SimpleNamespace(usage=None, choices=[choice])]
+
+    def make_client(**kwargs):
+        return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    monkeypatch.setenv("QWEN_MM_API_OMNI_MODEL", "env-omni")
+    monkeypatch.setattr(openai, "OpenAI", make_client)
+    text, _ = api_omni.call_omni(base_url="http://local/v1", api_key="key", messages=[])
+    assert text == "ok"
+    assert captured["model"] == "env-omni"
+
+
+def test_call_omni_json_resolves_env_default(monkeypatch):
+    captured = {}
+
+    def fake_call(**kwargs):
+        captured.update(kwargs)
+        return '{"ok": true}', None
+
+    monkeypatch.setenv("QWEN_MM_API_OMNI_MODEL", "env-omni")
+    monkeypatch.setattr(api_omni, "call_omni", fake_call)
+    assert api_omni.call_omni_json(base_url="http://local/v1", api_key="key", messages=[]) == {"ok": True}
+    assert captured["model"] == "env-omni"
 
 
 def test_caption_dry_run_sends_video_with_sampling_knobs():

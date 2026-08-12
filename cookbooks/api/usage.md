@@ -45,6 +45,57 @@ share one universal input schema.
 
 ---
 
+## Runtime tool and model selection
+
+The agent can choose a tool and override its backend model for each call. State both explicitly in
+the prompt when the distinction matters, for example:
+
+```text
+Use vision_chat with model qwen3.6-flash to summarize the slides in @demo.mp4, then use
+omni_asr_timestamped with model qwen3.5-omni-plus to produce sentence-level subtitles.
+```
+
+This selects the model called by `qwen-mm-plugins-api`; it does not change the host agent's own
+model. VL calls resolve the model as explicit `model` → `QWEN_MM_API_VL_MODEL` → `qwen3.7-plus`.
+Omni calls use explicit `model` → `QWEN_MM_API_OMNI_MODEL` → `qwen3.5-omni-plus`. One prompt may
+therefore mix tools and models without changing the configured defaults.
+
+MCP `tools/list` shows the available tools and their schemas, but the plugin does not expose a
+dynamic `list_models` tool. The following model IDs are practical examples, not an exhaustive or
+per-account availability guarantee. Check the linked provider catalogs because region, workspace,
+activation, and model lifecycle can differ.
+
+### `vision_chat` model examples
+
+| Model ID | Suggested use | Notes |
+|---|---|---|
+| `qwen3.7-plus` | Flagship image/video understanding | Built-in default; up to two-hour videos on supported DashScope regions |
+| `qwen3.6-plus` | Strong image/video understanding | Alternative Qwen general-purpose visual model |
+| `qwen3.6-flash` | Lower-cost, lower-latency image/video understanding | Recommended cost-oriented alternative |
+| `qwen3-vl-plus` | Qwen3-VL visual reasoning | Older dedicated VL family; up to one-hour videos |
+| `qwen3-vl-flash` | Faster Qwen3-VL visual reasoning | Older dedicated VL family; up to one-hour videos |
+| `kimi/kimi-k3` | Third-party image/video understanding | Beijing workspace endpoint; requires the corresponding product activation |
+
+See Model Studio's [visual-understanding catalog](https://help.aliyun.com/en/model-studio/vision-model/)
+and [Kimi API guide](https://help.aliyun.com/en/model-studio/kimi-api) for current IDs, snapshots,
+regional endpoints, and limits. A self-hosted OpenAI-compatible endpoint may accept other model IDs.
+
+### Omni model examples
+
+| Model ID | Suggested use | Notes |
+|---|---|---|
+| `qwen3.5-omni-plus` | Highest-quality audio/video understanding | Built-in default; non-realtime HTTP alias |
+| `qwen3.5-omni-flash` | Lower-cost audio/video understanding | Non-realtime HTTP alias |
+| `qwen3-omni-flash` | Short, cost-sensitive audio/video requests | Non-realtime HTTP; input limited to about 150 seconds |
+| `qwen3.5-omni-plus-2026-03-15` | Reproducible Plus behavior | Snapshot behind the current Plus alias at publication time |
+| `qwen3.5-omni-flash-2026-03-15` | Reproducible Flash behavior | Snapshot behind the current Flash alias at publication time |
+
+See Model Studio's [Omni catalog](https://help.aliyun.com/en/model-studio/omni/) for current model
+IDs and limits. Do not pass a `*-realtime` model to these tools: realtime models use a WebSocket
+API, while this plugin uses non-realtime HTTP chat completions.
+
+---
+
 ## Install
 
 ```bash
@@ -64,6 +115,8 @@ annotation steps commonly used around API calls.
 |---|---|
 | `DASHSCOPE_API_KEY` | VL, Omni, and the default Qwen3-ASR path |
 | `DASHSCOPE_BASE_URL` | VL and Omni OpenAI-compatible calls; it does not redirect native Qwen3-ASR |
+| `QWEN_MM_API_VL_MODEL` | Default model for `vision_chat`, `ocr`, and `grounding` when a call omits `model` |
+| `QWEN_MM_API_OMNI_MODEL` | Default model for all Omni tools when a call omits `model` |
 | `QWEN_MM_AUDIO_RAW_B64=1` | Self-hosted OpenAI-spec Omni servers that expect raw audio base64; leave unset for DashScope |
 | `ASR_SERVER_URLS` | Optional self-hosted Qwen3-ASR fallback; can be used without a DashScope key |
 | `SAM3_SERVER_URL` | Required only for `segmentation` |

@@ -17,7 +17,7 @@ class GroundingArgs(BaseModel):
     prompt: str = Field(description="What to detect (e.g., 'all cats', 'the red car', 'every person')")
     model: Optional[str] = Field(
         default=None,
-        description="Model name (default: 'qwen3.7-plus'). Always uses the default model.",
+        description="Model id override. Defaults to QWEN_MM_API_VL_MODEL, then 'qwen3.7-plus'.",
     )
     return_img: bool = Field(default=False, description="Return annotated image with bounding boxes drawn")
     api_key: Optional[str] = Field(default=None, description="API key (defaults to DASHSCOPE_API_KEY)")
@@ -103,12 +103,12 @@ def parse_grounding(text: str, img_w: int, img_h: int) -> list[dict[str, Any]]:
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    from shared.api_openai import call_openai_chat, resolve_vl_model, resolve_openai_endpoint
+    from shared.api_openai import call_openai_chat, resolve_openai_endpoint, resolve_vl_model
     from shared.content import require_dep, require_file
 
     image_path = arguments.get("image_path", "")
     prompt = arguments.get("prompt", "")
-    model = arguments.get("model") or resolve_vl_model()
+    model = resolve_vl_model(arguments.get("model"))
     should_draw = arguments.get("return_img", False)
     base_url, api_key = resolve_openai_endpoint(arguments)
 

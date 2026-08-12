@@ -18,7 +18,7 @@ class OcrArgs(BaseModel):
     )
     model: Optional[str] = Field(
         default=None,
-        description="Model name (default: 'qwen3.7-plus'). Always uses the default model.",
+        description="Model id override. Defaults to QWEN_MM_API_VL_MODEL, then 'qwen3.7-plus'.",
     )
     api_key: Optional[str] = Field(default=None, description="API key (defaults to DASHSCOPE_API_KEY)")
     base_url: Optional[str] = Field(default=None, description="API base URL (defaults to DASHSCOPE_BASE_URL)")
@@ -38,12 +38,12 @@ DEFAULT_PROMPT = "请对这张图片进行OCR文字识别，提取图片中所�
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    from shared.api_openai import call_openai_chat, resolve_vl_model, resolve_openai_endpoint
+    from shared.api_openai import call_openai_chat, resolve_openai_endpoint, resolve_vl_model
     from shared.content import require_dep, require_file
 
     image_path = arguments.get("image_path", "")
     prompt = arguments.get("prompt") or DEFAULT_PROMPT
-    model = arguments.get("model") or resolve_vl_model()
+    model = resolve_vl_model(arguments.get("model"))
     base_url, api_key = resolve_openai_endpoint(arguments)
 
     if err := require_file(image_path):

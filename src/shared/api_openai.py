@@ -22,13 +22,12 @@ DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF = 1.0
 
 
-def resolve_vl_model() -> str:
-    """Default VL model, read at call time.
+def resolve_vl_model(model: str | None = None) -> str:
+    """Resolve the VL model at call time.
 
-    Precedence: QWEN_MM_API_VL_MODEL env var → DEFAULT_MODEL constant. Keeps the relay/provider
-    swap a config change instead of an edit (the constant is only the last-resort fallback).
+    Precedence: explicit argument → QWEN_MM_API_VL_MODEL → DEFAULT_MODEL.
     """
-    return get_env("QWEN_MM_API_VL_MODEL") or DEFAULT_MODEL
+    return model or get_env("QWEN_MM_API_VL_MODEL") or DEFAULT_MODEL
 
 
 # Request timeout (seconds) for a chat call — generous for long vision prompts, but bounded so a

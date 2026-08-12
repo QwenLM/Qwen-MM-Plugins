@@ -14,7 +14,7 @@ from shared.content import text_error
 class VisionChatArgs(BaseModel):
     model: Optional[str] = Field(
         default=None,
-        description="Model name (default: 'qwen3.7-plus'). Always uses the default model.",
+        description="Model id override. Defaults to QWEN_MM_API_VL_MODEL, then 'qwen3.7-plus'.",
     )
     text: str = Field(
         default="Describe the visual content.",
@@ -61,11 +61,11 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         call_openai_chat,
         encode_image_source,
         encode_video_source,
-        resolve_vl_model,
         resolve_openai_endpoint,
+        resolve_vl_model,
     )
 
-    model = arguments.get("model") or resolve_vl_model()
+    model = resolve_vl_model(arguments.get("model"))
     text = arguments.get("text", "Describe the visual content.")
     images = arguments.get("images", [])
     videos = arguments.get("videos", [])

@@ -572,7 +572,7 @@ def run_omni(
 
     fps = arguments.get("fps") or default_fps
     max_pixels = arguments.get("max_pixels") or default_max_pixels
-    model = arguments.get("model") or resolve_omni_model()
+    model = resolve_omni_model(arguments.get("model"))
     base_url, api_key = resolve_omni_endpoint(arguments)
 
     if arguments.get("dry_run"):

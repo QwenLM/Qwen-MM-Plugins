@@ -1,8 +1,8 @@
 {
-  "distribution_version": "1.0.2",
+  "distribution_version": "1.0.3",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
   "plugins": {
-    "api": "1.0.1",
+    "api": "1.0.2",
     "blender": "1.0.1",
     "core": "1.0.1",
     "edu-agent": "1.0.1",
