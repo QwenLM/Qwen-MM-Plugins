@@ -99,6 +99,11 @@ def video_duration_exceeds(path: str, max_seconds: float | None) -> bool:
 
 
 def get_video_info(video_path: str) -> dict:
+    """Probe a video for the numbers frame extraction needs: display ``width``/``height``, duration,
+    native fps, and the ``rotation`` flag. Dimensions are the *display* orientation (stored pair
+    swapped on a quarter turn) — ffmpeg autorotates on decode, so that is what a ``-vf`` filter and
+    the extracted frames actually see. Use ``probe_media`` / ``media_info`` for the stored geometry.
+    """
     result = subprocess.run(
         [
             find_tool("ffprobe"),
@@ -156,6 +161,12 @@ def get_video_info(video_path: str) -> dict:
                 rotation = int(float(rotate_tag))
             except (TypeError, ValueError):
                 rotation = 0
+
+    # ffmpeg autorotates on decode (default since 2.7), so a quarter-turn clip is already upright when
+    # a caller's `-vf scale=w:h` runs. Report the display pair: scaling an upright frame to the stored
+    # (sideways) target is what distorts portrait phone video into a stretched landscape frame.
+    if abs(rotation) % 180 == 90:
+        width, height = height, width
 
     return {
         "width": width,

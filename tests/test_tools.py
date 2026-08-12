@@ -129,6 +129,30 @@ def test_get_video_info_reports_rotation(sample_video):
     assert info["native_fps"] > 0
 
 
+def test_get_video_info_swaps_rotated_dimensions(rotated_video):
+    from shared.video import get_video_info
+
+    info = get_video_info(rotated_video)
+    # Stored 320×120 + rotation 90. ffmpeg autorotates on decode, so the pair callers scale to has to
+    # be the display orientation; scaling the upright frame to the stored one distorts it.
+    assert info["rotation"] in (90, -90)
+    assert (info["width"], info["height"]) == (120, 320)
+
+
+def test_read_video_preserves_rotated_aspect(rotated_video):
+    # A square in a rotation-tagged source must stay square in the extracted frames (regression
+    # against a scale target taken from the stored, pre-rotation dimensions).
+    content = video_reader.handle({"video_path": rotated_video, "budget": "small", "max_frames": 2})
+    assert not _is_error(content)
+    frame = _decode_image(_blocks_by_type(content, "image")[0])
+    assert frame.size[1] > frame.size[0], f"portrait source produced a {frame.size} landscape frame"
+    box = frame.convert("L").point(lambda p: 255 if p > 128 else 0).getbbox()
+    assert box, "white square not found in the extracted frame"
+    w, h = box[2] - box[0], box[3] - box[1]
+    # Only patch-grid rounding may move the aspect ratio; the pre-fix stretch was ~3x.
+    assert 0.8 < w / h < 1.25, f"square rendered as {w}x{h} (aspect {w / h:.2f})"
+
+
 def test_read_video_respects_max_frames(sample_video):
     # 6s @ ~2fps auto → ~12 frames; cap to 3 (above the 2-frame floor) must hold.
     content = video_reader.handle({"video_path": sample_video, "budget": "small", "max_frames": 3})
