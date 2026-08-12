@@ -101,12 +101,12 @@ def main() -> int:
     paths: list[tuple[Path, str | None]] = [(marketplace, None)]
     for cap in sorted(capabilities):
         cap_dir = repo / "src/capabilities" / cap
+        mcp_manifest = cap_dir / ".mcp.json"
+        if not mcp_manifest.is_file():
+            continue
         paths.extend(
             (path, cap)
-            for path in (
-                cap_dir / ".claude-plugin/plugin.json",
-                cap_dir / ".mcp.json",
-            )
+            for path in (cap_dir / ".claude-plugin/plugin.json", mcp_manifest)
             if path.is_file()
         )
 

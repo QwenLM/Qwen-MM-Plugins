@@ -42,7 +42,7 @@ def _make_local_checkout(tmp_path: Path) -> Path:
     (checkout / ".claude-plugin").mkdir(parents=True)
     (checkout / "scripts").mkdir()
     (checkout / "src/capabilities/core/.claude-plugin").mkdir(parents=True)
-    (checkout / "src/capabilities/search").mkdir(parents=True)
+    (checkout / "src/capabilities/search/.claude-plugin").mkdir(parents=True)
     (checkout / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
     (checkout / "plugin-versions.json").write_text(
         json.dumps({"distribution": "1.0.1", "plugins": {"core": "1.0.1", "search": "1.0.1"}}) + "\n"
@@ -91,6 +91,16 @@ def _make_local_checkout(tmp_path: Path) -> Path:
         checkout / "src/capabilities/core/.mcp.json",
     ):
         path.write_text(json.dumps(manifest) + "\n")
+    (checkout / "src/capabilities/search/.claude-plugin/plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "qwen-mm-plugins-search",
+                "version": "1.0.1",
+                "skills": ["./skill"],
+            }
+        )
+        + "\n"
+    )
     shutil.copy2(ROOT / "scripts/rewrite_plugin_sources.py", checkout / "scripts")
     return checkout
 
@@ -140,6 +150,32 @@ def test_rewrite_plugin_sources_localizes_catalog_and_mcp(tmp_path):
     restored = (checkout / "src/capabilities/core/.mcp.json").read_text()
     assert "@qwen-mm-plugins-core-v1.0.1" in restored
     assert "--refresh" not in restored
+
+
+def test_rewrite_plugin_sources_all_skips_skill_only_manifests(tmp_path):
+    checkout = _make_local_checkout(tmp_path)
+    skill_manifest = checkout / "src/capabilities/search/.claude-plugin/plugin.json"
+    original = skill_manifest.read_text()
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(checkout / "scripts/rewrite_plugin_sources.py"),
+            "--repo",
+            str(checkout),
+            "--refresh",
+            "all",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert skill_manifest.read_text() == original
+
+    marketplace = json.loads((checkout / ".claude-plugin/marketplace.json").read_text())
+    sources = {item["name"]: item["source"] for item in marketplace["plugins"]}
+    assert sources["qwen-mm-plugins-core"] == "./src/capabilities/core"
+    assert sources["qwen-mm-plugins-search"] == "./src/capabilities/search"
 
 
 def test_local_checkout_root_comes_from_install_script_not_cwd(tmp_path):
