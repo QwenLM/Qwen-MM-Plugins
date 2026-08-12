@@ -1,12 +1,12 @@
 {
   "name": "qwen-mm-plugins-cua",
-  "version": "1.1.0",
-  "description": "Computer-use (CUA) for the local desktop via Qwen-MM-Plugins' MCP proxy and trycua/cua's Cua Driver: launch apps, read window/accessibility state, click/type/scroll native GUI apps in the background. Requires the separately installed cua-driver binary; macOS first.",
+  "version": "1.1.1",
+  "description": "Visual-first computer-use (CUA) for the local desktop via QwenLM/open-computer-use: a screenshot plus accessibility tree and nine focused GUI tools.",
   "skills": ["./skill"],
   "mcpServers": {
     "qwen-mm-plugins-cua": {
       "command": "uvx",
-      "args": ["--from", "qwen-mm-plugins[cua] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main", "qwen-mm-plugins-cua"]
+      "args": ["--from", "qwen-mm-plugins[cua] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-cua-v1.1.1", "qwen-mm-plugins-cua"]
     }
   }
 }

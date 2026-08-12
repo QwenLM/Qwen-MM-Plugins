@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 # Ship this project's LICENSE plus third-party attribution + vendored MIT license texts
-# (Blender/FreeCAD addons and the CUA skill) into the wheel's .dist-info/licenses/.
+# (Blender/FreeCAD addons and CUA runtime attribution) into the wheel's .dist-info/licenses/.
 license-files = [
     "LICENSE",
     "src/capabilities/blender/NOTICE.md",
@@ -65,7 +65,7 @@ example = ["openai"]                           # template capability — base de
 oss = ["oss2"]                                 # optional: upload large media to OSS for a signed URL (memory-build clip upload, api oversized-video upload)
 blender = []                                   # Blender live-session MCP client (stdlib socket; needs a running Blender + addon)
 freecad = []                                   # FreeCAD live-session MCP client (stdlib xml-rpc; needs a running FreeCAD + addon)
-cua = []                                       # Cua Driver MCP proxy (stdlib; needs the separately installed cua-driver binary)
+cua = []                                       # open-computer-use MCP proxy (stdlib; runtime resolved via Node.js/npx)
 # profiles — install ONE. `core` is now local-only (no API key); cloud tools are the api/search
 # capabilities. `all` layers every server on top.
 core = ["qwen-mm-plugins[viz]"]

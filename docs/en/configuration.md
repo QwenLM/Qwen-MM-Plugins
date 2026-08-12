@@ -49,6 +49,7 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 | `QWEN_MM_FFMPEG_TIMEOUT` | 120 | ffmpeg/ffprobe timeout seconds |
 | `QWEN_MM_CHAT_TIMEOUT` | tool-specific (600; Omni 1800) | OpenAI-compatible chat request timeout seconds |
 | `QWEN_MM_MAX_TOTAL_FRAMES` | 600 | max frames sampled from a video |
+| `QWEN_MM_OPEN_COMPUTER_USE_PATH` | — | absolute path to open-computer-use (overrides PATH and npx fallback) |
 
 ### OSS storage (serve large media by URL)
 

@@ -41,6 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 | `blender` | 在 Blender 中完成建模、材质、灯光与渲染 | Blender；无界面 Linux 需要 Xvfb | [Cookbook](cookbooks/blender/usage.md) |
 | `freecad` | 参数化 CAD、STEP/STL 与 FEM 工作流 | FreeCAD；FEM 需要 CalculiX；无界面 Linux 需要 Xvfb | [Cookbook](cookbooks/freecad/usage.md) |
 | `edu-agent` | 生成中文数理讲解视频与交互页面 | 纯 Skill；Node/Chromium、ffmpeg；视频旁白需要 DashScope | [Cookbook](cookbooks/edu-agent/usage.md) |
+| `cua` | 通过 9 个聚焦工具观察并操作本地原生桌面应用 | Node.js、真实屏幕；macOS 需要辅助功能和屏幕录制权限 | [Cookbook](cookbooks/cua/usage.md) |
 
 ## 快速体验
 
@@ -51,6 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 @meeting.mp4         带说话人标签和时间戳转写这段会议。
 @place.jpg           判断照片拍摄地点，并联网核实。
 @lecture-2h.mp4      按时间戳列出这段长视频的主要观点。
+                       通过桌面界面打开计算器并算出 37 × 19。
 ```
 
 `core` 会以动态分辨率读取媒体，通常无需手动缩放。
@@ -59,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 
 - [`uv`](https://docs.astral.sh/uv/) 提供 `uvx`，按需安装 Python 依赖。
 - 本地 `core` 工具无需 API key；云端和搜索能力需要对应服务的凭证。
-- 视频、文档、浏览器、Blender 和 FreeCAD 工作流可能需要系统程序。
+- 视频、文档、浏览器、Blender、FreeCAD 和 CUA 工作流可能需要系统程序。
 
 通过安装器的 **Configure** 和 **Verify** 操作设置凭证并检查依赖。系统要求见
 [安装文档](docs/zh/installation.md#依赖)，全部设置见[配置参考（英文）](docs/en/configuration.md)。
@@ -73,5 +75,6 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 
 ## 许可证
 
-Apache-2.0，见 [LICENSE](LICENSE)。Blender 与 FreeCAD 集成的第三方署名分别见
-[Blender NOTICE](src/capabilities/blender/NOTICE.md) 和 [FreeCAD NOTICE](src/capabilities/freecad/NOTICE.md)。
+Apache-2.0，见 [LICENSE](LICENSE)。Blender、FreeCAD 与 CUA 集成的第三方署名分别见
+[Blender NOTICE](src/capabilities/blender/NOTICE.md)、[FreeCAD NOTICE](src/capabilities/freecad/NOTICE.md)
+和 [CUA NOTICE](src/capabilities/cua/NOTICE.md)。

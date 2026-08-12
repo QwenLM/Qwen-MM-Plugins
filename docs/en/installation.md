@@ -149,9 +149,30 @@ error when `SERPER_API_KEY` is unavailable.
 | TeX | LaTeX visualization |
 | Chromium | Web-page screenshots and edu-agent rendering |
 | Blender / FreeCAD | Their respective live application integrations |
+| Node.js (`npx`) | CUA's `open-computer-use` runtime |
 
 Run `bash install.sh verify` or `<entry> --check-system` to see what the selected capability needs.
 Capability-specific prerequisites are documented in its Skill and cookbook.
+
+### CUA: open-computer-use
+
+`qwen-mm-plugins-cua` proxies the nine-tool, screenshot-first MCP surface from
+[QwenLM/open-computer-use](https://github.com/QwenLM/open-computer-use). It resolves the runtime in
+this order:
+
+1. `QWEN_MM_OPEN_COMPUTER_USE_PATH`, when set to an executable.
+2. `npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use mcp`.
+3. `open-computer-use` on `PATH` when `npx` is unavailable.
+
+The npx path downloads the pinned package on first launch. On macOS, start the runtime once and
+approve Accessibility and Screen Recording when prompted:
+
+```bash
+npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use doctor
+```
+
+The runtime needs a real display. Pixel clicks and keyboard input may activate the target
+application; background delivery is not guaranteed.
 
 ### Complete configuration
 

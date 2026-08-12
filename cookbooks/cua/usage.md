@@ -1,33 +1,32 @@
 # Cookbook — Qwen-MM-Plugins CUA (computer use)
 
-Computer-use for the **local desktop** with `qwen-mm-plugins-cua`: the model launches and drives
-**any** native GUI app in the background (whole desktop, not just the browser) — snapshot the
-accessibility tree, act on elements / menus / geometry / pixels, and verify from fresh state.
+Visual-first computer use for a **local desktop** with `qwen-mm-plugins-cua`. The model observes a
+native application's current screenshot and Accessibility tree, acts on a fresh element index or
+pixel coordinate, and then observes again to verify the result.
 
-> **First-party proxy.** This capability registers the Qwen-MM-Plugins MCP server
-> `qwen-mm-plugins-cua`. It resolves the locally installed **trycua/cua** Cua Driver (MIT), then
-> forwards its native MCP tool surface without copying it. The external `cua-driver` binary must be
-> installed (below), and it only works on a machine with a **real display** (macOS first) — a
-> headless/remote server has no screen to drive.
+> **First-party proxy.** The plugin registers the stable MCP server name
+> `qwen-mm-plugins-cua` and forwards stdio MCP to
+> [QwenLM/open-computer-use](https://github.com/QwenLM/open-computer-use) (MIT). It needs Node.js
+> and a real display; a headless server has no desktop to drive.
 
 ---
 
-## Tools
+## Tools and core loop
 
-The Qwen MCP proxy launches `cua-driver mcp`; its action space is Cua Driver's native surface
-(window / accessibility-tree first, pixels as fallback):
+The runtime deliberately exposes nine tools:
 
-**Session & apps** — `start_session`, `launch_app`, `list_apps`, `list_windows`
-**Perceive** — `get_window_state` (accessibility tree **and** a screenshot together),
-`get_desktop_state`, `get_accessibility_tree`, `get_browser_state`
-**Act** — `click`, `double_click`, `right_click`, `drag`, `scroll`, `move_cursor`, `type_text`,
-`press_key`, `hotkey`, `set_value`, `set_window_frame`, `invoke_menu`
-**Verify** — `verify_state` (bounded read-back; `unknown` is not success)
-**Browser / recording** — typed page tools, `start_recording` / `replay_trajectory`
+- **Discover:** `list_apps`
+- **Observe:** `get_app_state` (screenshot + Accessibility tree)
+- **Act:** `click`, `drag`, `type_text`, `press_key`, `scroll`, `set_value`,
+  `perform_secondary_action`
 
-Core loop: `start_session` once → `launch_app` → `get_window_state` → act on the fresh
-`element_token` → `verify_state`. Prefer element tokens; fall to pixels only when the tree is
-degraded. Delivery defaults to `background` (never steals focus).
+Call `get_app_state({app})` at the start of every turn. Use an `element_index` from that state when
+the target appears in the tree; otherwise use coordinates from the same screenshot. Treat the state
+as stale immediately after any action, and call `get_app_state` again before the next action or
+before declaring success.
+
+Pixel clicks and keyboard input may activate the target application. This capability does not
+guarantee background delivery.
 
 ---
 
@@ -38,42 +37,37 @@ claude plugin marketplace add https://github.com/QwenLM/Qwen-MM-Plugins.git
 claude plugin install qwen-mm-plugins-cua@qwen-mm-plugins
 ```
 
-Then install the **`cua-driver` binary** (native, cross-OS; **not** pulled in by `uvx`):
+Install a current Node.js release so `npx` is available. The proxy resolves the runtime in this
+order:
+
+1. `QWEN_MM_OPEN_COMPUTER_USE_PATH` — a managed executable path.
+2. `npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use mcp`.
+3. `open-computer-use` on `PATH` when `npx` is unavailable.
+
+The npx path downloads the pinned package on first launch. Check resolution with:
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"   # → ~/.local/bin, no admin
+qwen-mm-plugins-cua --check-system
 ```
 
-macOS also needs two permissions (per host app, cannot be granted programmatically):
+On macOS, start the runtime once and approve both Accessibility and Screen Recording when prompted:
 
 ```bash
-open -n -g -a CuaDriver --args serve          # start via the app bundle so grants stick
-cua-driver permissions grant                  # Accessibility (drive) + Screen Recording (see)
-cua-driver doctor                             # confirms platform + a reachable display
+npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use doctor
 ```
 
-The plugin automatically starts the first-party proxy. It resolves the driver in this order:
-`QWEN_MM_CUA_DRIVER_PATH`, `CUA_DRIVER_PATH`, `~/.local/bin/cua-driver`, the macOS
-`CuaDriver.app` bundle, then `PATH`. For a custom GUI-host install, set
-`QWEN_MM_CUA_DRIVER_PATH=/absolute/path/to/cua-driver` in `~/.qwen-mm-plugins/config`.
+These permissions are operating-system grants and cannot be enabled programmatically.
 
-> **Don't also run `cua-driver skills install`** — this plugin already vendors that skill (under
-> the name `qwen-mm-plugins-cua`); installing the upstream pack too would duplicate it.
-
-> **Headless server**: there is no display to drive — `doctor` will warn `DISPLAY`/`WAYLAND_DISPLAY`
-> unset. Run on a local desktop, or target an isolated desktop VM (cua + Lume).
+---
 
 ## Notes
 
-- **No API key** — the driving model is whatever your agent harness already uses. `CUA_API_KEY` /
-  Lume VMs are only for cua's cloud/sandbox targets. Telemetry is on by default:
-  `cua-driver telemetry disable`.
-- **Coordinates are pixels, not 0–1000.** `click`/`move_cursor` take raw `x`/`y` with
-  `scope: window|desktop`. qwen-mm-plugins-core's `grounding` emits **0–1000 normalized**, so to
-  use it for a pixel target, denormalize first: `px = norm / 1000 * (window-or-desktop size)`.
-  You can also feed the `get_window_state` screenshot to core `read_image` / `ocr`.
-- **Version correspondence**: the vendored skill and the `cua-driver` binary come from the **same**
-  cua release (skill `version` == `cua-driver --version`, currently `0.19.3`). Keep them aligned.
+- **No extra API key:** the driving model is the model already used by the agent harness.
+- **Fresh coordinates only:** coordinates belong to one returned screenshot and are not durable.
+- **Keyboard combinations:** `press_key` accepts xdotool-style strings, for example `super+4` on
+  macOS or `ctrl+l` where supported.
+- **Irreversible actions:** sending a message, submitting a form, deleting data, or confirming a
+  purchase still requires explicit user authorization.
 
 ---
 
@@ -81,24 +75,22 @@ The plugin automatically starts the first-party proxy. It resolves the driver in
 
 No case recorded yet. Add one in either style — see [core](../core/usage.md) for worked examples:
 
-- **Trace** — a full session rendered to a self-contained HTML page, linked by URL.
-- **Result** — the query plus a public link / preview of the produced artifact.
+- **Trace:** a full session rendered to a self-contained HTML page, linked by URL.
+- **Result:** the query plus a public link or preview of the produced artifact.
 
 ---
 
 ## Troubleshooting
 
-- **`qwen-mm-plugins-cua` tools missing / Cua Driver not found**: install `cua-driver` (above), then
-  restart the harness and start a new task. For a custom location, set `QWEN_MM_CUA_DRIVER_PATH` in
-  the shared Qwen-MM-Plugins config; GUI hosts do not need to inherit shell `PATH`.
-- **macOS "not permitted" / blank screenshots**: grant Accessibility + Screen Recording via
-  `cua-driver permissions grant`, toggle both on in System Settings, let CuaDriver relaunch.
-- **Headless / `DISPLAY` unset**: expected — GUI driving needs a real screen; use a local desktop or a VM.
-- **Linux Wayland**: raw background input is limited (BETA); an X11 session is the smoother path.
+- **Tools missing:** restart the harness and begin a new task after installation; an existing task
+  cannot hot-add MCP tools to its inventory.
+- **Runtime not found:** install Node.js or set
+  `QWEN_MM_OPEN_COMPUTER_USE_PATH=/absolute/path/to/open-computer-use`.
+- **macOS “not permitted” or blank screenshots:** grant Accessibility and Screen Recording to the
+  runtime process, restart the harness, and retry from a fresh state.
+- **Headless or `DISPLAY` unset:** expected; run on a local desktop or a desktop VM.
 
-## Attribution & License
+## Attribution and license
 
-- **cua** is a passthrough to [trycua/cua](https://github.com/trycua/cua)'s Cua Driver (MIT); the
-  skill docs under `skill/` are vendored from its skill pack.
-
-Full third-party license is in the capability's `NOTICE.md`.
+The runtime is [QwenLM/open-computer-use](https://github.com/QwenLM/open-computer-use), licensed
+under MIT. See the capability's `NOTICE.md` for attribution.

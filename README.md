@@ -43,6 +43,7 @@ install name is `qwen-mm-plugins-<capability>`.
 | `blender` | Model, texture, light, and render in Blender | Blender; Xvfb on headless Linux | [Cookbook](cookbooks/blender/usage.md) |
 | `freecad` | Parametric CAD, STEP/STL, and FEM workflows | FreeCAD; CalculiX for FEM; Xvfb on headless Linux | [Cookbook](cookbooks/freecad/usage.md) |
 | `edu-agent` | Create Chinese math/science explainer videos and interactive pages | Skill-only; Node/Chromium + ffmpeg; DashScope for narrated video | [Cookbook](cookbooks/edu-agent/usage.md) |
+| `cua` | Visually inspect and drive native desktop applications with nine focused tools | Node.js; a real display; Accessibility and Screen Recording on macOS | [Cookbook](cookbooks/cua/usage.md) |
 
 ## Try it
 
@@ -54,6 +55,7 @@ MCP tool.
 @meeting.mp4         Transcribe this with speaker labels and timestamps.
 @place.jpg           Identify where this photo was taken and verify it on the web.
 @lecture-2h.mp4      List the main points with timestamps.
+                       Open Calculator and compute 37 × 19 using the desktop UI.
 ```
 
 `core` reads media at dynamic resolution, so manual resizing is normally unnecessary.
@@ -62,7 +64,7 @@ MCP tool.
 
 - [`uv`](https://docs.astral.sh/uv/) provides `uvx`, which installs Python dependencies on demand.
 - Local `core` tools need no API key. Cloud and search capabilities need their provider credentials.
-- Video, document, browser, Blender, and FreeCAD workflows may need system applications.
+- Video, document, browser, Blender, FreeCAD, and CUA workflows may need system applications.
 
 Run the installer's **Configure** and **Verify** actions to set credentials and check dependencies.
 See [Installation](docs/en/installation.md#dependencies) for prerequisites and the
@@ -77,6 +79,6 @@ See [Installation](docs/en/installation.md#dependencies) for prerequisites and t
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE). Third-party attribution for the Blender and FreeCAD integrations
-is recorded in their respective [Blender](src/capabilities/blender/NOTICE.md) and
-[FreeCAD](src/capabilities/freecad/NOTICE.md) notices.
+Apache-2.0 — see [LICENSE](LICENSE). Third-party attribution for the Blender, FreeCAD, and CUA
+integrations is recorded in their respective [Blender](src/capabilities/blender/NOTICE.md),
+[FreeCAD](src/capabilities/freecad/NOTICE.md), and [CUA](src/capabilities/cua/NOTICE.md) notices.

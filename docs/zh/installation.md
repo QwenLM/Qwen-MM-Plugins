@@ -141,9 +141,29 @@ key 的后端：Serper、Tavily、Exa。设为 `serper`、`tavily` 或 `exa` 会
 | TeX | LaTeX 可视化 |
 | Chromium | 网页截图和 edu-agent 渲染 |
 | Blender / FreeCAD | 对应的实时应用集成 |
+| Node.js（`npx`） | CUA 的 `open-computer-use` 运行时 |
 
 运行 `bash install.sh verify` 或 `<entry> --check-system` 查看所选能力的具体要求。能力专属依赖
 记录在对应 Skill 和 cookbook 中。
+
+### CUA：open-computer-use
+
+`qwen-mm-plugins-cua` 代理
+[QwenLM/open-computer-use](https://github.com/QwenLM/open-computer-use) 的 9 工具、截图优先 MCP
+界面。运行时按以下顺序解析：
+
+1. 指向可执行文件的 `QWEN_MM_OPEN_COMPUTER_USE_PATH`。
+2. `npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use mcp`。
+3. `npx` 不可用时，使用 `PATH` 中的 `open-computer-use`。
+
+npx 路径会在首次启动时下载固定版本。macOS 上请先启动一次运行时，并在弹窗中授予辅助功能
+和屏幕录制权限：
+
+```bash
+npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use doctor
+```
+
+运行时需要真实屏幕。像素点击和键盘输入可能激活目标应用，不保证后台投递。
 
 ### 完整配置
 

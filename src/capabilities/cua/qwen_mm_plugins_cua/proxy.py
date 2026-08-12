@@ -1,8 +1,7 @@
-"""Resolve Cua Driver and transparently proxy its stdio MCP transport.
+"""Resolve QwenLM's ``open-computer-use`` and proxy its stdio MCP transport.
 
-Keeping this a JSON-RPC proxy instead of re-declaring Cua's tools matters: the driver owns a large,
-fast-moving tool surface, so forwarding its native ``tools/list`` response prevents schema drift.
-Only the initialize response is rebranded to the first-party Qwen server name.
+The upstream runtime owns the screenshot-first computer-use implementation. This package owns its
+discovery and the stable Qwen MCP server identity.
 """
 
 from __future__ import annotations
@@ -15,61 +14,58 @@ import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Sequence
 
 from shared.env import get_env
 
 SERVER_NAME = "qwen-mm-plugins-cua"
-_DRIVER_ENV_KEYS = ("QWEN_MM_CUA_DRIVER_PATH", "CUA_DRIVER_PATH")
-
-
-def resolve_driver(
-    *, home: Path | None = None, platform: str | None = None, which: Callable[[str], str | None] = shutil.which
-) -> Path | None:
-    """Return the Cua Driver executable for this host, without relying on GUI PATH inheritance."""
-    for key in _DRIVER_ENV_KEYS:
-        if value := get_env(key):
-            path = Path(value).expanduser()
-            if _is_executable(path):
-                return path
-            raise RuntimeError(f"{key} is not an executable file: {path}")
-
-    executable = "cua-driver.exe" if os.name == "nt" else "cua-driver"
-    candidates = [(home or Path.home()) / ".local" / "bin" / executable]
-    if (platform or sys.platform) == "darwin":
-        candidates.append(Path("/Applications/CuaDriver.app/Contents/MacOS/cua-driver"))
-    for path in candidates:
-        if _is_executable(path):
-            return path
-    if found := which(executable):
-        return Path(found)
-    return None
+OPEN_COMPUTER_USE_PACKAGE = "@qwen-code/open-computer-use@0.2.3"
+_OPEN_COMPUTER_USE_ENV_KEY = "QWEN_MM_OPEN_COMPUTER_USE_PATH"
 
 
 def _is_executable(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
+def resolve_open_computer_use(*, which: Callable[[str], str | None] = shutil.which) -> list[str] | None:
+    """Return a command that starts open-computer-use's stdio MCP server.
+
+    A direct executable wins for managed installations. Otherwise npx downloads or reuses the pinned
+    upstream package at first launch, avoiding a host-specific global npm prefix in the manifest.
+    """
+    if configured := get_env(_OPEN_COMPUTER_USE_ENV_KEY):
+        path = Path(configured).expanduser()
+        if _is_executable(path):
+            return [str(path), "mcp"]
+        raise RuntimeError(f"{_OPEN_COMPUTER_USE_ENV_KEY} is not an executable file: {path}")
+
+    if npx := which("npx"):
+        return [npx, "--yes", f"--package={OPEN_COMPUTER_USE_PACKAGE}", "open-computer-use", "mcp"]
+    if executable := which("open-computer-use"):
+        return [executable, "mcp"]
+    return None
+
+
 def check_system() -> str:
     """Render a focused dependency check suitable for CI and the guided installer."""
     try:
-        driver = resolve_driver()
+        command = resolve_open_computer_use()
     except RuntimeError as exc:
-        return f"✗ Cua Driver\n    {exc}"
-    if driver is None:
+        return f"✗ open-computer-use\n    {exc}"
+    if command is None:
         return (
-            "✗ Cua Driver\n"
-            '    install: /bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"\n'
-            "    or set QWEN_MM_CUA_DRIVER_PATH=/absolute/path/to/cua-driver"
+            "✗ open-computer-use\n"
+            "    install Node.js (npm/npx), or set QWEN_MM_OPEN_COMPUTER_USE_PATH=/absolute/path/to/open-computer-use"
         )
-    return f"✓ Cua Driver\n    executable: {driver}"
+    source = "npx package (downloaded on first launch)" if Path(command[0]).stem == "npx" else "executable"
+    return f"✓ open-computer-use\n    {source}: {command[0]}\n    MCP tools: 9 (screenshot-first)"
 
 
 def rewrite_initialize_response(line: bytes) -> bytes:
     """Replace only the upstream server identity in one JSON-RPC stdio line.
 
     MCP stdio uses one JSON-RPC message per line.  Any malformed/non-JSON line is forwarded exactly
-    so a future Cua Driver transport extension cannot corrupt the connection.
+    so an upstream transport extension cannot corrupt the connection.
     """
     try:
         payload = json.loads(line)
@@ -105,10 +101,10 @@ def _copy_stream(source: BinaryIO, target: BinaryIO) -> None:
         pass
 
 
-def run_proxy(driver: Path) -> int:
-    """Run the driver and bridge its stdio transport to this process."""
+def run_proxy(command: Sequence[str]) -> int:
+    """Run the upstream command and bridge its stdio transport to this process."""
     process = subprocess.Popen(
-        [str(driver), "mcp"],
+        list(command),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

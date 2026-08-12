@@ -174,6 +174,13 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "OpenAI-compatible chat request timeout seconds",
     ),
     ("QWEN_MM_MAX_TOTAL_FRAMES", False, "Runtime paths & limits", "600", "max frames sampled from a video"),
+    (
+        "QWEN_MM_OPEN_COMPUTER_USE_PATH",
+        False,
+        "Runtime paths & limits",
+        "",
+        "absolute path to open-computer-use (overrides PATH and npx fallback)",
+    ),
     # OSS storage (serve large media by URL)
     ("OSS_AK", True, "OSS storage (serve large media by URL)", "", "OSS access key id"),
     ("OSS_SK", True, "OSS storage (serve large media by URL)", "", "OSS access key secret"),
@@ -213,14 +220,6 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "edu-agent (Node / headless Chromium)",
         "",
         "headless Chromium executable for Puppeteer",
-    ),
-    # CUA proxy (the external driver itself owns OS permissions)
-    (
-        "QWEN_MM_CUA_DRIVER_PATH",
-        False,
-        "CUA proxy",
-        "",
-        "absolute path to cua-driver (overrides default locations and PATH)",
     ),
 ]
 

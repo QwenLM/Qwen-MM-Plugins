@@ -20,7 +20,7 @@ def main() -> None:
     proxy = import_module(f"{_IMPORT}.proxy")
     __version__ = package.__version__
     check_system = proxy.check_system
-    resolve_driver = proxy.resolve_driver
+    resolve_open_computer_use = proxy.resolve_open_computer_use
     run_proxy = proxy.run_proxy
 
     argv = sys.argv[1:]
@@ -33,8 +33,8 @@ def main() -> None:
     if "--setup" in argv:
         from shared.env import get_env, set_config
 
-        current = get_env("QWEN_MM_CUA_DRIVER_PATH") or ""
-        prompt = "QWEN_MM_CUA_DRIVER_PATH (blank = auto-detect; '-' = clear)"
+        current = get_env("QWEN_MM_OPEN_COMPUTER_USE_PATH") or ""
+        prompt = "QWEN_MM_OPEN_COMPUTER_USE_PATH (blank = auto via pinned npx; '-' = clear)"
         try:
             value = input(f"{prompt}{f' [{current}]' if current else ''}: ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -43,9 +43,9 @@ def main() -> None:
         if value == "-":
             from shared.env import del_config
 
-            print(f"✓ removed QWEN_MM_CUA_DRIVER_PATH → {del_config(['QWEN_MM_CUA_DRIVER_PATH'])}")
+            print(f"✓ removed QWEN_MM_OPEN_COMPUTER_USE_PATH → {del_config(['QWEN_MM_OPEN_COMPUTER_USE_PATH'])}")
         elif value:
-            print(f"✓ wrote QWEN_MM_CUA_DRIVER_PATH → {set_config({'QWEN_MM_CUA_DRIVER_PATH': value})}")
+            print(f"✓ wrote QWEN_MM_OPEN_COMPUTER_USE_PATH → {set_config({'QWEN_MM_OPEN_COMPUTER_USE_PATH': value})}")
         else:
             print("unchanged.")
         return
@@ -71,22 +71,22 @@ def main() -> None:
         return
     if "--help" in argv or "-h" in argv or sys.stdin.isatty():
         print(
-            "qwen-mm-plugins-cua — MCP proxy for the locally installed Cua Driver\n\n"
+            "qwen-mm-plugins-cua — visual-first CUA MCP proxy\n\n"
             "Usage: qwen-mm-plugins-cua [--version | --check-system | --setup | --set KEY=VALUE … | "
             "--unset KEY … | --help]\n\n"
-            "The proxy resolves QWEN_MM_CUA_DRIVER_PATH, CUA_DRIVER_PATH, the default installer "
-            "location (~/.local/bin), the macOS app bundle, then PATH."
+            "Runtime: QwenLM open-computer-use (nine screenshot-first tools). The pinned npm "
+            "package is resolved via npx unless QWEN_MM_OPEN_COMPUTER_USE_PATH is set."
         )
         return
     try:
-        driver = resolve_driver()
+        command = resolve_open_computer_use()
     except RuntimeError as exc:
         print(f"qwen-mm-plugins-cua: {exc}", file=sys.stderr)
         raise SystemExit(127) from exc
-    if driver is None:
+    if command is None:
         print(check_system(), file=sys.stderr)
         raise SystemExit(127)
-    raise SystemExit(run_proxy(driver))
+    raise SystemExit(run_proxy(command))
 
 
 if __name__ == "__main__":

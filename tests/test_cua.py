@@ -1,8 +1,8 @@
 """Offline tests for the first-party CUA MCP proxy.
 
-The real Cua Driver has macOS permissions and a display dependency, so these tests use a tiny
-stdio stand-in.  They prove the Qwen proxy resolves the driver without a GUI PATH and preserves
-the upstream protocol surface while owning the advertised server identity.
+The real runtime has OS permissions and a display dependency, so these tests use a tiny stdio
+stand-in. They prove the Qwen proxy resolves open-computer-use without a GUI PATH while owning the
+advertised server identity.
 """
 
 from __future__ import annotations
@@ -28,54 +28,76 @@ def _executable(path: Path, content: str = "#!/bin/sh\nexit 0\n") -> Path:
     return path
 
 
-def test_resolve_driver_prefers_qwen_config_path(monkeypatch, tmp_path):
-    configured = _executable(tmp_path / "configured-driver")
-    monkeypatch.setattr(proxy, "get_env", lambda name: str(configured) if name == "QWEN_MM_CUA_DRIVER_PATH" else None)
-
-    assert proxy.resolve_driver(home=tmp_path, platform="linux", which=lambda _: None) == configured
-
-
-def test_resolve_driver_uses_default_location_without_path(monkeypatch, tmp_path):
-    default = _executable(tmp_path / ".local" / "bin" / "cua-driver")
+def test_resolve_open_computer_use_uses_npx_by_default(monkeypatch):
     monkeypatch.setattr(proxy, "get_env", lambda _: None)
 
-    assert proxy.resolve_driver(home=tmp_path, platform="linux", which=lambda _: None) == default
+    assert proxy.resolve_open_computer_use(which=lambda name: "/opt/node/bin/npx" if name == "npx" else None) == [
+        "/opt/node/bin/npx",
+        "--yes",
+        f"--package={proxy.OPEN_COMPUTER_USE_PACKAGE}",
+        "open-computer-use",
+        "mcp",
+    ]
 
 
-def test_resolve_driver_rejects_bad_explicit_path(monkeypatch, tmp_path):
-    missing = tmp_path / "missing-driver"
-    monkeypatch.setattr(proxy, "get_env", lambda name: str(missing) if name == "CUA_DRIVER_PATH" else None)
+def test_resolve_open_computer_use_prefers_explicit_executable(monkeypatch, tmp_path):
+    executable = _executable(tmp_path / "open-computer-use")
+    monkeypatch.setattr(
+        proxy, "get_env", lambda name: str(executable) if name == "QWEN_MM_OPEN_COMPUTER_USE_PATH" else None
+    )
 
-    with pytest.raises(RuntimeError, match="CUA_DRIVER_PATH"):
-        proxy.resolve_driver(home=tmp_path, platform="linux", which=lambda _: None)
+    assert proxy.resolve_open_computer_use(which=lambda _: None) == [str(executable), "mcp"]
+
+
+def test_resolve_open_computer_use_rejects_bad_explicit_path(monkeypatch, tmp_path):
+    missing = tmp_path / "missing-open-computer-use"
+    monkeypatch.setattr(
+        proxy,
+        "get_env",
+        lambda name: str(missing) if name == "QWEN_MM_OPEN_COMPUTER_USE_PATH" else None,
+    )
+
+    with pytest.raises(RuntimeError, match="QWEN_MM_OPEN_COMPUTER_USE_PATH"):
+        proxy.resolve_open_computer_use(which=lambda _: None)
+
+
+def test_resolve_open_computer_use_falls_back_to_path_without_npx(monkeypatch):
+    monkeypatch.setattr(proxy, "get_env", lambda _: None)
+
+    assert proxy.resolve_open_computer_use(
+        which=lambda name: "/usr/local/bin/open-computer-use" if name == "open-computer-use" else None
+    ) == ["/usr/local/bin/open-computer-use", "mcp"]
 
 
 def test_rewrite_initialize_response_changes_only_server_identity():
     original = {
         "jsonrpc": "2.0",
         "id": 1,
-        "result": {"serverInfo": {"name": "cua-driver", "version": "0.19.3"}, "protocolVersion": "2025-06-18"},
+        "result": {
+            "serverInfo": {"name": "open-computer-use", "version": "0.2.3"},
+            "protocolVersion": "2025-06-18",
+        },
     }
     rewritten = json.loads(proxy.rewrite_initialize_response(json.dumps(original).encode() + b"\n"))
 
-    assert rewritten["result"]["serverInfo"] == {"name": "qwen-mm-plugins-cua", "version": "0.19.3"}
+    assert rewritten["result"]["serverInfo"] == {"name": "qwen-mm-plugins-cua", "version": "0.2.3"}
     assert rewritten["result"]["protocolVersion"] == "2025-06-18"
 
 
 def test_proxy_forwards_stdio_and_rebrands_initialize(tmp_path):
-    fake_driver = _executable(
-        tmp_path / "fake-cua-driver",
+    fake_runtime = _executable(
+        tmp_path / "fake-open-computer-use",
         """#!{python}
 import json
 import sys
 for line in sys.stdin:
     request = json.loads(line)
     if request.get('method') == 'initialize':
-        print(json.dumps({{'jsonrpc': '2.0', 'id': request['id'], 'result': {{'serverInfo': {{'name': 'cua-driver', 'version': 'test'}}, 'protocolVersion': '2025-06-18'}}}}), flush=True)
+        print(json.dumps({{'jsonrpc': '2.0', 'id': request['id'], 'result': {{'serverInfo': {{'name': 'open-computer-use', 'version': 'test'}}, 'protocolVersion': '2025-06-18'}}}}), flush=True)
         break
 """.format(python=sys.executable),
     )
-    env = dict(os.environ, QWEN_MM_CUA_DRIVER_PATH=str(fake_driver))
+    env = dict(os.environ, QWEN_MM_OPEN_COMPUTER_USE_PATH=str(fake_runtime))
     process = subprocess.Popen(
         [
             sys.executable,
