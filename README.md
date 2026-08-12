@@ -37,7 +37,7 @@ install name is `qwen-mm-plugins-<capability>`.
 |---|---|---|---|
 | `core` | Read images and video; visualize documents, code, data, 3D files, and more | No API key; ffmpeg for audio/video; format-specific apps as needed | [Cookbook](cookbooks/core/usage.md) |
 | `api` | Qwen VL/Omni vision, OCR, grounding, ASR, segmentation, and audio-video understanding | DashScope; ffmpeg for local audio/video | [Cookbook](cookbooks/api/usage.md) |
-| `search` | Web search, page extraction, and reverse-image search | Serper API key | [Cookbook](cookbooks/search/usage.md) |
+| `search` | Web search, page extraction, and reverse-image search | Serper, Exa, or Tavily key; image search requires Serper | [Cookbook](cookbooks/search/usage.md) |
 | `video-memory` | Build hierarchical memory for long-video QA | DashScope; ffmpeg/ffprobe for builds | [Cookbook](cookbooks/video-memory/usage.md) |
 | `video-edit` | Image, video, and audio generation with editing workflows | DashScope; ffmpeg + Node/Chromium for full edits | [Cookbook](cookbooks/video-edit/usage.md) |
 | `blender` | Model, texture, light, and render in Blender | Blender; Xvfb on headless Linux | [Cookbook](cookbooks/blender/usage.md) |

@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 |---|---|---|---|
 | `core` | 读取图片和视频；可视化文档、代码、数据、3D 文件等 | 无需 API key；音视频需要 ffmpeg；其他格式按需安装应用 | [Cookbook](cookbooks/core/usage.md) |
 | `api` | Qwen VL/Omni 视觉理解、OCR、grounding、ASR、分割与音视频理解 | DashScope；本地音视频需要 ffmpeg | [Cookbook](cookbooks/api/usage.md) |
-| `search` | 网页搜索、页面抽取和反向图像搜索 | Serper API key | [Cookbook](cookbooks/search/usage.md) |
+| `search` | 网页搜索、页面抽取和反向图像搜索 | Serper、Exa 或 Tavily key；反向图搜需要 Serper | [Cookbook](cookbooks/search/usage.md) |
 | `video-memory` | 为长视频问答构建层次化记忆 | DashScope；构建需要 ffmpeg/ffprobe | [Cookbook](cookbooks/video-memory/usage.md) |
 | `video-edit` | 图片、视频、音频生成与剪辑工作流 | DashScope；完整剪辑需要 ffmpeg、Node/Chromium | [Cookbook](cookbooks/video-edit/usage.md) |
 | `blender` | 在 Blender 中完成建模、材质、灯光与渲染 | Blender；无界面 Linux 需要 Xvfb | [Cookbook](cookbooks/blender/usage.md) |

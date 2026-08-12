@@ -1,5 +1,5 @@
 {
-  "distribution_version": "1.0.1",
+  "distribution_version": "1.0.2",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
   "plugins": {
     "api": "1.0.1",
@@ -7,7 +7,7 @@
     "core": "1.0.1",
     "edu-agent": "1.0.1",
     "freecad": "1.0.1",
-    "search": "1.0.1",
+    "search": "1.0.2",
     "video-edit": "1.0.1",
     "video-memory": "1.0.1"
   }

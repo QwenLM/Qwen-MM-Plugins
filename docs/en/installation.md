@@ -125,10 +125,18 @@ are credentials and system applications.
 | Variable | Used by |
 |---|---|
 | `DASHSCOPE_API_KEY` | Cloud media APIs, generation, and video-memory builds |
-| `SERPER_API_KEY` | Web, extraction, and reverse-image search when using Serper |
+| `QWEN_MM_SEARCH_BACKEND` | Optional text-search override: `serper`, `tavily`, `exa`, or `auto` |
+| `SERPER_API_KEY` | Serper web search/extraction and all reverse-image search |
+| `EXA_API_KEY` | Exa web search and extraction |
+| `TAVILY_API_KEY` | Tavily web search and extraction |
 
 Native `core` file reading needs no API key. Set values through the installer's **Configure** action,
 the shell environment, or `~/.qwen-mm-plugins/config`; environment variables take precedence.
+With the selector unset or set to `auto`, text search uses the first configured key in this fixed
+order: Serper, Tavily, Exa. An explicitly selected provider is strict and reports a missing-key
+error instead of falling back.
+`image_search` always uses Serper Lens, independently of `QWEN_MM_SEARCH_BACKEND`, and raises an
+error when `SERPER_API_KEY` is unavailable.
 
 ### Common system tools
 

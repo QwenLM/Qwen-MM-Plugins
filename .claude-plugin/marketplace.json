@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Qwen multimodal understanding plugins — Agent Skills + MCP servers",
-    "version": "1.0.1"
+    "version": "1.0.2"
   },
   "plugins": [
     {
@@ -35,9 +35,9 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/search",
-        "ref": "qwen-mm-plugins-search-v1.0.1"
+        "ref": "qwen-mm-plugins-search-v1.0.2"
       },
-      "description": "Web + reverse-image search to confirm facts: web search, page extraction, reverse image search as MCP tools; currently supports Serper."
+      "description": "Web search and page extraction via Serper, Exa, or Tavily, plus Serper Lens reverse-image search as MCP tools."
     },
     {
       "name": "qwen-mm-plugins-video-memory",

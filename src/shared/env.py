@@ -143,7 +143,22 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "DashScope compat URL",
         "override the DashScope OpenAI-compatible base URL",
     ),
-    ("SERPER_API_KEY", True, "Credentials & endpoints", "", "web_search / web_extractor / image_search"),
+    (
+        "QWEN_MM_SEARCH_BACKEND",
+        False,
+        "Credentials & endpoints",
+        "auto",
+        "text search backend (auto: serper > tavily > exa; or choose one)",
+    ),
+    (
+        "SERPER_API_KEY",
+        True,
+        "Credentials & endpoints",
+        "",
+        "Serper web_search / web_extractor and Serper-only image_search",
+    ),
+    ("EXA_API_KEY", True, "Credentials & endpoints", "", "Exa web_search / web_extractor"),
+    ("TAVILY_API_KEY", True, "Credentials & endpoints", "", "Tavily web_search / web_extractor"),
     ("SAM3_SERVER_URL", False, "Credentials & endpoints", "", "segmentation SAM3 server URL"),
     ("ASR_SERVER_URLS", False, "Credentials & endpoints", "", "self-hosted ASR fallback URLs (comma-separated)"),
     # Directories & limits

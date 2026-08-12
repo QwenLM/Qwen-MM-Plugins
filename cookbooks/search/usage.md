@@ -1,7 +1,7 @@
 # Cookbook — Qwen-MM-Plugins Search
 
-`qwen-mm-plugins-search` verifies facts that cannot be established from media alone. It uses Serper
-for Google web results, page extraction, and Google Lens reverse-image search.
+`qwen-mm-plugins-search` verifies facts that cannot be established from media alone. Web search and
+page extraction support Serper, Exa, and Tavily; reverse-image search always uses Serper Lens.
 
 Use [`core`](../core/usage.md) to save a clear image or video frame first. Use
 [`api`](../api/usage.md) when the task needs model-based OCR, grounding, or visual reasoning before
@@ -32,8 +32,12 @@ claude plugin install qwen-mm-plugins-core@qwen-mm-plugins    # save local views
 claude plugin install qwen-mm-plugins-search@qwen-mm-plugins
 ```
 
-Set `SERPER_API_KEY` through the installer's **Configure** action, an environment variable, or
-`~/.qwen-mm-plugins/config`. Environment variables take precedence. `core` itself needs no key.
+Set one or more of `SERPER_API_KEY`, `TAVILY_API_KEY`, and `EXA_API_KEY`. With
+`QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, text tools choose the first configured provider in
+that order. Set the selector to `serper`, `tavily`, or `exa` to pin a provider; an explicit choice
+does not fall back when its key is missing. `image_search` ignores the selector and always requires
+`SERPER_API_KEY`. Use the installer's **Configure** action, an environment variable, or
+`~/.qwen-mm-plugins/config`; environment variables take precedence. `core` itself needs no key.
 
 ---
 
