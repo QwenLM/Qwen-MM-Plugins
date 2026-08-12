@@ -1,4 +1,4 @@
-"""MCP tool: text web search via the public Serper (Google Search) API."""
+"""MCP tool: text web search through the configured search backend."""
 
 from __future__ import annotations
 
@@ -6,12 +6,13 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-SEARCH_PARAMS = {"gl": "us", "hl": "en", "location": "United States", "num": 10}
-
 
 class WebSearchArgs(BaseModel):
     queries: list[str] = Field(description="List of search queries to execute.")
-    api_key: Optional[str] = Field(default=None, description="Serper API key (defaults to SERPER_API_KEY).")
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API key for the selected search backend (defaults to its backend-specific environment key).",
+    )
 
 
 TOOL: dict[str, Any] = {
@@ -24,7 +25,7 @@ TOOL: dict[str, Any] = {
 
 
 def _format_results(docs: list[dict[str, Any]], start_id: int = 1) -> tuple[str, int]:
-    """Render Serper 'organic' docs; returns (text, next_id) with contiguous numbering."""
+    """Render normalized docs; returns (text, next_id) with contiguous numbering."""
     lines = []
     i = start_id
     for doc in docs:
@@ -41,7 +42,13 @@ def _format_results(docs: list[dict[str, Any]], start_id: int = 1) -> tuple[str,
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    from qwen_mm_plugins_search.serper import post_serper, resolve_serper_key
+    from qwen_mm_plugins_search.backends import (
+        backend_error,
+        missing_key_error,
+        resolve_api_key,
+        resolve_backend,
+        search_text,
+    )
     from shared.content import require_dep, text_error
 
     queries = arguments.get("queries", [])
@@ -50,15 +57,18 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     if err := require_dep("requests"):
         return err
 
-    api_key = resolve_serper_key(arguments)
+    backend = resolve_backend()
+    if error := backend_error(backend):
+        return text_error(error)
+
+    api_key = resolve_api_key(arguments, backend)
     if not api_key:
-        return text_error("no API key. Set SERPER_API_KEY or pass api_key.")
+        return text_error(missing_key_error(backend))
 
     all_results = []
     idx = 1
     for q in queries:
-        data = post_serper("search", {"q": q, **SEARCH_PARAMS}, api_key, max_retries=10)
-        docs = (data or {}).get("organic", [])
+        docs = search_text(q, backend, api_key)
         text, idx = _format_results(docs, idx)
         all_results.append(f"## Query: {q}\n{text}" if len(queries) > 1 else text)
 

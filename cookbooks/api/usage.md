@@ -1,49 +1,47 @@
 # Cookbook — Qwen-MM-Plugins API
 
-`qwen-mm-plugins-api` calls cloud models to *understand* media. Its tools are split by model family
-into three subpackages (the directory is the category):
-
-- **`vl/`** — Qwen-VL: `vision_chat`, `ocr`, `grounding` (image/video in, text or pixel boxes out).
-- **`omni/`** — Qwen-Omni audio/video: transcription, diarization, temporal grounding, event counting,
-  captioning, and music analysis. These tools reason over sampled frames and the embedded audio
-  together; the ASR tools send only the extracted audio track.
-- **`others/`** — `transcribe_audio` (Qwen3-ASR) and `segmentation` (self-hosted SAM3).
-
-For whole-video QA over videos around 30 minutes or longer, use
-[`video-memory`](../video-memory/usage.md) instead of the per-clip tools here. For local file reading
-and visualization (no cloud call), see [`core`](../core/usage.md).
+`qwen-mm-plugins-api` calls cloud models to understand images, video, and audio. Local file reading
+and visualization live in [`core`](../core/usage.md); web verification lives in
+[`search`](../search/usage.md).
 
 ---
 
 ## Tools
 
-**VL — `shared.api_openai`, DashScope**
-- `vision_chat` — call a VLM (default: `qwen3.7-plus`) for vision chat over image / video input
-- `ocr` — text recognition in images
-- `grounding` — object detection/localization, returning pixel bboxes (pairs with core's `draw_bbox`)
+### VL — Qwen-VL through an OpenAI-compatible endpoint
 
-**Omni — `shared.api_omni`, DashScope**
+- `vision_chat` — chat about one or more images or videos; accepts local paths and URLs through its
+  `images` and `videos` lists and supports `dry_run=true`
+- `ocr` — recognize text in a local image
+- `grounding` — locate objects in a local image; returns both pixel boxes and normalized `0–1000`
+  boxes and can optionally return an annotated preview
+
+Pass `grounding`'s `bbox_normalized` values—not `bbox_pixel`—to core's `draw_bbox`.
+
+### Omni — Qwen-Omni audio/video understanding
 
 | Tool | Use it for | Main output |
-|------|------------|-------------|
-| `omni_asr` | Plain speech transcription without timing | One continuous text transcript |
-| `omni_asr_timestamped` | Sentence- or word-level controllable ASR | Timestamped JSON segments and SRT |
-| `omni_multi_speaker_asr` | Speaker diarization — who said what and when | Speaker-labelled segments and SRT |
-| `omni_av_caption` | Describe what happens throughout a clip | Time spans with a description per span |
-| `omni_av_grounding` | Find **when** a natural-language event appears | Matching start/end times |
-| `omni_av_counting` | Count an event, object, or action | Total count and occurrence timestamps |
-| `omni_music_caption` | Analyze a complete music track | Structured music tags and a dense English caption |
+|---|---|---|
+| `omni_asr` | Plain speech transcription | Continuous transcript |
+| `omni_asr_timestamped` | Sentence- or word-level ASR | Timestamped JSON and optional SRT |
+| `omni_multi_speaker_asr` | Speaker diarization | Speaker-labelled segments and optional SRT |
+| `omni_av_caption` | Detailed audio/video review | Five-section Markdown report: storyline, visible text, speaker transcript, compliance alerts, and safety findings |
+| `omni_av_grounding` | Find when an event appears | Matching start/end times |
+| `omni_av_counting` | Count an event, object, or action | Count plus occurrence timestamps |
+| `omni_music_caption` | Analyze a complete music track | Structured music tags and an English caption |
 
-**Others**
-- `transcribe_audio` — speech recognition (default: `qwen3-asr`), output as SRT / text / JSON
-- `segmentation` — text-prompted segmentation (self-hosted SAM3)
+All Omni tools accept a local audio/video `file_path` or an HTTP(S)/OSS URL and support
+`dry_run=true`. The audio/video tools also expose `fps` and `max_pixels` where visual sampling is
+relevant.
 
-Every tool accepts a local `file_path` or an HTTP(S)/OSS URL and supports `dry_run=true` to preview the
-model request without calling the API. The Omni video tools also accept `fps` and `max_pixels`: raise
-them only when finer temporal or visual detail is worth the extra latency and token cost.
+### Other backends
 
-`grounding` is spatial — it answers **where** something is inside a still image. `omni_av_grounding` is
-temporal — it answers **when** something happens in a clip.
+- `transcribe_audio` — transcribe a local audio/video file with Qwen3-ASR (default
+  `qwen3-asr-flash`) or `ASR_SERVER_URLS`; outputs SRT, text, or JSON
+- `segmentation` — text-prompted segmentation of a local image through a self-hosted SAM3 server
+
+For exact schemas, check the installed Skill or MCP tool list; these groups intentionally do not
+share one universal input schema.
 
 ---
 
@@ -51,56 +49,65 @@ temporal — it answers **when** something happens in a clip.
 
 ```bash
 claude plugin marketplace add https://github.com/QwenLM/Qwen-MM-Plugins.git
-claude plugin install qwen-mm-plugins-core@qwen-mm-plugins
+claude plugin install qwen-mm-plugins-core@qwen-mm-plugins  # local reading/annotation
 claude plugin install qwen-mm-plugins-api@qwen-mm-plugins
 ```
+
+`core` is not a Python dependency of `api`, but it supplies the local reading, frame extraction, and
+annotation steps commonly used around API calls.
 
 ---
 
 ## Requirements and configuration
 
-| Requirement | Description |
-|-------------|-------------|
-| `DASHSCOPE_API_KEY` | Required — authenticates all Qwen-VL, Qwen-Omni, and Qwen3-ASR requests. |
-| `DASHSCOPE_BASE_URL` | Optional — overrides the OpenAI-compatible endpoint for a proxy or gateway. |
-| `QWEN_MM_AUDIO_RAW_B64` | Optional — set to `1` when `DASHSCOPE_BASE_URL` points at an OpenAI-spec server (e.g. vLLM): audio is sent as raw base64 instead of the DashScope-style `data:;base64,…` form, which such servers reject. Leave unset for DashScope. |
-| `SAM3_SERVER_URL` | Required only for `segmentation` (self-hosted SAM3 server). |
-| `ffmpeg` + `ffprobe` | Required for audio extraction, transcoding, and frame sampling/fitting. |
-| `OSS_AK`, `OSS_SK`, `OSS_ENDPOINT`, `OSS_BUCKET` | Optional — upload oversized local video and pass a signed URL instead of local frame sampling. Install the `oss` extra as well. |
+| Requirement | Used by |
+|---|---|
+| `DASHSCOPE_API_KEY` | VL, Omni, and the default Qwen3-ASR path |
+| `DASHSCOPE_BASE_URL` | VL and Omni OpenAI-compatible calls; it does not redirect native Qwen3-ASR |
+| `QWEN_MM_AUDIO_RAW_B64=1` | Self-hosted OpenAI-spec Omni servers that expect raw audio base64; leave unset for DashScope |
+| `ASR_SERVER_URLS` | Optional self-hosted Qwen3-ASR fallback; can be used without a DashScope key |
+| `SAM3_SERVER_URL` | Required only for `segmentation` |
+| ffmpeg + ffprobe | Local video sampling, audio extraction, fitting, and transcoding |
 
-Set variables in the environment or `~/.qwen-mm-plugins/config`. The guided installer can write the
-shared configuration and verify the system dependencies:
+Set configuration through the installer's **Configure** action, environment variables, or
+`~/.qwen-mm-plugins/config`; environment variables take precedence. `bash install.sh verify` checks
+system dependencies and reports the DashScope key, but it does not make live requests to every
+configured provider.
+
+### Optional OSS delivery
+
+OSS requires all of `OSS_AK`, `OSS_SK`, `OSS_ENDPOINT`, and `OSS_BUCKET`, plus the Python `oss2`
+dependency. The standard marketplace command above installs `[api]`, not `[api,oss]`; to use the OSS
+path, register an MCP command with both extras against the same released tag:
 
 ```bash
-bash install.sh configure
-bash install.sh verify
+claude mcp add qwen-mm-plugins-api-oss -- \
+  uvx --from \
+  "qwen-mm-plugins[api,oss] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-api-v<version>" \
+  qwen-mm-plugins-api
 ```
 
-The default Omni model is `qwen3.5-omni-plus`; pass `model` to an individual tool to override it.
+Do not keep this direct registration enabled alongside the marketplace API MCP server.
 
 ---
 
-## Video delivery and OSS
+## Video delivery
 
-Both video paths — `vision_chat` and the Omni tools — use the same switch: **if OSS is fully
-configured, the local video is uploaded and a signed URL is passed to the model for server-side
-sampling; otherwise it falls back to local frame extraction.** Configuring OSS lifts the local inline
-limits (250 frames / ~40 minutes for `vision_chat`) and lets the server sample long inputs — up to the
-model's server-side video-duration cap (e.g. qwen3.7-plus 2 h, Qwen3.5-Omni 1 h). A local file longer
-than that cap skips the upload and degrades to local frame sampling (VL: frames; Omni: frames + audio)
-— sparse for very long clips, but it still returns a result.
+Remote HTTP(S)/OSS URLs are passed to the model for server-side fetching. Local videos follow two
+different routes:
 
-Without OSS:
+- **VL (`vision_chat`)** — with complete OSS configuration and the `oss` extra, a video within the
+  model's duration cap is uploaded and passed as a signed URL. Otherwise it is sampled into local
+  inline frames, capped at 250 total media items.
+- **Omni** — first transcodes the video to fit one inline media item. If it cannot fit, it uses OSS
+  when available; otherwise it falls back to sampled frames plus a fitted audio track. A video over
+  the model's server-side duration cap goes directly to the frames + audio route. Extremely long
+  audio can still exceed the inline budget, so this fallback is not an unlimited transport.
 
-- `vision_chat` samples frames locally, bounded by the 250-frame / ~40-minute inline limit; for longer
-  videos use core's `read_video` or `video-memory`.
-- The Omni tools fit one inline media item to the 10 MB base64 limit: audio that fits is sent
-  unchanged, otherwise it is downmixed to 16 kHz mono (duration-fitted MP3 when needed); a short video
-  is resized/transcoded to fit; a larger video falls back to sampled frames plus the full audio track,
-  thinning frames until the request fits.
-- An HTTP(S)/OSS URL is always fetched server-side and skips the local inline path.
+`dry_run=true` previews routing without uploading or calling the model.
 
-`dry_run=true` never triggers a network upload — the OSS branch is shown as a placeholder.
+For whole-video QA over long recordings, use [`video-memory`](../video-memory/usage.md) to locate
+candidate segments, then inspect a narrow interval with core's `read_video`.
 
 ---
 
@@ -110,45 +117,27 @@ Without OSS:
 @receipt.jpg
 OCR this receipt and total the line items.
 
-@street.jpg
-Draw a box around every car in the scene.
-
 @meeting.mp4
 Transcribe this meeting with speaker labels and sentence-level timestamps. Return SRT.
 
 @demo.mp4
-Describe the clip over time, then locate every segment where the presenter opens the settings panel.
+Describe the clip over time, then locate when the presenter first opens the settings panel.
 
 @workout.mp4
 Count every completed push-up and list the timestamp of each repetition.
-
-@track.wav
-Analyze the genre, moods, instruments, key, time signature, and vocal profile. Also write a compact
-English caption that could be used as a music-generation prompt.
-```
-
-The tools work the same in Chinese — the prompt language mainly steers the wording of the answer:
-
-```text
-@会议录音.m4a
-把这段录音转成文字，不需要时间戳。
-
-@访谈.mp4
-区分说话人并逐句标注时间，输出 SRT 字幕。
-
-@产品演示.mp4
-按时间顺序描述视频内容，并找出讲解人第一次展示价格页面的时间段。
-
-@监控.mp4
-数一下画面里一共出现了几辆电动车，并列出每次出现的时间点。
-
-@片头音乐.mp3
-分析这首曲子的风格、情绪、乐器、调性和节拍，再写一段可用于音乐生成的英文提示词。
 ```
 
 ---
 
-## Cases
+## Shared Case: local views, cloud grounding, and web verification
+
+This Codex session locates cakes, annotates the image, identifies a photographed place, and verifies
+the result on the web. The API part uses grounding and vision reasoning; local file/annotation work
+belongs to [`core`](../core/usage.md#shared-case-local-views-cloud-grounding-and-web-verification),
+and external verification belongs to
+[`search`](../search/usage.md#shared-case-local-views-cloud-grounding-and-web-verification).
+
+▶ **[View the shared detailed trace](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen-MM-Plugins/asserts/core/case-core-codex-api-use.html)**
 
 Each case below was recorded against a live DashScope endpoint: the **Call** shows the exact
 arguments passed to the tool. Every tool returns the same shape — one JSON block carrying the
@@ -402,3 +391,11 @@ omni_music_caption(
 ```text
 A gentle and reflective acoustic folk piece featuring a simple, repeating piano melody accompanied by the bright, percussive tones of a xylophone. An acoustic guitar enters with warm, strummed chords, creating an intimate and calming atmosphere. The arrangement is sparse and organic, focusing on the natural timbres of the instruments. A soft, clear female voice speaks conversationally over the music, adding a personal and narrative layer to the serene soundscape.
 ```
+> The trace predates the capability split, so API calls appear under the old
+> `qwen_mm_plugins_core` namespace. Today `grounding`, `ocr`, and `vision_chat` are provided by
+> `qwen-mm-plugins-api`; the recorded inputs and outputs remain representative of the shared
+> workflow.
+
+<p align="center">
+  <img src="../core/assets/codex-api-use.png" alt="Shared Core, API, and Search workflow" width="520">
+</p>

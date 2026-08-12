@@ -1,11 +1,11 @@
 ---
 name: qwen-mm-plugins-search
-description: Web and reverse-image search MCP tools (Serper) for confirming facts — web_search (find facts), web_extractor (read a page in depth), image_search (reverse-search a frame to identify an entity). Use to verify anything you cannot confirm from the media alone.
+description: Web search and page extraction MCP tools (Serper, Exa, or Tavily) plus Serper Lens reverse-image search for confirming facts — web_search (find facts), web_extractor (read a page in depth), image_search (reverse-search a frame to identify an entity). Use to verify anything you cannot confirm from the media alone.
 ---
 
 # Qwen-MM-Plugins Search
 
-You have `qwen-mm-plugins-search` MCP tools available. They call the Serper API to look things up on the web. Needs `SERPER_API_KEY`.
+You have `qwen-mm-plugins-search` MCP tools available. With `QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, `web_search` and `web_extractor` choose the first configured key in this order: `SERPER_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`. Set the selector to `serper`, `tavily`, or `exa` to pin a backend; explicit selection does not fall back when its key is missing. Independently of that selection, `image_search` always uses Serper Lens and reads `SERPER_API_KEY`.
 
 Check the `qwen-mm-plugins-search` tools in your tool list for full schemas and parameters.
 

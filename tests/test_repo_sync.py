@@ -3,8 +3,7 @@
 - The video-memory build pipeline keeps byte-identical copies of schema.py and
   embeddings.py (it runs as flat modules, separate from the installed server
   package). These must not diverge.
-- Both server packages re-export mcp_framework.__version__ (the single distribution
-  version source); this guards that the re-export stays wired.
+- Capability names, versions and MCP launch specs stay aligned across harness manifests.
 """
 
 import json
@@ -31,26 +30,13 @@ def test_build_copies_stay_identical(fname):
     )
 
 
-def test_all_packages_share_one_version():
-    import mcp_framework
-    import qwen_mm_plugins_core
-    import qwen_mm_plugins_video_memory
-
-    assert qwen_mm_plugins_core.__version__ == mcp_framework.__version__, (
-        "qwen_mm_plugins_core must re-export mcp_framework.__version__ (the single version source)."
-    )
-    assert qwen_mm_plugins_video_memory.__version__ == mcp_framework.__version__, (
-        "qwen_mm_plugins_video_memory must re-export mcp_framework.__version__ (the single version source)."
-    )
-
-
 # ── manifest sync across the four harness formats + marketplace (F2) ──
 # Each capability hand-maintains .claude-plugin / .codex-plugin / .qoder-plugin / .mcp.json.
 # These guard that name, version, and the uvx launch spec stay in agreement across a capability's
 # own harness manifests (description is intentionally per-harness display text and is NOT checked).
-# Versions are PER-CAPABILITY and independent of the distribution mcp_framework.__version__: bump a
-# cap's version when its plugin layer (skill / manifest / .mcp.json launch spec) changes, so users'
-# `plugin update` re-fetches it. Server-only Python changes ride the uvx `@main` ref and need no bump.
+# Versions are PER-CAPABILITY and independent of the distribution mcp_framework.__version__. Every
+# released code/skill/manifest change bumps that capability and moves its immutable tag; no published
+# launch spec follows main.
 
 _CAPS_DIR = _ROOT / "src" / "capabilities"
 
@@ -85,6 +71,34 @@ def test_manifest_name_and_version_agree(cap):
         f"{cap}: plugin version differs across its harness manifests: {versions}. "
         "Bump a capability's claude/codex/qoder manifests together."
     )
+
+
+@pytest.mark.parametrize("cap", _capabilities())
+def test_manifests_bundle_every_component_the_capability_ships(cap):
+    """A plugin update must replace the skill and MCP together, not only bump metadata."""
+    cap_dir = _CAPS_DIR / cap
+    manifests = {
+        "claude": _load(cap, ".claude-plugin/plugin.json"),
+        "codex": _load(cap, ".codex-plugin/plugin.json"),
+        "qoder": _load(cap, ".qoder-plugin/plugin.json"),
+    }
+
+    for label, manifest in manifests.items():
+        assert manifest.get("skills"), f"{cap}: {label} manifest omitted the capability skill"
+
+    has_server = (cap_dir / ".mcp.json").exists()
+    if has_server:
+        assert manifests["claude"].get("mcpServers"), f"{cap}: Claude manifest omitted its MCP"
+        assert manifests["codex"].get("mcpServers") == "./.mcp.json", (
+            f"{cap}: Codex manifest must install the same capability's .mcp.json"
+        )
+        assert manifests["qoder"].get("mcp") == ".mcp.json", (
+            f"{cap}: Qoder manifest must install the same capability's .mcp.json"
+        )
+    else:
+        assert "mcpServers" not in manifests["claude"], f"{cap}: unexpected Claude MCP entry"
+        assert "mcpServers" not in manifests["codex"], f"{cap}: unexpected Codex MCP entry"
+        assert "mcp" not in manifests["qoder"], f"{cap}: unexpected Qoder MCP entry"
 
 
 @pytest.mark.parametrize("cap", _server_capabilities())

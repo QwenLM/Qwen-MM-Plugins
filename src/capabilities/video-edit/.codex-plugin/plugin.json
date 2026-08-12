@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-video-edit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Editing-director skill for real-footage video: taste contract + looks library, footage craft (pacing/beat-sync/sound/grading), HyperFrames pipeline handoff, verified measurement scripts, evidence-based independent review.",
   "skills": "./skill",
   "mcpServers": "./.mcp.json"

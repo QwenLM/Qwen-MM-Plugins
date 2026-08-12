@@ -11,8 +11,9 @@ A pure-tools MCP server. Each module under ``vl/`` / ``omni/`` / ``others/`` exp
 Local file reading/visualization lives in ``core``; fact-finding/confirmation lives in ``search``.
 """
 
-from mcp_framework import __version__ as __version__
 from mcp_framework import build_registry
+
+__version__ = "1.0.1"
 
 # Auto-discover tools from the three model-family subpackages.
 SPECS, get_handler, list_tools = build_registry(__name__, ["vl", "omni", "others"])

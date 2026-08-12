@@ -81,14 +81,13 @@ Copy `src/capabilities/example/` to `src/capabilities/<yourname>/`, rename `qwen
    ```toml
    where = [..., "src/capabilities/<yourname>"]
    ```
-5. `.claude-plugin/marketplace.json` — add an entry under `plugins` (`name: qwen-mm-plugins-<yourname>` + `source: ./src/capabilities/<yourname>`), and write a `.claude-plugin/plugin.json` for the plugin directory (skill + inline `mcpServers`):
-   ```json
-   { "name": "qwen-mm-plugins-<yourname>", "source": "./src/capabilities/<yourname>" }
-   ```
-   To make it installable under codex, also add a `.codex-plugin/plugin.json` + `.mcp.json`. See `example`.
+5. Add the initial version to `plugin-versions.json` and a matching tag-pinned `git-subdir` entry to
+   `.claude-plugin/marketplace.json`. Copy the three harness manifests from an existing capability;
+   server capabilities also carry `.mcp.json`. Run `scripts/check_manifests.py`, then follow
+   [Plugin releases](releasing.md) for the first tag.
 
 `__main__.py` is **copied verbatim** from `src/capabilities/example/` — it infers the import name from the directory name and contains no per-server literals.
-A skill-only capability (no server package) needs only `skill/`, and simply omits `mcpServers` from `plugin.json` (no `.codex-plugin/.mcp.json` needed either).
+A skill-only capability omits `mcpServers` and `.mcp.json`, but keeps the three harness manifests.
 
 ## Reusing code from the shared library
 

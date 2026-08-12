@@ -115,12 +115,8 @@ def b64_len(n_bytes: int) -> int:
     return 4 * ((n_bytes + 2) // 3)
 
 
-def _data_url(source: str, default_mime: str, *, omit_mime: bool = False) -> str:
-    """Base64 ``data:`` URL for a local file, refusing one that cannot fit the endpoint's cap.
-
-    ``omit_mime`` emits the bare ``data:;base64,`` form the DashScope docs use for ``input_audio``,
-    where the media type is carried by the part's own ``format`` field instead.
-    """
+def _local_b64(source: str) -> tuple[Path, str]:
+    """Read and base64-encode a local file, refusing one that cannot fit the endpoint's cap."""
     path = Path(source)
     raw = path.read_bytes()
     encoded_len = b64_len(len(raw))
@@ -130,9 +126,19 @@ def _data_url(source: str, default_mime: str, *, omit_mime: bool = False) -> str
             f"over the {OMNI_MAX_B64_BYTES / 1e6:.0f} MB cap the endpoint applies to an inline media "
             "item. Transcode it smaller, pass an http(s) URL, or configure OSS_* so it can be uploaded."
         )
+    return path, base64.b64encode(raw).decode("ascii")
+
+
+def _data_url(source: str, default_mime: str, *, omit_mime: bool = False) -> str:
+    """Base64 ``data:`` URL for a local file, refusing one that cannot fit the endpoint's cap.
+
+    ``omit_mime`` emits the bare ``data:;base64,`` form the DashScope docs use for ``input_audio``,
+    where the media type is carried by the part's own ``format`` field instead.
+    """
+    path, encoded = _local_b64(source)
     mime, _ = mimetypes.guess_type(path.name)
     prefix = "" if omit_mime else (mime or default_mime)
-    return f"data:{prefix};base64,{base64.b64encode(raw).decode('ascii')}"
+    return f"data:{prefix};base64,{encoded}"
 
 
 def omni_video_part(source: str, *, fps: float = DEFAULT_OMNI_FPS, max_pixels: int = DEFAULT_OMNI_MAX_PIXELS) -> dict:
@@ -172,16 +178,16 @@ def omni_audio_part(source: str, *, audio_format: str | None = None) -> dict:
 
     That wrapper is DashScope-specific: OpenAI's spec — and vLLM, which implements it — expects
     ``data`` to be RAW base64. Against a self-hosted server the wrapped form fails base64 decoding
-    ("Incorrect padding"), so ``QWEN_MM_AUDIO_RAW_B64=1`` strips it. The size guard in ``_data_url``
-    still runs either way.
+    ("Incorrect padding"), so ``QWEN_MM_AUDIO_RAW_B64=1`` sends the encoded bytes directly. Both
+    forms go through the same local-file size guard.
     """
     fmt = (audio_format or Path(source).suffix.lstrip(".") or "wav").lower()
     if is_url(source):
         data = source
+    elif (get_env("QWEN_MM_AUDIO_RAW_B64") or "").lower() in ("1", "true", "yes", "on"):
+        _, data = _local_b64(source)
     else:
         data = _data_url(source, "audio/wav", omit_mime=True)
-        if (get_env("QWEN_MM_AUDIO_RAW_B64") or "").lower() in ("1", "true", "yes", "on"):
-            data = data.split(",", 1)[1]
     return {"type": "input_audio", "input_audio": {"data": data, "format": fmt}}
 
 

@@ -6,11 +6,20 @@ sane value or fall back to the default, never a ValueError that aborts the whole
 the protocol handshake. These lock that in.
 """
 
+from pathlib import Path
+
 import pytest
+from scripts.gen_env_docs import check, load_config_fields
 
 from shared.env import _int_env
 
 _VAR = "QMP_TEST_INT_ENV"
+_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_configuration_reference_matches_config_catalog():
+    docs = [_ROOT / "docs/en/configuration.md"]
+    assert check(load_config_fields(), docs) == 0
 
 
 def test_plain_int(monkeypatch):
