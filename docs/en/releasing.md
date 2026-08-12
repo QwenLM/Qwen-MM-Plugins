@@ -1,51 +1,62 @@
-# Plugin versions and releases
+# Plugin releases
 
-Qwen-MM-Plugins has one Python distribution but independent plugin releases. A plugin version covers
-its skill, manifests, MCP configuration, server code, and the shared code visible at its Git tag.
+**English** · [中文](../zh/releasing.md)
+
+Qwen-MM-Plugins publishes one Python distribution but versions each capability independently. A
+capability release covers its Skill, manifests, MCP configuration, server code, and the shared code
+visible at that tag.
 
 ## Version model
 
-- [`plugin-versions.json`](../../plugin-versions.json) is the distribution and latest-plugin index.
-- Published tags use `qwen-mm-plugins-<cap>-v<semver>`.
-- Marketplace entries and `uvx --from` pin the same tag; `main` is development-only.
-- The wheel contains all server packages, but each plugin starts its own tagged `uvx` environment,
-  so releasing `search` does not upgrade an installed `core`.
-- `mcp_framework.__version__` is the one-distribution/release-train version. Each server package's
-  `__version__` is its plugin version; they are expected to diverge after independent releases.
+| Version | Scope | Source of truth |
+|---|---|---|
+| Plugin version | One capability | [`plugin-versions.json`](../../plugin-versions.json) → `plugins.<cap>` |
+| Distribution version | Repository snapshot and shared Python distribution | `distribution_version` in the same file |
+| Marketplace metadata version | Catalog snapshot; not a claim that every plugin changed | Distribution version |
+| Plugin tag | Immutable source snapshot for one capability | `qwen-mm-plugins-<cap>-v<semver>` |
 
-Use SemVer per capability: patch for compatible fixes, minor for new tools/backends or additive
-behavior, and major for breaking tool schemas, removed tools, or incompatible configuration.
+Marketplace entries and MCP `uvx --from` specs pin the same plugin tag. `main` is development-only.
+Although a tag contains the whole distribution, each plugin launches its own tagged environment;
+releasing `search` does not update an installed `core`.
 
-## Prepare a release
+Use SemVer per capability: patch for compatible fixes, minor for additive tools or behavior, and
+major for breaking schemas, removed tools, or incompatible configuration. Shared runtime changes
+require releases for every affected capability.
 
-Prepare every capability affected by the code or skill change:
+## Release checklist
 
-```bash
-git fetch origin --tags --prune
-python scripts/prepare_plugin_release.py search 1.1.0 --distribution-version 1.0.2
-python scripts/check_manifests.py
-python -m pytest tests/
-```
+1. Prepare every affected capability on the PR branch:
 
-The script updates the index, manifests, MCP refs, server version, marketplace, and installer. It
-does not commit, tag, or push. Because every tag builds the same distribution, its version advances
-separately; capabilities sharing one release commit use the same `--distribution-version`.
+   ```bash
+   git fetch origin --tags --prune
+   python3 scripts/prepare_plugin_release.py search 1.1.0 --distribution-version 1.0.2
+   python3 scripts/check_manifests.py
+   python3 -m pytest -m "not reachability" tests/
+   ```
 
-Commit code and release metadata together. After CI passes, tag that exact commit:
+   The script updates release metadata and launch refs; it does not commit, tag, or push. When
+   several capabilities share one release commit, prepare them with the same distribution version.
 
-```bash
-git tag -a qwen-mm-plugins-search-v1.1.0 -m "qwen-mm-plugins-search 1.1.0"
-git push origin <release-branch>
-git push origin qwen-mm-plugins-search-v1.1.0
-```
+2. Commit the code and generated release metadata together, open the PR, and wait for it to merge.
 
-Never move a published tag; publish a patch version instead.
+3. Tag the exact commit now present on `origin/main`:
 
-## Weekly release train
+   ```bash
+   git fetch origin main --tags
+   git tag --list qwen-mm-plugins-search-v1.1.0   # must print nothing
+   git show origin/main:plugin-versions.json     # confirm the intended release is present
+   git tag -a qwen-mm-plugins-search-v1.1.0 origin/main \
+     -m "qwen-mm-plugins-search 1.1.0"
+   git push origin qwen-mm-plugins-search-v1.1.0
+   ```
 
-Batch ready changes roughly weekly; skip empty weeks and release critical fixes immediately.
-Multiple capability tags may share a commit. Shared runtime changes require bumping every affected
-capability.
+   Tagging after merge keeps releases on the main history even when GitHub uses squash or rebase
+   merges. Never move a published tag; issue a patch release instead.
 
-The `example` capability is a development template and is intentionally absent from the stable
-index and marketplace.
+4. Smoke-test the published tag using the [installation guide](installation.md).
+
+## Release cadence
+
+Batch ready changes roughly weekly, skip empty weeks, and release critical fixes when needed.
+Multiple capability tags may point to the same merged commit. The `example` capability is a
+development template and is not published.

@@ -2,59 +2,45 @@
 
 [English](../en/testing.md) · **中文**
 
-`python3 -m pytest tests/`, 统一进行测试。
+测试按行为分层，不维护容易过期的测试文件清单：
 
-对于新插件，不需要显式安装， `conftest.py` 把 `src/` 和各 `src/capabilities/<cap>/` 加进 `sys.path` 并自动发现所有 server 包，`import qwen_mm_plugins_<yourname>` 即可, fixtures(`sample_image` / `sample_video`)也能复用。
+- **单元与 handler 测试**覆盖 schema、工具发现、数据转换和错误路径。
+- **协议测试**通过真实 MCP client 执行 initialize → `tools/list` → `tools/call`。
+- **仓库一致性检查**保护重复 manifest、发布 ref、包版本和有意复制的源码。
+- **连通性测试**调用外部服务，默认不运行。
 
-## 现有测试
+`tests/conftest.py` 会把 `src/` 和包含 server 的能力目录加入 `sys.path`，因此新增 MCP server
+无需先构建 wheel。纯 Skill 能力测试 Skill 与 manifest 约定，不测试不存在的 server。
 
-- `test_tools.py` —— 测试core server：in-process 调 `handle()`(工具发现 / schema / read_image / read_video / budget / 时间戳回归)+ 用 MCP SDK 的 stdio client 走完整 initialize → tools/list → tools/call。
-- `test_mcp_framework.py` —— 共享框架：`tool_schema` / `build_registry` 的 schema 变换与工具发现。
-- `test_api_clients.py` —— 共享网络层(`shared.api_openai` / `api_dashscope` / `retry`)。
-- `test_video_memory.py` —— 测试video memory server：没建 graph_memory.json 时返回 isError。
-- `test_build_merge.py` —— video-memory 构建：`build_graph.merge_chunks`。
-- `test_video_edit.py` —— video-edit测试：只测 schema/handler。
-- `test_example.py` —— example 能力的示例工具：只测 schema/handler。
-- `test_blender.py` / `test_freecad.py` —— thin-client 能力(blender / freecad)：schema/handler 表面、无 app 监听时优雅降级、MCP stdio 桥。
-- `test_launch_autoinstall.py` —— blender/freecad `--launch-app` 背后的免 root app 自动下载与失败诊断(hermetic;下载/解压环节 monkeypatch)。
-- `test_renderers.py` / `test_visualize_real.py` —— `visualize()` 渲染测试。
-- `test_repo_sync.py` —— video-memory build 副本一致性，以及逐插件 release 索引、manifest、
-  marketplace tag、MCP ref 与安装器版本的一致性。
+## 命令
 
-## 新插件要写哪几层
-
-按插件「产出什么」逐层加,最少写第 1 层:
-
-**1. Smoke test(必写)** `tests/test_<yourname>.py`。本地工具照 `test_example.py`,远程 / 需外部服务的照 `test_video_edit.py`(只测表面,不 live 调用):
-
-```python
-import qwen_mm_plugins_<yourname> as m
-
-def test_lists_tools():
-    assert {t["name"] for t in m.list_tools()} == {"tool_a", "tool_b"}
-
-def test_handler():
-    assert m.get_handler("tool_a")({"arg": "x"})[0]["type"] == "text"   # 或 image
-```
-
-**2. 渲染素材(工具产出图 / 文本时)** —— 小素材进 `tests/assets/` + 参数化(照 `test_renderers.py`),大素材进 `tests/assets/real/`(照 `test_visualize_real.py`);缺依赖 skip 不 fail。
-
-**3. 协议层(server 有 stdio 行为时)** —— 用 conftest 的 `mcp_call()` 把 server 当子进程拉起走真实 MCP client(参考 `test_video_memory.py`)。
-
-**4. 防漂移守卫** —— 在 `test_repo_sync.py` 加 byte-identical 断言(参考 video-memory 的 build 副本)。
-
-## 跑
+运行 CI 使用的离线检查：
 
 ```bash
-python3 -m pytest tests/                 # 全套(缺依赖自动 skip)
-python3 -m pytest tests/test_<yourname>.py -v
-ruff format . && ruff check . --fix      # 提交前
+python3 -m pytest -m "not reachability" tests/
+python3 scripts/check_manifests.py
+ruff format --check .
+ruff check .
 ```
 
-## 速查
+只有在明确需要真实请求并已配置凭证时，才运行服务连通性测试：
 
-- [ ] `tests/test_<yourname>.py` smoke —— 本地参考 `test_example.py`,远程参考 `test_video_edit.py`
-- [ ] 有渲染 / 产出 → 素材进 `tests/assets/`(小)或 `real/`(大)+ 参数化
-- [ ] server 有协议行为 → `mcp_call` 端到端,参考 `test_video_memory.py`
-- [ ] 刻意重复文件 → `test_repo_sync.py` 加guard
-- [ ] `pytest tests/` 全绿、`ruff check .` 干净
+```bash
+QWEN_MM_RUN_REACHABILITY=1 python3 -m pytest -m reachability tests/
+```
+
+修改 shell 脚本时还要运行 `bash -n <script>`。开发过程中先运行相关测试模块或使用
+`-k <pattern>`，完成后再运行完整离线测试。
+
+## 测试范围
+
+根据能力实际包含的组件编写测试：
+
+1. 每个 MCP server 都需要 schema/发现以及 handler 成功和错误路径测试。
+2. server 存在特殊启动、streaming 或 transport 行为时，增加协议测试。
+3. reader 或 renderer 需要代表性输入时，加入小型确定性 fixture。大型可选样本放在
+   `tests/assets/real/`，缺少依赖时应清晰跳过。
+4. 两份文件或 manifest 字段必须同步时，增加 anti-drift assertion。
+5. 纯 Skill 修改应验证 frontmatter、引用资源和 manifest 打包。
+
+默认离线测试不得依赖凭证、GUI 应用、GPU 硬件或公网连通性。

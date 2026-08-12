@@ -2,13 +2,14 @@
 """Generate the Markdown environment-variable tables from `src/shared/env.py`.
 
 CONFIG_FIELDS in src/shared/env.py is the one declarative catalog of user-settable config vars
-(key, secret, group, default, description). This script renders it as grouped Markdown tables on
-stdout, for manual pasting into CLAUDE.md / docs — so the doc tables stop drifting from the code.
+(key, secret, group, default, description). This script renders grouped Markdown tables for
+capability-specific references. Overview docs intentionally list only common settings; use
+``--check`` only for a document that is intended to enumerate the complete catalog.
 
 Usage:
     python3 scripts/gen_env_docs.py                 # print the Markdown tables to stdout
-    python3 scripts/gen_env_docs.py --check [FILE…] # verify each FILE mentions every variable
-                                                    # (default: CLAUDE.md); exit 1 on gaps
+    python3 scripts/gen_env_docs.py --check FILE…   # verify each full reference mentions every
+                                                    # variable; exit 1 on gaps
 
 Stdlib-only; reads CONFIG_FIELDS via `ast` (no import of shared.env, no side effects).
 """
@@ -22,8 +23,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ENV_PY = REPO_ROOT / "src" / "shared" / "env.py"
-DEFAULT_CHECK_FILES = [REPO_ROOT / "CLAUDE.md"]
-
 # (key, secret, group, default, description) — mirrors the CONFIG_FIELDS comment in env.py.
 Field = tuple[str, bool, str, str, str]
 
@@ -92,10 +91,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--check",
-        nargs="*",
+        nargs="+",
         metavar="FILE",
         default=None,
-        help="verify each FILE mentions every CONFIG_FIELDS variable (default: CLAUDE.md); exit 1 on gaps",
+        help="verify each full-reference FILE mentions every CONFIG_FIELDS variable; exit 1 on gaps",
     )
     args = parser.parse_args(argv)
 
@@ -103,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.check is None:
         sys.stdout.write(render(fields))
         return 0
-    docs = [Path(p).resolve() for p in args.check] or DEFAULT_CHECK_FILES
+    docs = [Path(p).resolve() for p in args.check]
     return check(fields, docs)
 
 
