@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from shared.env import CONFIG_FIELDS
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -33,10 +35,30 @@ def test_config_spec_lists_search_backend_selector_and_keys():
     result = _bash('printf "%s\\n" "${CONFIG_SPEC[@]}"')
     assert result.returncode == 0, result.stderr
     rows = result.stdout.splitlines()
-    assert any(row.startswith("QWEN_MM_SEARCH_BACKEND|0|cred|auto|") for row in rows)
-    assert any(row.startswith("SERPER_API_KEY|1|cred||") for row in rows)
-    assert any(row.startswith("EXA_API_KEY|1|cred||") for row in rows)
-    assert any(row.startswith("TAVILY_API_KEY|1|cred||") for row in rows)
+    assert any(row.startswith("QWEN_MM_SEARCH_BACKEND|0|search|auto|") for row in rows)
+    assert any(row.startswith("SERPER_API_KEY|1|search||") for row in rows)
+    assert any(row.startswith("TAVILY_API_KEY|1|search||") for row in rows)
+    assert any(row.startswith("EXA_API_KEY|1|search||") for row in rows)
+
+
+def test_config_spec_mirrors_shared_catalog():
+    result = _bash('printf "%s\\n" "${CONFIG_SPEC[@]}"')
+    assert result.returncode == 0, result.stderr
+    actual = [row.split("|", 4) for row in result.stdout.splitlines()]
+    group_tags = {
+        "Media APIs & endpoints": "services",
+        "Search providers": "search",
+        "Runtime paths & limits": "runtime",
+        "Video-memory": "memory",
+        "OSS storage (serve large media by URL)": "oss",
+        "Blender / FreeCAD hosts": "hosts",
+        "edu-agent (Node / headless Chromium)": "edu",
+    }
+    expected = [
+        [key, str(int(secret)), group_tags[group], default, description]
+        for key, secret, group, default, description in CONFIG_FIELDS
+    ]
+    assert actual == expected
 
 
 def test_cap_spec_uses_file_url_for_local_checkout(tmp_path):

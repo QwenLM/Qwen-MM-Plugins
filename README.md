@@ -65,11 +65,13 @@ MCP tool.
 - Video, document, browser, Blender, and FreeCAD workflows may need system applications.
 
 Run the installer's **Configure** and **Verify** actions to set credentials and check dependencies.
-See the [installation guide](docs/en/installation.md#dependencies) for the full reference.
+See [Installation](docs/en/installation.md#dependencies) for prerequisites and the
+[configuration reference](docs/en/configuration.md) for every setting.
 
 ## Documentation
 
 - [Installation](docs/en/installation.md)
+- [Configuration](docs/en/configuration.md)
 - [Contributing](CONTRIBUTING.md) · [Local development](docs/en/local_development.md)
 - [Add a capability](docs/en/how_to_add_new_capability.md) · [Testing](docs/en/testing.md)
 

@@ -118,23 +118,25 @@ Native Windows has not been validated.
 ## Dependencies
 
 `uvx` installs each capability's Python dependencies into an isolated cache. The remaining inputs
-are credentials and system applications.
+are service settings and system applications.
 
-### Credentials
+### Common service settings
+
+These are the settings most users need for cloud capabilities. The
+[configuration reference](configuration.md) covers every setting available through **Configure**.
 
 | Variable | Used by |
 |---|---|
 | `DASHSCOPE_API_KEY` | Cloud media APIs, generation, and video-memory builds |
-| `QWEN_MM_SEARCH_BACKEND` | Optional text-search override: `serper`, `tavily`, `exa`, or `auto` |
 | `SERPER_API_KEY` | Serper web search/extraction and all reverse-image search |
-| `EXA_API_KEY` | Exa web search and extraction |
 | `TAVILY_API_KEY` | Tavily web search and extraction |
+| `EXA_API_KEY` | Exa web search and extraction |
 
 Native `core` file reading needs no API key. Set values through the installer's **Configure** action,
 the shell environment, or `~/.qwen-mm-plugins/config`; environment variables take precedence.
-With the selector unset or set to `auto`, text search uses the first configured key in this fixed
-order: Serper, Tavily, Exa. An explicitly selected provider is strict and reports a missing-key
-error instead of falling back.
+With `QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, text search uses the first configured key in
+this fixed order: Serper, Tavily, Exa. Setting it to `serper`, `tavily`, or `exa` pins that provider;
+a missing key then raises an error instead of falling back.
 `image_search` always uses Serper Lens, independently of `QWEN_MM_SEARCH_BACKEND`, and raises an
 error when `SERPER_API_KEY` is unavailable.
 
@@ -151,13 +153,8 @@ error when `SERPER_API_KEY` is unavailable.
 Run `bash install.sh verify` or `<entry> --check-system` to see what the selected capability needs.
 Capability-specific prerequisites are documented in its Skill and cookbook.
 
-### Optional configuration
+### Complete configuration
 
-The **Configure** action covers provider endpoints, timeouts, cache paths, video-memory files, OSS,
-and Blender/FreeCAD host settings. The canonical field list and defaults live in
-[`src/shared/env.py`](../../src/shared/env.py). Capability cookbooks document the settings they use;
-maintainers can render the complete catalog with `python3 scripts/gen_env_docs.py`.
-
-One compatibility toggle is intentionally outside that generated list:
-`QWEN_MM_AUDIO_RAW_B64=1` sends Omni `input_audio.data` as raw base64 for OpenAI-spec servers such
-as vLLM. The default remains DashScope's `data:;base64,<payload>` form.
+See the [configuration reference](configuration.md) for provider endpoints, search routing,
+timeouts, cache paths, video-memory files, OSS, application hosts, and advanced compatibility
+switches.

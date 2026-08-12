@@ -110,23 +110,25 @@ wsl --install -d Ubuntu
 
 ## 依赖
 
-`uvx` 会把各能力的 Python 依赖安装到隔离缓存中。其余输入主要是服务凭证和系统程序。
+`uvx` 会把各能力的 Python 依赖安装到隔离缓存中。其余输入主要是服务配置和系统程序。
 
-### 服务凭证
+### 常用服务配置
+
+下表只列出大多数云端能力首次使用时需要的配置。**Configure** 中的所有设置见
+[配置参考（英文）](../en/configuration.md)。
 
 | 变量 | 用途 |
 |---|---|
 | `DASHSCOPE_API_KEY` | 云端媒体 API、内容生成和 video-memory 构建 |
-| `QWEN_MM_SEARCH_BACKEND` | 可选的文本搜索覆盖项：`serper`、`tavily`、`exa` 或 `auto` |
 | `SERPER_API_KEY` | Serper 网页搜索/抽取，以及所有反向图像搜索 |
-| `EXA_API_KEY` | Exa 网页搜索和页面抽取 |
 | `TAVILY_API_KEY` | Tavily 网页搜索和页面抽取 |
+| `EXA_API_KEY` | Exa 网页搜索和页面抽取 |
 
 本地 `core` 文件读取无需 API key。可通过安装器的 **Configure**、shell 环境变量或
 `~/.qwen-mm-plugins/config` 设置；环境变量优先。
-未设置该变量或设为 `auto` 时，文本搜索按固定顺序选择第一个已配置 key 的后端：
-Serper、Tavily、Exa。显式指定后端时会严格使用该后端；如果缺少对应 key，则直接报错，
-不会回退。
+未设置 `QWEN_MM_SEARCH_BACKEND` 或设为 `auto` 时，文本搜索按固定顺序选择第一个已配置
+key 的后端：Serper、Tavily、Exa。设为 `serper`、`tavily` 或 `exa` 会固定使用该后端；
+如果缺少对应 key，则直接报错，不会回退。
 `image_search` 独立于 `QWEN_MM_SEARCH_BACKEND`，始终使用 Serper Lens；缺少
 `SERPER_API_KEY` 时会直接报错。
 
@@ -143,12 +145,7 @@ Serper、Tavily、Exa。显式指定后端时会严格使用该后端；如果�
 运行 `bash install.sh verify` 或 `<entry> --check-system` 查看所选能力的具体要求。能力专属依赖
 记录在对应 Skill 和 cookbook 中。
 
-### 可选配置
+### 完整配置
 
-**Configure** 操作覆盖服务端点、超时、缓存路径、video-memory 文件、OSS 以及 Blender/FreeCAD
-主机设置。字段和默认值的唯一来源是 [`src/shared/env.py`](../../src/shared/env.py)。各能力 cookbook
-记录自身使用的配置；维护者可通过 `python3 scripts/gen_env_docs.py` 输出完整目录。
-
-有一个兼容性开关不会进入上述生成列表：`QWEN_MM_AUDIO_RAW_B64=1` 会为 vLLM 等 OpenAI-spec
-server 将 Omni `input_audio.data` 发送为原始 base64。默认仍使用 DashScope 的
-`data:;base64,<payload>` 格式。
+服务端点、搜索路由、超时、缓存路径、video-memory 文件、OSS、应用主机和高级兼容性开关见
+[配置参考（英文）](../en/configuration.md)。

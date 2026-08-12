@@ -122,54 +122,58 @@ def del_config(keys: Iterable[str]) -> str:
 
 # ── Config-field catalog: the ONE declarative list of user-settable config vars, driving the
 # interactive `--setup` (grouped) and documenting what belongs in the config file. Each entry is
-# (key, secret, group, default, description) — `default` is the effective value when the var is unset
-# (shown as a hint; "" = no default / required / off). Group order = order of first appearance.
+# (key, secret, group, default, description) — `default` is the effective value or a concise
+# default hint when the var is unset ("" = no default / required / off). Group order = order of
+# first appearance.
 # install.sh mirrors this list (CONFIG_SPEC) for its own editor — keep the two in sync when adding a
 # var. Excludes the config-location bootstrap (QWEN_MM_CONFIG/_DIR — can't live in the config it
 # locates), the example demo var, and behavioral on/off toggles (QWEN_MM_AUTOLAUNCH/…, FREECAD_* flags). ──
 CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
-    # Credentials & endpoints
+    # Media APIs & endpoints
     (
         "DASHSCOPE_API_KEY",
         True,
-        "Credentials & endpoints",
+        "Media APIs & endpoints",
         "",
         "vision, OCR, grounding, ASR, generation, memory builds",
     ),
     (
         "DASHSCOPE_BASE_URL",
         False,
-        "Credentials & endpoints",
+        "Media APIs & endpoints",
         "DashScope compat URL",
         "override the DashScope OpenAI-compatible base URL",
     ),
+    ("SAM3_SERVER_URL", False, "Media APIs & endpoints", "", "segmentation SAM3 server URL"),
+    ("ASR_SERVER_URLS", False, "Media APIs & endpoints", "", "self-hosted ASR fallback URLs (comma-separated)"),
+    # Search providers
     (
         "QWEN_MM_SEARCH_BACKEND",
         False,
-        "Credentials & endpoints",
+        "Search providers",
         "auto",
         "text search backend (auto: serper > tavily > exa; or choose one)",
     ),
     (
         "SERPER_API_KEY",
         True,
-        "Credentials & endpoints",
+        "Search providers",
         "",
         "Serper web_search / web_extractor and Serper-only image_search",
     ),
-    ("EXA_API_KEY", True, "Credentials & endpoints", "", "Exa web_search / web_extractor"),
-    ("TAVILY_API_KEY", True, "Credentials & endpoints", "", "Tavily web_search / web_extractor"),
-    ("SAM3_SERVER_URL", False, "Credentials & endpoints", "", "segmentation SAM3 server URL"),
-    ("ASR_SERVER_URLS", False, "Credentials & endpoints", "", "self-hosted ASR fallback URLs (comma-separated)"),
-    # Directories & limits
-    ("QWEN_MM_CACHE", False, "Directories & limits", "OS cache dir", "cache dir for derived render artifacts"),
-    ("QWEN_MM_FFMPEG_TIMEOUT", False, "Directories & limits", "120", "ffmpeg/ffprobe timeout seconds"),
-    ("QWEN_MM_CHAT_TIMEOUT", False, "Directories & limits", "600", "OpenAI-compatible chat request timeout seconds"),
-    ("QWEN_MM_MAX_TOTAL_FRAMES", False, "Directories & limits", "600", "max frames sampled from a video"),
-    # Video-memory
-    ("GRAPH_MEMORY_PATH", False, "Video-memory", "", "graph_memory.json path (overrides a passed video path)"),
-    ("EMBEDDINGS_PATH", False, "Video-memory", "", "embeddings.npz path"),
-    ("CUTOFF_SEC", False, "Video-memory", "", "time cutoff (seconds) for retrieval"),
+    ("TAVILY_API_KEY", True, "Search providers", "", "Tavily web_search / web_extractor"),
+    ("EXA_API_KEY", True, "Search providers", "", "Exa web_search / web_extractor"),
+    # Runtime paths & limits
+    ("QWEN_MM_CACHE", False, "Runtime paths & limits", "OS cache dir", "cache dir for derived render artifacts"),
+    ("QWEN_MM_FFMPEG_TIMEOUT", False, "Runtime paths & limits", "120", "ffmpeg/ffprobe timeout seconds"),
+    (
+        "QWEN_MM_CHAT_TIMEOUT",
+        False,
+        "Runtime paths & limits",
+        "tool-specific (600; Omni 1800)",
+        "OpenAI-compatible chat request timeout seconds",
+    ),
+    ("QWEN_MM_MAX_TOTAL_FRAMES", False, "Runtime paths & limits", "600", "max frames sampled from a video"),
     # OSS storage (serve large media by URL)
     ("OSS_AK", True, "OSS storage (serve large media by URL)", "", "OSS access key id"),
     ("OSS_SK", True, "OSS storage (serve large media by URL)", "", "OSS access key secret"),
@@ -179,7 +183,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         False,
         "OSS storage (serve large media by URL)",
         "",
-        "upload-destination bucket for build clip upload",
+        "upload destination for build clips and oversized API media",
     ),
     (
         "OSS_VIDEO_CLIP_PREFIX",
@@ -189,6 +193,10 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "key prefix for uploaded video clips",
     ),
     ("OSS_URL_EXPIRY", False, "OSS storage (serve large media by URL)", "7200", "signed-URL TTL seconds"),
+    # Video-memory
+    ("GRAPH_MEMORY_PATH", False, "Video-memory", "", "graph_memory.json path (overrides a passed video path)"),
+    ("EMBEDDINGS_PATH", False, "Video-memory", "", "embeddings.npz path"),
+    ("CUTOFF_SEC", False, "Video-memory", "", "time cutoff (seconds) for retrieval"),
     # Blender / FreeCAD hosts
     ("BLENDER_BINARY", False, "Blender / FreeCAD hosts", "", "path to the Blender executable"),
     ("BLENDER_HOST", False, "Blender / FreeCAD hosts", "localhost", "Blender addon host"),

@@ -1,71 +1,62 @@
 # Repository instructions for coding agents
 
-Qwen-MM-Plugins is an Agent Skills + MCP Tools platform. User-facing orientation belongs in the
-[README](README.md); installation, development, testing, and release behavior belong in `docs/`.
-Keep this file limited to non-obvious repository invariants.
+Keep this file limited to non-obvious repository rules. User-facing orientation belongs in the
+[README](README.md); installation, development, testing, and release details belong in `docs/`.
 
-## Mandatory video workflow
+## Local development
 
-When a user provides a video file (`.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`) or a directory of videos
-and asks about its content:
+Use `bash install.sh local` for the complete harness path and a dedicated clone: local mode writes
+absolute checkout paths into tracked manifests. Restore them with
+`scripts/dev-plugin.sh all --revert`. For server-only iteration, run Python directly; see
+[Local development](docs/en/local_development.md).
 
-1. Invoke the `qwen-mm-plugins-video-memory` Skill first.
-2. Do not use ffmpeg/ffprobe to sample frames directly.
-3. Do not answer a long-video question from a few thumbnails.
+## Architecture and packaging
 
-The Skill checks existing memory, builds it when necessary, and queries it.
-
-## Repository invariants
-
-- One capability lives under `src/capabilities/<cap>/` and may contain `skill/`, an MCP server
-  package, or both. `edu-agent` is Skill-only; `example` is an unpublished template.
-- Names stay aligned: folder `<cap>`, Skill/plugin/entry `qwen-mm-plugins-<cap>`, package extra
-  `[<cap>]`, and Python import `qwen_mm_plugins_<cap-with-underscores>`.
-- Reusable code belongs in `src/shared/` or `src/mcp_framework.py`. Never import a sibling
-  capability's server package; installed capabilities are independent.
-- All MCP servers ship in the single `qwen-mm-plugins` Python distribution. Extras choose
-  dependencies, not packaged source files.
-- Plugin releases are independent. `plugin-versions.json`, all harness manifests, marketplace refs,
-  MCP package refs, and server `__version__` must agree for a capability. Shared changes require
-  version bumps for every affected capability. Never move a published tag.
-- Marketplace installs must bundle every component the capability ships. Server capabilities carry
-  Skill + MCP; Skill-only capabilities must not advertise an MCP server.
-- `src/shared/env.py` is the source of truth for ordinary configuration fields and defaults. Read
-  runtime settings through `shared.env.get_env`, not `os.environ` directly.
-- Python dependencies go in `pyproject.toml`. Non-Python applications go in the capability's
-  `SYSTEM_DEPS` table so `--check-system` and startup warnings stay consistent.
-- The video-memory builder keeps intentional copies of `schema.py` and `embeddings.py`; repository
-  consistency tests require them to remain byte-identical to the server copies.
+- A capability lives under `src/capabilities/<cap>/` and may ship a Skill, an MCP server, or both.
+  `edu-agent` is Skill-only; `example` is an unpublished template.
+- Keep names aligned: folder `<cap>`, Skill/plugin/entry `qwen-mm-plugins-<cap>`, extra `[<cap>]`,
+  and import `qwen_mm_plugins_<cap-with-underscores>`.
+- Installed capabilities are independent. Put reusable code in `src/shared/` or
+  `src/mcp_framework.py`; never import a sibling capability's server package.
+- All MCP servers ship in one `qwen-mm-plugins` distribution. Extras select dependencies, not
+  packaged source files.
+- Marketplace installs bundle every shipped component: server capabilities carry Skill + MCP;
+  Skill-only capabilities must not advertise an MCP server.
+- The video-memory builder intentionally copies `schema.py` and `embeddings.py`; consistency tests
+  require the builder and server copies to remain byte-identical.
 
 ## MCP server convention
 
 Each server package:
 
-- exposes its per-capability `__version__`, `SPECS`, and `get_handler` from `__init__.py`;
-- uses the generic `__main__.py` shim and `mcp_framework.run_main`;
-- calls `build_registry(__name__, [subpackages])` to discover tools;
-- declares each tool in a module exporting a Pydantic-backed `TOOL` dictionary and
+- exports its capability `__version__`, `SPECS`, and `get_handler` from `__init__.py`;
+- uses the generic `__main__.py` shim, `mcp_framework.run_main`, and
+  `build_registry(__name__, [subpackages])` discovery;
+- declares each tool as a Pydantic-backed `TOOL` plus
   `handle(arguments) -> list[content-dict]`;
-- returns MCP `text` or `image` content blocks and imports optional heavy dependencies lazily.
+- returns MCP `text` or `image` blocks and imports optional heavy dependencies lazily.
 
-Do not manually duplicate tool registration or schema definitions. Qwen Code namespaces MCP
-servers globally, so every manifest server key must use the unique capability name.
+Do not duplicate registration or schemas manually. Qwen Code namespaces MCP servers globally, so
+every manifest server key must use the unique capability name.
 
-## Local development
+## Configuration and dependencies
 
-Use `bash install.sh local` for the complete harness install path. It intentionally writes absolute
-checkout paths into tracked manifests; use a dedicated clone and restore with:
+- Read runtime settings through `shared.env.get_env`, not `os.environ` directly.
+  `src/shared/env.py:CONFIG_FIELDS` is the source of truth for ordinary fields and defaults.
+- After changing `CONFIG_FIELDS`, align `install.sh:CONFIG_SPEC` and run
+  `python3 scripts/gen_env_docs.py --write docs/en/configuration.md`; tests enforce both catalogs.
+- Put Python dependencies in `pyproject.toml`. Declare non-Python applications in the capability's
+  `SYSTEM_DEPS` so `--check-system` and startup warnings remain consistent.
 
-```bash
-scripts/dev-plugin.sh all --revert
-```
+## Release invariants
 
-Use direct Python execution for faster server-only iteration. See
-[Local development](docs/en/local_development.md).
+Capabilities release independently. For each capability, `plugin-versions.json`, harness
+manifests, marketplace and MCP package refs, and server `__version__` must agree. Shared changes
+require bumps for every affected capability. Never move a published tag.
 
 ## Verification
 
-Run targeted tests while working, then the offline checks relevant to the change:
+Run targeted tests while working, then the relevant offline checks:
 
 ```bash
 python3 -m pytest -m "not reachability" tests/
@@ -74,13 +65,11 @@ ruff format --check .
 ruff check .
 ```
 
-For shell changes, run `bash -n <script>`. Reachability tests are opt-in and require credentials;
-do not make the default suite depend on public network access.
+For shell changes, run `bash -n <script>`. Reachability tests are credentialed and opt-in; the
+default suite must remain offline.
 
 ## References
 
-- [Installation](docs/en/installation.md)
-- [Local development](docs/en/local_development.md)
-- [Adding a capability](docs/en/how_to_add_new_capability.md)
-- [Testing](docs/en/testing.md)
-- [Plugin releases](docs/en/releasing.md)
+- [Installation](docs/en/installation.md) · [Configuration](docs/en/configuration.md)
+- [Local development](docs/en/local_development.md) · [Testing](docs/en/testing.md)
+- [Adding a capability](docs/en/how_to_add_new_capability.md) · [Plugin releases](docs/en/releasing.md)
