@@ -1,6 +1,6 @@
 """Qwen-MM-Plugins example: a minimal reference MCP server — the "how to add a capability" template."""
 
-from mcp_framework import __version__ as __version__
+__version__ = "1.0.0"
 from mcp_framework import build_registry
 
 SPECS, get_handler, list_tools = build_registry(__name__, ["tools"])

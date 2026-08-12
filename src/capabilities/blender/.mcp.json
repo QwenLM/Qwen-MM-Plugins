@@ -4,7 +4,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "qwen-mm-plugins[blender] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main",
+        "qwen-mm-plugins[blender] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-blender-v1.0.1",
         "qwen-mm-plugins-blender"
       ],
       "env": {"QWEN_MM_AUTOLAUNCH": "1"}

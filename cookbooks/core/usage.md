@@ -1,40 +1,30 @@
-# Cookbook — Qwen-MM-Plugins Core (+ api / search)
+# Cookbook — Qwen-MM-Plugins Core
 
-`qwen-mm-plugins-core` is the local file capability: read and visualize any file at model-optimized
-resolution, plus image tools (crop, annotate, extract frames). The cloud model/API tools that
-used to live here now ship as two sibling capabilities — `qwen-mm-plugins-api` (caption/OCR/grounding/
-segmentation/ASR) and `qwen-mm-plugins-search` (web + reverse-image search). This cookbook covers the
-family; the tool list below marks which plugin each tool belongs to. See the [Cases](#cases) below
-for worked examples.
+`qwen-mm-plugins-core` is the local file capability: it reads media at model-optimized resolution,
+visualizes documents and structured files, and writes crops, annotations, document pages, and video
+frames back to disk. It makes no cloud API call and needs no API key.
+
+Cloud understanding lives in [`qwen-mm-plugins-api`](../api/usage.md). Web and reverse-image
+verification lives in [`qwen-mm-plugins-search`](../search/usage.md).
 
 ---
 
 ## Tools
 
-**`qwen-mm-plugins-core` — local reading (content fed directly to the model)**
-- `read_image` — dynamic-resolution image reading
-- `read_video` — extracts video frames with automatic FPS / resolution
-- `media_info` — full media metadata via ffprobe (run before any clip/edit)
-- `visualize` — general-purpose file visualization: PDF / Office / CSV / code / SVG / DrawIO / 3D / GIS / Notebook / LaTeX
+**Read and inspect**
 
-**`qwen-mm-plugins-core` — image / frame output (saved to file + preview)**
-- `crop` — crop an image by box (normed to 0-1000)
-- `draw_bbox` — draw annotation boxes on an image (pairs with `grounding`)
-- `save_view` — extract document pages / video frames into standalone image files
+- `read_image` — read an image at dynamic resolution
+- `read_video` — sample video frames with automatic FPS and resolution
+- `media_info` — inspect container, video, and audio metadata with ffprobe
+- `visualize` — render PDF, Office, CSV, code, SVG, DrawIO, 3D, GIS, notebook, and LaTeX files
 
-**`qwen-mm-plugins-api` — cloud understanding (DashScope + SAM3)**
-- `vision_chat` — call a vlm (default: qwen3.7-plus) for vision chat, supporting image / video input
-- `ocr` — text recognition in images
-- `grounding` — object detection/localization, returning pixel bboxes (pairs with `draw_bbox`)
-- `segmentation` — text-prompted segmentation (self-hosted SAM3)
-- `transcribe_audio` — speech recognition (default: qwen3-asr), output as SRT / text / JSON
+**Write image views**
 
-**`qwen-mm-plugins-search` — web + reverse-image search (Serper)**
-- `web_search` — web search, returning titles / snippets / URLs
-- `web_extractor` — fetch a web page's main text, optionally summarized
-- `image_search` — search by image (reverse image search)
+- `crop` — crop a normalized `0–1000` box from an image
+- `draw_bbox` — draw normalized `0–1000` boxes and labels on an image
+- `save_view` — save document pages or selected video frames as standalone image files
 
-> For exact schemas, see each capability's `SKILL.md` or each tool's inputSchema.
+For exact schemas, check the installed Skill or the MCP tool list.
 
 ---
 
@@ -42,53 +32,63 @@ for worked examples.
 
 ```bash
 claude plugin marketplace add https://github.com/QwenLM/Qwen-MM-Plugins.git
-claude plugin install qwen-mm-plugins-core@qwen-mm-plugins      # local reading
-claude plugin install qwen-mm-plugins-api@qwen-mm-plugins       # cloud understanding (optional)
-claude plugin install qwen-mm-plugins-search@qwen-mm-plugins    # web/image search (optional)
+claude plugin install qwen-mm-plugins-core@qwen-mm-plugins
 ```
 
-## Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `DASHSCOPE_API_KEY` | `qwen-mm-plugins-api` — the DashScope-backed tools (`vision_chat`, `ocr`, `grounding`, `transcribe_audio`). `core`'s local reading needs no key. |
-| `DASHSCOPE_BASE_URL` | Optional — override the DashScope OpenAI-compatible base URL (proxies/gateways). |
-| `SERPER_API_KEY` | `qwen-mm-plugins-search` — the web/image tools (`web_search` / `web_extractor` / `image_search`). Sign up at [serper.dev](https://serper.dev) — a Google-search API with a free starter tier |
-| `SAM3_SERVER_URL` | `qwen-mm-plugins-api` — only for `segmentation`. SAM3 is **self-hosted**: stand up the GPU HTTP server with the skill's [`references/launch_sam3_server.py`](../../src/capabilities/api/skill/references/launch_sam3_server.py) (needs the `sam3` package, a CUDA-enabled PyTorch, and the SAM3 checkpoint), then point this at it, e.g. `http://localhost:8787`. |
-
-> Set these via env vars, `~/.qwen-mm-plugins/config`, or the guided installer **`bash install.sh`** (`bash install.sh verify` checks what's set). Precedence: env var > config file > default.
+`core` needs no API key. Video tools require ffmpeg/ffprobe; individual visualization formats may
+need LibreOffice, TeX, Chromium, Blender, or FreeCAD. Run `bash install.sh verify` to check system
+dependencies for the installed capability.
 
 ---
 
 ## Cases
 
-### Case 1 — read a video, then read Figure 2 from a PDF (Claude Code)
+### Case 1 — read a video, then extract Figure 2 from a PDF
 
-Reads a full promo video, then opens a 35-page PDF and pulls out a specific figure.
+This Claude Code session reads a full promotional video, opens a 35-page PDF, and saves a specific
+figure for closer inspection.
 
-▶ **[View the detailed trace in Claude Code](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen-MM-Plugins/asserts/core/case-core-cc-basic-use.html)**
-
-<p align="center">
-  <img src="assets/cc-basic-use.png" alt="Claude Code trace — video + PDF figure" width="520">
-</p>
-
-### Case 2 — locate the cakes, then identify a place through the DashScope service (Codex)
-
-`@cakes.png` → detect every cake and draw numbered boxes; `@place.png` → identify the location, cross-checked with a web search.
-
-▶ **[View the detailed trace in Codex](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen-MM-Plugins/asserts/core/case-core-codex-api-use.html)**
-
+▶ **[View the detailed trace](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen-MM-Plugins/asserts/core/case-core-cc-basic-use.html)**
 
 <p align="center">
-  <img src="assets/codex-api-use.png" alt="Codex trace — cake detection + place identification" width="520">
+  <img src="assets/cc-basic-use.png" alt="Claude Code trace — video and PDF figure" width="520">
 </p>
 
-### Case 3 — install the plugins in GUI harness e.g. QwenWork, QoderWork
+### Shared Case: local views, cloud grounding, and web verification
 
-Just **Query** the agent to set up: `hello 帮我装一下 https://github.com/QwenLM/Qwen-MM-Plugins 的 core 和 edu 插件`
+The following Codex trace locates cakes, annotates the image, identifies a photographed place, and
+cross-checks the result on the web. It is shared with the
+[API](../api/usage.md#shared-case-local-views-cloud-grounding-and-web-verification) and
+[Search](../search/usage.md#shared-case-local-views-cloud-grounding-and-web-verification)
+cookbooks because the workflow crosses all three capabilities:
 
-The agent installs the `core` + `edu-agent` skills and the core MCP server:
+| Current capability | Part of the workflow |
+|---|---|
+| `core` | Read/save the image view and render annotations |
+| `api` | Ground objects and reason about the image |
+| `search` | Verify candidates with web search and page extraction |
+
+▶ **[View the shared detailed trace](https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen-MM-Plugins/asserts/core/case-core-codex-api-use.html)**
+
+> The trace was recorded before `api` and `search` were split out of `core`. Tool names carrying the
+> old `qwen_mm_plugins_core` namespace map to the current capabilities shown above; the demonstrated
+> workflow and outputs are retained because the session cannot currently be re-recorded.
 
 <p align="center">
-  <img src="assets/qwenwork-install.png" alt="QwenWork installing qwen-mm-plugins core + edu-agent (skills enabled, 14 MCP tools ready)" width="520">
+  <img src="assets/codex-api-use.png" alt="Shared Core, API, and Search workflow" width="520">
 </p>
+
+### Case 3 — ask a GUI harness to install Core and Edu Agent
+
+The agent is asked to install `core` and `edu-agent` from this repository:
+
+```text
+hello 帮我装一下 https://github.com/QwenLM/Qwen-MM-Plugins 的 core 和 edu 插件
+```
+
+<p align="center">
+  <img src="assets/qwenwork-install.png" alt="GUI harness installing Core and Edu Agent" width="520">
+</p>
+
+> This screenshot also predates the capability split. Current `core` advertises seven local MCP
+> tools; cloud and search tools are installed separately.

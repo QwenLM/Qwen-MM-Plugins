@@ -6,8 +6,9 @@ package-local ``serper`` client: web_search (text results), web_extractor (page 
 image_search (reverse image / lens). Needs SERPER_API_KEY.
 """
 
-from mcp_framework import __version__ as __version__
 from mcp_framework import build_registry
+
+__version__ = "1.0.1"
 
 # Auto-discover tools from tools/.
 SPECS, get_handler, list_tools = build_registry(__name__, ["tools"])

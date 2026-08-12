@@ -9,8 +9,9 @@ yourself, or run `qwen-mm-plugins-blender --launch-app` (brings up Blender + the
 
 import sys
 
-from mcp_framework import __version__ as __version__
 from mcp_framework import build_registry
+
+__version__ = "1.0.1"
 
 SPECS, get_handler, list_tools = build_registry(__name__, ["tools"])
 

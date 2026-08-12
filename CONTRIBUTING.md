@@ -12,7 +12,6 @@ dependencies needed for the area you are changing:
 ```bash
 scripts/dev-install.sh          # base dependencies
 scripts/dev-install.sh core     # core and visualization
-scripts/dev-install.sh all      # full runtime profile
 ```
 
 See [local development](docs/en/local_development.md) for source and harness
@@ -33,13 +32,16 @@ the repository layout and registration steps.
 
 ## Verification
 
-Run the relevant targeted tests while developing, then run:
+Run relevant targeted tests while developing. Before opening a PR, run the offline checks:
 
 ```bash
-python3 -m pytest tests/
-ruff format .
+python3 -m pytest -m "not reachability" tests/
+python3 scripts/check_manifests.py
+ruff format --check .
 ruff check .
 ```
+
+See [Testing](docs/en/testing.md) for live-provider and component-specific checks.
 
 If a test needs credentials, a GUI application, GPU hardware, or another
 environment not available to you, state what was not run in the PR.
@@ -53,3 +55,5 @@ changes in separate PRs.
 Report security issues according to [SECURITY.md](SECURITY.md), not through a
 public issue. Contributions are licensed under the repository's Apache-2.0
 license.
+
+Maintainers: follow [Plugin releases](docs/en/releasing.md) after a release PR merges.

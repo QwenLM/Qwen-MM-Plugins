@@ -1,12 +1,18 @@
 {
   "name": "qwen-mm-plugins-search",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Qwen-MM-Plugins search — web + reverse-image search to confirm facts: web search, page extraction, reverse image search, exposed as an MCP server; currently supports Serper.",
-  "skills": ["./skill"],
+  "skills": [
+    "./skill"
+  ],
   "mcpServers": {
     "qwen-mm-plugins-search": {
       "command": "uvx",
-      "args": ["--from", "qwen-mm-plugins[search] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main", "qwen-mm-plugins-search"]
+      "args": [
+        "--from",
+        "qwen-mm-plugins[search] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-search-v1.0.1",
+        "qwen-mm-plugins-search"
+      ]
     }
   }
 }
