@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-cua",
   "displayName": "Qwen MM Plugins CUA",
-  "version": "1.1.1",
+  "version": "1.0.0",
   "description": "Visual-first computer-use (CUA) for the local desktop via QwenLM/open-computer-use: screenshot-first state and nine focused GUI tools.",
   "skills": "./skill",
   "mcp": ".mcp.json"

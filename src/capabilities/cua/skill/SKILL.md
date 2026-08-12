@@ -1,7 +1,7 @@
 ---
 name: qwen-mm-plugins-cua
 description: Drive a native GUI app (macOS, Windows, Linux) with a small, screenshot-first Computer Use toolset. Use when the user asks to operate a real desktop application; inspect the app state before acting and verify each result from fresh state.
-version: 1.1.1
+version: 1.0.0
 ---
 
 # Qwen-MM-Plugins CUA

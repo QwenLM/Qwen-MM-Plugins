@@ -29,7 +29,7 @@ LOCAL_REPO_ROOT=''
 CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent cua)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.1 1.0.1 1.0.2 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.1.1)
+CAP_VERSIONS=(1.0.1 1.0.1 1.0.2 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.0.0)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"

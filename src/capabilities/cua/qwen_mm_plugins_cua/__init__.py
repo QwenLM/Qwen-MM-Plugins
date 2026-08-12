@@ -5,4 +5,4 @@ owns the stable Qwen-MM-Plugins entry point and transparently forwards the MCP p
 duplicating upstream tool schemas.
 """
 
-__version__ = "1.1.1"
+__version__ = "1.0.0"
