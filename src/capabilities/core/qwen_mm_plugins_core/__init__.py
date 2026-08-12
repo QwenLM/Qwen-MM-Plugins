@@ -44,10 +44,11 @@ SYSTEM_DEPS = [
     },
     {
         "label": "visualize: LaTeX (.tex)",
-        "extra": "system",  # no pip side — pdflatex is system-only (texlive)
+        "extra": "viz",
+        "probe": "pypdfium2",
         "tools": ["pdflatex"],
-        "hint": "apt install texlive-latex-base texlive-latex-extra",
-        "startup": False,  # system-only — report-only, don't nag every startup
+        "hint": "apt install texlive-latex-base texlive-latex-extra   |   brew install --cask basictex",
+        "startup": False,  # TeXLive is heavy — report-only, don't nag every startup
     },
     {
         "label": "visualize: HTML screenshot (Playwright browser)",
