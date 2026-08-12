@@ -61,12 +61,13 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 - 本地 `core` 工具无需 API key；云端和搜索能力需要对应服务的凭证。
 - 视频、文档、浏览器、Blender 和 FreeCAD 工作流可能需要系统程序。
 
-通过安装器的 **Configure** 和 **Verify** 操作设置凭证并检查依赖。完整说明见
-[安装文档](docs/zh/installation.md#依赖)。
+通过安装器的 **Configure** 和 **Verify** 操作设置凭证并检查依赖。系统要求见
+[安装文档](docs/zh/installation.md#依赖)，全部设置见[配置参考（英文）](docs/en/configuration.md)。
 
 ## 文档
 
 - [安装](docs/zh/installation.md)
+- [配置参考（英文）](docs/en/configuration.md)
 - [贡献指南](CONTRIBUTING.md) · [本地开发](docs/zh/local_development.md)
 - [添加能力](docs/zh/how_to_add_new_capability.md) · [测试](docs/zh/testing.md)
 

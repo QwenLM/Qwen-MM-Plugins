@@ -56,31 +56,33 @@ ALL_HARNESSES="$MP_HARNESSES $CFG_HARNESSES"
 # ── config-field catalog — the ONE place user-settable config vars are declared; do_configure
 # iterates it (like CAP_ITEMS for capabilities). Mirrors src/shared/env.py CONFIG_FIELDS — keep the
 # two in sync when adding a var. Each row: KEY|secret(0/1)|group-tag|default|one-line description.
-# `default` is the effective value when the var is unset (shown as a hint; empty = no default /
-# required / off). Groups are ordered + titled by CONFIG_GROUPS / config_group_title. Excludes the
-# config-location bootstrap (QWEN_MM_CONFIG/_DIR) and behavioral toggles (QWEN_MM_AUTOLAUNCH/…).
+# `default` is the effective value or a concise default hint when the var is unset (empty = no
+# default / required / off). Groups are ordered + titled by CONFIG_GROUPS / config_group_title.
+# Excludes the config-location bootstrap (QWEN_MM_CONFIG/_DIR) and behavioral toggles
+# (QWEN_MM_AUTOLAUNCH/…).
 # bash-3.2 safe (no assoc arrays).
 CONFIG_SPEC=(
-  "DASHSCOPE_API_KEY|1|cred||vision, OCR, grounding, ASR, generation, memory builds"
-  "DASHSCOPE_BASE_URL|0|cred|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
-  "QWEN_MM_SEARCH_BACKEND|0|cred|auto|text search backend (auto: serper > tavily > exa; or choose one)"
-  "SERPER_API_KEY|1|cred||Serper web_search / web_extractor and Serper-only image_search"
-  "EXA_API_KEY|1|cred||Exa web_search / web_extractor"
-  "TAVILY_API_KEY|1|cred||Tavily web_search / web_extractor"
-  "SAM3_SERVER_URL|0|cred||segmentation SAM3 server URL"
-  "ASR_SERVER_URLS|0|cred||self-hosted ASR fallback URLs (comma-separated)"
-  "QWEN_MM_CACHE|0|dirs|OS cache dir|cache dir for derived render artifacts"
-  "QWEN_MM_FFMPEG_TIMEOUT|0|dirs|120|ffmpeg/ffprobe timeout seconds"
-  "QWEN_MM_MAX_TOTAL_FRAMES|0|dirs|600|max frames sampled from a video"
-  "GRAPH_MEMORY_PATH|0|memory||graph_memory.json path (overrides a passed video path)"
-  "EMBEDDINGS_PATH|0|memory||embeddings.npz path"
-  "CUTOFF_SEC|0|memory||time cutoff (seconds) for retrieval"
+  "DASHSCOPE_API_KEY|1|services||vision, OCR, grounding, ASR, generation, memory builds"
+  "DASHSCOPE_BASE_URL|0|services|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
+  "SAM3_SERVER_URL|0|services||segmentation SAM3 server URL"
+  "ASR_SERVER_URLS|0|services||self-hosted ASR fallback URLs (comma-separated)"
+  "QWEN_MM_SEARCH_BACKEND|0|search|auto|text search backend (auto: serper > tavily > exa; or choose one)"
+  "SERPER_API_KEY|1|search||Serper web_search / web_extractor and Serper-only image_search"
+  "TAVILY_API_KEY|1|search||Tavily web_search / web_extractor"
+  "EXA_API_KEY|1|search||Exa web_search / web_extractor"
+  "QWEN_MM_CACHE|0|runtime|OS cache dir|cache dir for derived render artifacts"
+  "QWEN_MM_FFMPEG_TIMEOUT|0|runtime|120|ffmpeg/ffprobe timeout seconds"
+  "QWEN_MM_CHAT_TIMEOUT|0|runtime|tool-specific (600; Omni 1800)|OpenAI-compatible chat request timeout seconds"
+  "QWEN_MM_MAX_TOTAL_FRAMES|0|runtime|600|max frames sampled from a video"
   "OSS_AK|1|oss||OSS access key id"
   "OSS_SK|1|oss||OSS access key secret"
   "OSS_ENDPOINT|0|oss||OSS endpoint"
-  "OSS_BUCKET|0|oss||upload-destination bucket for upload_and_sign (build clips / api oversized video)"
-  "OSS_VIDEO_CLIP_PREFIX|0|oss|tmp/video_clips|key prefix for uploaded clips"
+  "OSS_BUCKET|0|oss||upload destination for build clips and oversized API media"
+  "OSS_VIDEO_CLIP_PREFIX|0|oss|tmp/video_clips|key prefix for uploaded video clips"
   "OSS_URL_EXPIRY|0|oss|7200|signed-URL TTL seconds"
+  "GRAPH_MEMORY_PATH|0|memory||graph_memory.json path (overrides a passed video path)"
+  "EMBEDDINGS_PATH|0|memory||embeddings.npz path"
+  "CUTOFF_SEC|0|memory||time cutoff (seconds) for retrieval"
   "BLENDER_BINARY|0|hosts||path to the Blender executable"
   "BLENDER_HOST|0|hosts|localhost|Blender addon host"
   "BLENDER_PORT|0|hosts|9876|Blender addon port"
@@ -91,13 +93,14 @@ CONFIG_SPEC=(
   "NODE_PATH|0|edu||Node.js module resolution path"
   "PUPPETEER_EXECUTABLE_PATH|0|edu||headless Chromium executable for Puppeteer"
 )
-CONFIG_GROUPS=(cred dirs memory oss hosts edu)
+CONFIG_GROUPS=(services search runtime oss memory hosts edu)
 config_group_title() {
   case "$1" in
-    cred)   printf 'Credentials & endpoints' ;;
-    dirs)   printf 'Directories & limits' ;;
-    memory) printf 'Video-memory' ;;
+    services) printf 'Media APIs & endpoints' ;;
+    search)   printf 'Search providers' ;;
+    runtime)  printf 'Runtime paths & limits' ;;
     oss)    printf 'OSS storage (serve large media by URL)' ;;
+    memory) printf 'Video-memory' ;;
     hosts)  printf 'Blender / FreeCAD hosts' ;;
     edu)    printf 'edu-agent (Node / headless Chromium)' ;;
     *)      printf '%s' "$1" ;;
