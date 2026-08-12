@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-search",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Qwen-MM-Plugins search — web + reverse-image search to confirm facts: web search, page extraction, reverse image search, exposed as an MCP server; currently supports Serper.",
   "skills": "./skill",
   "mcpServers": "./.mcp.json"

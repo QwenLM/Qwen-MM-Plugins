@@ -80,14 +80,12 @@ claude plugin install qwen-mm-plugins-<你的能力>@qwen-mm-plugins
    ```toml
    where = [..., "src/capabilities/<yourname>"]
    ```
-5. `.claude-plugin/marketplace.json` —— 在 `plugins` 里加一条（`name: qwen-mm-plugins-<yourname>` + `source: ./src/capabilities/<yourname>`），并给插件目录写 `.claude-plugin/plugin.json`（skill + 内联 `mcpServers`）:
-   ```json
-   { "name": "qwen-mm-plugins-<yourname>", "source": "./src/capabilities/<yourname>" }
-   ```
-   要能装进 codex，再加一份 `.codex-plugin/plugin.json` + `.mcp.json`。参考 `example`。
+5. 在 `plugin-versions.json` 中加入初始版本，并在 `.claude-plugin/marketplace.json` 中加入
+   固定到对应 tag 的 `git-subdir` entry。从现有能力复制三套 harness manifest；有 server 的
+   能力还需 `.mcp.json`。运行 `scripts/check_manifests.py`，再按[插件发布](releasing.md)打首个 tag。
 
 `__main__.py` 从 `src/capabilities/example/` **原样复制**——它从目录名推断 import 名，没有任何 per-server 字面量。
-纯 skill 能力（没有 server 包）只需 `skill/`，`plugin.json` 里不写 `mcpServers` 即可（也不需要 `.codex-plugin/.mcp.json`）。
+纯 skill 能力不写 `mcpServers`、也没有 `.mcp.json`，但仍保留三套 harness manifest。
 
 ## 共享库复用代码
 

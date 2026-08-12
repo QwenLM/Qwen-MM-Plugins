@@ -51,13 +51,12 @@ claude mcp add qwen-mm-plugins-core -- python3 "$(pwd)/src/capabilities/core/qwe
 要验证 plugin.json / marketplace.json / 安装注册本身对不对,但用本地未 push 的代码:把该能力的 plugin 清单临时指到本地 checkout,装完测,再还原。
 
 ```bash
-scripts/dev-plugin.sh core          # 把 core 的 --from 从 git@main 改成 file://<repo>
+scripts/dev-plugin.sh core          # 把 core 的 marketplace + MCP ref 从稳定 tag 切到当前 checkout
 claude plugin marketplace add "$(pwd)"      # 市场指向本地目录 → 读工作区 manifest
 claude plugin install qwen-mm-plugins-core@qwen-mm-plugins
 # ... 测试(工具名带前缀:mcp__plugin_qwen-mm-plugins-core_qwen-mm-plugins-core__<tool>)...
 scripts/dev-plugin.sh core --revert         # 还原清单, 提交之前执行
 ```
 
-`marketplace add` 传本地目录路径时读的是工作区文件,所以本地改的 manifest 直接生效。codex 的 `.mcp.json` 也会被一并更新。
-
-**注意**:`dev-plugin.sh` 翻转时已自动给 uvx 加了 `--refresh`,所以每次启动都会从本地源码重建(略慢,但改完 server 代码即生效)。测完别忘 `--revert` 还原,否则会把 `file://` 本地路径提交上去。
+`dev-plugin.sh` 与 `bash install.sh local` 共用同一重写器：前者为单能力开发增加
+`--refresh`，后者完成整套 harness 安装。手动测试后要还原，避免提交本地路径。

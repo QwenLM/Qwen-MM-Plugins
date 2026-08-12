@@ -4,10 +4,11 @@ Server config: the auto-discovered tool registry (SPECS), the streaming transpor
 system-tool table (SYSTEM_DEPS), and the --help caption (USAGE_NOTE) — the last two read by run_main.
 """
 
-from mcp_framework import __version__ as __version__
 from mcp_framework import build_registry
 
 from .stdio_streaming import streaming_stdio_server
+
+__version__ = "1.0.1"
 
 # Auto-discover tools from these subpackages. Cloud API tools live in the qwen-mm-plugins-api
 # (vision_chat/ocr/grounding/segmentation/transcribe_audio) and qwen-mm-plugins-search

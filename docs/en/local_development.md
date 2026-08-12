@@ -51,13 +51,13 @@ To get closer to production (isolated environment + profile-based dependency ins
 To verify plugin.json / marketplace.json / the install-and-register flow itself, but using local un-pushed code: temporarily point the capability's plugin manifest at your local checkout, install and test, then revert.
 
 ```bash
-scripts/dev-plugin.sh core          # switch core's --from from git@main to file://<repo>
+scripts/dev-plugin.sh core          # switch core's marketplace + MCP ref from its tag to this checkout
 claude plugin marketplace add "$(pwd)"      # point the marketplace at the local directory → reads the workspace manifest
 claude plugin install qwen-mm-plugins-core@qwen-mm-plugins
 # ... test (tool names carry the prefix: mcp__plugin_qwen-mm-plugins-core_qwen-mm-plugins-core__<tool>) ...
 scripts/dev-plugin.sh core --revert         # restore the manifest, run before committing
 ```
 
-When `marketplace add` is given a local directory path it reads the workspace files, so locally-edited manifests take effect directly. Codex's `.mcp.json` is updated along with it.
-
-**Note**: when `dev-plugin.sh` flips the manifest it already adds `--refresh` to uvx, so every launch rebuilds from local source (slightly slower, but server code changes take effect immediately). Don't forget `--revert` after testing, or you'll commit the `file://` local path.
+`dev-plugin.sh` and `bash install.sh local` share the same rewriter: the former adds `--refresh` for
+one-capability development, while the latter runs the complete harness install flow. Revert after
+manual testing so local paths are not committed.

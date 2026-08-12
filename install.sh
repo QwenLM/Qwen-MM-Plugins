@@ -3,7 +3,7 @@
 # Qwen-MM-Plugins — interactive installer & setup.
 #
 #   curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash   # guided menu
-#   bash install.sh [install|configure|verify|uninstall]        # single interactive action
+#   bash install.sh [install|local|configure|verify|uninstall]  # single interactive action
 #   bash install.sh --verify [caps]   # non-interactive: check system deps of installed (or listed) caps
 #
 # What it does: installs the plugin via each harness's NATIVE marketplace (it does not
@@ -11,19 +11,25 @@
 # addresses — the whole grouped list) to a single fixed config file (~/.qwen-mm-plugins/config)
 # that every harness reads — GUI or terminal — so you set it once.
 #
-# Env overrides: QMP_REPO (git URL or local checkout), QMP_REF (branch/tag), NO_COLOR.
+# Env overrides: QMP_REPO (git URL or local checkout), QMP_REF (historical capability tag), NO_COLOR.
+# With no QMP_REF, every capability resolves to its own latest immutable tag below.
 
 set -uo pipefail
 
 REPO_URL="${QMP_REPO:-https://github.com/QwenLM/Qwen-MM-Plugins.git}"
-REPO_REF="${QMP_REF:-main}"
+REPO_REF="${QMP_REF:-}"
 MARKETPLACE="qwen-mm-plugins"
 CONFIG_DIR="${QWEN_MM_CONFIG_DIR:-$HOME/.qwen-mm-plugins}"
 CONFIG_FILE="${QWEN_MM_CONFIG:-$CONFIG_DIR/config}"
+OPENCLAW_MARKETPLACE_DIR="${QMP_OPENCLAW_MARKETPLACE_DIR:-$CONFIG_DIR/openclaw-marketplace}"
 QMP_DRY=0
+LOCAL_REPO_ROOT=''
 
 # ── capability catalog — the ONE place capabilities are declared; every menu iterates this ──
 CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent)
+# Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
+# sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
+CAP_VERSIONS=(1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web + reverse-image search (Serper) to confirm facts"
@@ -442,15 +448,118 @@ ensure_uv() {
 }
 
 # ── the ONE place the uvx launch spec is built — verify / manual all reuse it ──
+# cap_ref <cap> → explicit QMP_REF when supplied, otherwise that capability's immutable latest tag.
 # cap_spec <cap> → the package the harness itself also launches with. A local QMP_REPO is a
-# PEP-508 file URL (no meaningless git ref); remote repositories keep the selected branch/tag/SHA.
+# PEP-508 file URL (no meaningless git ref); remote repositories use cap_ref.
 is_local_repo() {
   case "$1" in file://*) return 0 ;; esac
   [ -d "$1" ]
 }
 
+cap_version() {
+  local cap=$1 i
+  for ((i = 0; i < ${#CAP_ITEMS[@]}; i++)); do
+    [ "${CAP_ITEMS[$i]}" = "$cap" ] && { printf '%s' "${CAP_VERSIONS[$i]}"; return 0; }
+  done
+  printf 'unknown capability: %s\n' "$cap" >&2
+  return 1
+}
+
+cap_ref() {
+  local cap=$1 version
+  [ -n "$REPO_REF" ] && { printf '%s' "$REPO_REF"; return 0; }
+  version=$(cap_version "$cap") || return 1
+  printf 'qwen-mm-plugins-%s-v%s' "$cap" "$version"
+}
+
+marketplace_source() {
+  local repo=$REPO_URL
+  { is_local_repo "$repo" || [ -z "$REPO_REF" ]; } && { printf '%s' "$repo"; return 0; }
+  case "$repo" in
+    http://*|https://*|git@*) printf '%s#%s' "$repo" "$REPO_REF" ;;
+    *) printf '%s@%s' "$repo" "$REPO_REF" ;;
+  esac
+}
+
+# local_checkout_root → repository root containing this script. `install.sh local` cannot run via
+# curl|bash because the checkout is both the marketplace and the Python package source.
+local_checkout_root() {
+  local script_path=${BASH_SOURCE[0]:-} root
+  [ -n "$script_path" ] && [ -f "$script_path" ] || return 1
+  root=$(cd "$(dirname "$script_path")" 2>/dev/null && pwd -P) || return 1
+  [ -f "$root/pyproject.toml" ] && [ -d "$root/src/capabilities" ] || return 1
+  printf '%s' "$root"
+}
+
+# Parse local/remote marketplace state before replacing a configured source. Removing a marketplace
+# can remove its plugins, so local mode preselects installed capabilities and reinstalls them below.
+marketplace_root_from_list() {
+  local name=$1
+  awk -v wanted="$name" '$1 == wanted { sub(/^[^[:space:]]+[[:space:]]+/, ""); print; exit }'
+}
+
+claude_marketplace_root_from_list() {
+  local name=$1
+  awk -v wanted="$name" '
+    $2 == wanted { found=1; next }
+    found && /Source: Directory \(/ {
+      sub(/^.*Source: Directory \(/, ""); sub(/\)[[:space:]]*$/, ""); print; exit
+    }
+    found && /Source:/ { print "remote"; exit }
+  '
+}
+
+# install.sh local and scripts/dev-plugin.sh share this one rewriter. It switches the selected
+# catalog entries to checkout-relative paths and their MCP package specs to file://<repo>.
+localize_plugin_sources() {
+  local plugin cap root py=python3
+  local -a caps=()
+  root=${LOCAL_REPO_ROOT:-${REPO_URL#file://}}
+  root=$(cd "$root" 2>/dev/null && pwd -P) || return 1
+  for plugin in "$@"; do
+    cap=${plugin#qwen-mm-plugins-}
+    caps+=("$cap")
+  done
+  [ ${#caps[@]} -gt 0 ] || return 0
+  if ! have python3; then py=uv; fi
+  if [ "$py" = python3 ]; then
+    python3 "$root/scripts/rewrite_plugin_sources.py" --repo "$root" "${caps[@]}"
+  else
+    uv run --no-project --isolated --offline python \
+      "$root/scripts/rewrite_plugin_sources.py" --repo "$root" "${caps[@]}"
+  fi
+}
+
+# OpenClaw deliberately rejects remote marketplace manifests whose entries use git/git-subdir
+# sources. A local marketplace origin permits those pinned entry refs, so keep a small persistent
+# checkout for OpenClaw while every capability remains independently pinned to its immutable tag.
+prepare_openclaw_marketplace() {
+  if is_local_repo "$REPO_URL"; then
+    printf '%s' "${REPO_URL#file://}"
+    return 0
+  fi
+  local repo=${REPO_URL#git+} dir=$OPENCLAW_MARKETPLACE_DIR ref=${REPO_REF:-main}
+  if [ "$QMP_DRY" = 1 ]; then
+    printf '%s' "$dir"
+    return 0
+  fi
+  if [ -d "$dir/.git" ]; then
+    git -C "$dir" remote set-url origin "$repo" || return 1
+    git -C "$dir" fetch --depth 1 origin "$ref" || return 1
+    git -C "$dir" checkout --detach --force FETCH_HEAD || return 1
+  else
+    [ -e "$dir" ] && {
+      printf 'OpenClaw marketplace path exists but is not a Git checkout: %s\n' "$dir" >&2
+      return 1
+    }
+    mkdir -p "$(dirname "$dir")" || return 1
+    git clone --depth 1 --branch "$ref" "$repo" "$dir" || return 1
+  fi
+  printf '%s' "$dir"
+}
+
 cap_spec() {
-  local cap=$1 repo=$REPO_URL path
+  local cap=$1 repo=$REPO_URL path ref
   case "$repo" in
     file://*) printf 'qwen-mm-plugins[%s] @ %s' "$cap" "$repo" ;;
     *)
@@ -461,8 +570,8 @@ cap_spec() {
       else
         case "$repo" in
           /*|./*|../*) printf 'QMP_REPO is not a directory: %s\n' "$repo" >&2; return 1 ;;
-          git+*) printf 'qwen-mm-plugins[%s] @ %s@%s' "$cap" "$repo" "$REPO_REF" ;;
-          *) printf 'qwen-mm-plugins[%s] @ git+%s@%s' "$cap" "$repo" "$REPO_REF" ;;
+          git+*) ref=$(cap_ref "$cap") || return 1; printf 'qwen-mm-plugins[%s] @ %s@%s' "$cap" "$repo" "$ref" ;;
+          *) ref=$(cap_ref "$cap") || return 1; printf 'qwen-mm-plugins[%s] @ git+%s@%s' "$cap" "$repo" "$ref" ;;
         esac
       fi
       ;;
@@ -488,16 +597,55 @@ uvx_cap() {
   fi
 }
 
+install_gemini_skill() {  # install_gemini_skill <gemini-bin> <cap>
+  local bin=$1 cap=$2 checkout ref repo
+  if is_local_repo "$REPO_URL"; then
+    repo=${REPO_URL#file://}
+    run_cmd "$bin" skills install "$repo" --path "src/capabilities/${cap}/skill" --consent
+    return
+  fi
+
+  # Gemini's skills installer has --path but no --ref. Materialize the same immutable ref used by
+  # the MCP server, then let Gemini copy the skill from that temporary checkout.
+  checkout=$(mktemp -d "${TMPDIR:-/tmp}/qmp-skill.XXXXXX") || return 1
+  ref=$(cap_ref "$cap") || { rm -rf "$checkout"; return 1; }
+  repo=${REPO_URL#git+}
+  run_cmd git -C "$checkout" init || { rm -rf "$checkout"; return 1; }
+  run_cmd git -C "$checkout" remote add origin "$repo" || { rm -rf "$checkout"; return 1; }
+  run_cmd git -C "$checkout" fetch --depth 1 origin "$ref" || { rm -rf "$checkout"; return 1; }
+  run_cmd git -C "$checkout" checkout --detach FETCH_HEAD || { rm -rf "$checkout"; return 1; }
+  run_cmd "$bin" skills install "$checkout" --path "src/capabilities/${cap}/skill" --consent
+  local rc=$?
+  rm -rf "$checkout"
+  return "$rc"
+}
+
 install_for() {  # install_for <harness> <plugin...>
   local h=$1; shift
   local bin; bin=$(harness_bin "$h")
-  local cap failed=0
-  QMP_DRY=0; confirm "Run the $h install commands now (otherwise just print them)?" y || QMP_DRY=1
+  local cap failed=0 prompt="Run the $h install commands now (otherwise just print them)?"
+  is_local_repo "$REPO_URL" && prompt="Install the selected plugins from this checkout into $h now?"
+  QMP_DRY=0; confirm "$prompt" y || QMP_DRY=1
+  if is_local_repo "$REPO_URL" && [ "$QMP_DRY" = 0 ] && [ "$h" != gemini ]; then
+    localize_plugin_sources "$@" || { err "could not prepare the local plugin manifests"; return 1; }
+  fi
   case "$h" in
     claude)
       # Claude rejects a duplicate add; update is the normal path for an existing marketplace.
-      run_cmd "$bin" plugin marketplace add "$REPO_URL" ||
-        run_cmd "$bin" plugin marketplace update "$MARKETPLACE" || return
+      if is_local_repo "$REPO_URL"; then
+        local claude_root claude_list desired_claude_root
+        claude_list=$("$bin" plugin marketplace list 2>/dev/null) || true
+        claude_root=$(printf '%s\n' "$claude_list" | claude_marketplace_root_from_list "$MARKETPLACE")
+        desired_claude_root=$(cd "${REPO_URL#file://}" 2>/dev/null && pwd -P) || return
+        if [ -n "$claude_root" ] && [ "$claude_root" != "$desired_claude_root" ]; then
+          warn "switching $MARKETPLACE from $claude_root to this checkout"
+          run_cmd "$bin" plugin marketplace remove "$MARKETPLACE" || return
+        fi
+        run_cmd "$bin" plugin marketplace add "$desired_claude_root" || return
+      else
+        run_cmd "$bin" plugin marketplace add "$(marketplace_source)" ||
+          run_cmd "$bin" plugin marketplace update "$MARKETPLACE" || return
+      fi
       for p in "$@"; do run_cmd "$bin" plugin install "${p}@${MARKETPLACE}" || failed=1; done ;;
     codex)
       # add is idempotent, but on an ALREADY-added marketplace it does NOT refresh the git snapshot,
@@ -505,18 +653,41 @@ install_for() {  # install_for <harness> <plugin...>
       # re-pulls the snapshot (no-op right after a fresh add). We refresh instead of remove→add because
       # removing a marketplace also drops every plugin already installed from it, including ones not
       # reselected this run. Stop on a failed prerequisite so the UI cannot report a false success.
-      run_cmd "$bin" plugin marketplace add "$REPO_URL" || return
+      if is_local_repo "$REPO_URL"; then
+        local current_root desired_root list_out
+        list_out=$("$bin" plugin marketplace list 2>/dev/null) || true
+        current_root=$(printf '%s\n' "$list_out" | marketplace_root_from_list "$MARKETPLACE")
+        desired_root=$(cd "${REPO_URL#file://}" 2>/dev/null && pwd -P) || return
+        if [ -n "$current_root" ] && [ "$current_root" != "$desired_root" ]; then
+          warn "switching $MARKETPLACE from $current_root to this checkout"
+          run_cmd "$bin" plugin marketplace remove "$MARKETPLACE" || return
+        fi
+        run_cmd "$bin" plugin marketplace add "$desired_root" || return
+      elif [ -n "$REPO_REF" ]; then
+        run_cmd "$bin" plugin marketplace add "$REPO_URL" --ref "$REPO_REF" || return
+      else
+        run_cmd "$bin" plugin marketplace add "$REPO_URL" || return
+      fi
       # Local marketplaces read the checkout directly and cannot be upgraded as Git snapshots.
       is_local_repo "$REPO_URL" || run_cmd "$bin" plugin marketplace upgrade "$MARKETPLACE" || return
       for p in "$@"; do run_cmd "$bin" plugin add "${p}@${MARKETPLACE}" || failed=1; done ;;
     qoder)
-      run_cmd "$bin" plugins marketplace add "$REPO_URL" || return
+      run_cmd "$bin" plugins marketplace add "$(marketplace_source)" || return
       for p in "$@"; do run_cmd "$bin" plugins install "${p}@${MARKETPLACE}" || failed=1; done ;;
     openclaw)
-      for p in "$@"; do run_cmd "$bin" plugins install "$p" --marketplace "$REPO_URL" || failed=1; done ;;
+      local openclaw_marketplace
+      openclaw_marketplace=$(prepare_openclaw_marketplace) || return
+      for p in "$@"; do run_cmd "$bin" plugins install "$p" --marketplace "$openclaw_marketplace" || failed=1; done ;;
     qwen-code)
       # native extension install: reuses the .claude-plugin marketplace (skill + MCP), one per cap.
-      for p in "$@"; do run_cmd "$bin" extensions install "${REPO_URL}:${p}" --consent || failed=1; done ;;
+      for p in "$@"; do
+        cap=${p#qwen-mm-plugins-}
+        if is_local_repo "$REPO_URL"; then
+          run_cmd "$bin" extensions install "${REPO_URL}:${p}" --consent || failed=1
+        else
+          run_cmd "$bin" extensions install "${REPO_URL}:${p}" --ref="$(cap_ref "$cap")" --consent || failed=1
+        fi
+      done ;;
     gemini)
       # mcp add per cap + skill install (both over git). No `--` before the uvx args (gemini drops them).
       for p in "$@"; do
@@ -524,7 +695,7 @@ install_for() {  # install_for <harness> <plugin...>
         if ! is_skill_only "$cap"; then
           run_cmd "$bin" mcp add -s user "$p" uvx --from "$(cap_spec "$cap")" "$p" || failed=1
         fi
-        run_cmd "$bin" skills install "$REPO_URL" --path "src/capabilities/${cap}/skill" --consent || failed=1
+        install_gemini_skill "$bin" "$cap" || failed=1
       done
       warn "gemini uses Google models only — no external / OpenAI-compatible providers." ;;
     *)
@@ -748,7 +919,8 @@ load_caps() {
   local presel=${1:-} descmode=${2:-} i
   MP_ITEMS=("${CAP_ITEMS[@]}"); MP_DESC=(); MP_SEL=(); MP_DIS=()
   for ((i = 0; i < ${#CAP_ITEMS[@]}; i++)); do
-    [ "$descmode" = entry ] && MP_DESC[i]="→ qwen-mm-plugins-${CAP_ITEMS[$i]}" || MP_DESC[i]="${CAP_DESC[$i]}"
+    [ "$descmode" = entry ] && MP_DESC[i]="→ qwen-mm-plugins-${CAP_ITEMS[$i]}" || \
+      MP_DESC[i]="v${CAP_VERSIONS[$i]} · ${CAP_DESC[$i]}"
     MP_DIS[i]=0
     { [ "$presel" = core ] && [ "${CAP_ITEMS[$i]}" = core ]; } && MP_SEL[i]=1 || MP_SEL[i]=0
   done
@@ -763,6 +935,26 @@ choose_caps() {
     if [ "${mask:i:1}" = 1 ]; then MP_DIS[$i]=1; MP_SEL[$i]=0; MP_DESC[$i]="already installed"; fi
   done
   multi_pick "Select capabilities for $h"
+  SELECTED_PLUGINS=""
+  [ "$MP_STATUS" != ok ] && return 0
+  for ((i = 0; i < ${#MP_ITEMS[@]}; i++)); do
+    [ "${MP_SEL[$i]}" = 1 ] && SELECTED_PLUGINS="$SELECTED_PLUGINS qwen-mm-plugins-${MP_ITEMS[$i]}"
+  done
+}
+
+# Source switching may remove an existing marketplace and its plugins. Keep installed capabilities
+# selected so local mode reinstalls them instead of silently dropping them.
+choose_caps_local() {
+  local h=$1 i mask=""
+  load_caps core
+  spin "checking installed plugins in $h..." mask -- _detect_mask "$h"
+  for ((i = 0; i < ${#MP_ITEMS[@]}; i++)); do
+    if [ "${mask:i:1}" = 1 ]; then
+      MP_SEL[i]=1
+      MP_DESC[i]="installed; reinstall from local checkout"
+    fi
+  done
+  multi_pick "Select capabilities for local $h install"
   SELECTED_PLUGINS=""
   [ "$MP_STATUS" != ok ] && return 0
   for ((i = 0; i < ${#MP_ITEMS[@]}; i++)); do
@@ -790,14 +982,27 @@ detect_installed() {
 do_install() {
   local harness
   while :; do
-    screen; hr "Install plugin"
-    menu_pick "Target harness" $ALL_HARNESSES "other (manual / another harness)"
+    if is_local_repo "$REPO_URL"; then
+      screen; hr "Install from local checkout"
+      menu_pick "Target harness" $ALL_HARNESSES
+    else
+      screen; hr "Install plugin"
+      menu_pick "Target harness" $ALL_HARNESSES "other (manual / another harness)"
+    fi
     [ "$PICK_I" -lt 0 ] && return 0                 # esc/q at top level → back to menu
     case "$PICK" in "other"*) show_manual install; return 0 ;; esac
     harness=$PICK
+    if is_local_repo "$REPO_URL" && ! have "$(harness_bin "$harness")"; then
+      warn "$(harness_bin "$harness") not found"
+      continue
+    fi
     ensure_uv || return 0
     screen; hr "Install → $harness"
-    choose_caps "$harness"
+    if is_local_repo "$REPO_URL"; then
+      choose_caps_local "$harness"
+    else
+      choose_caps "$harness"
+    fi
     case "$MP_STATUS" in
       back)   continue ;;                           # esc → back to harness pick
       cancel) return 0 ;;                           # q → back to menu
@@ -839,6 +1044,20 @@ do_install() {
   pause   # hold the install result on screen — the menu reclears the moment we return
 }
 
+do_local_install() {
+  local root
+  root=$(local_checkout_root) || {
+    err "local install must run from a cloned Qwen-MM-Plugins checkout"
+    printf '  git clone https://github.com/QwenLM/Qwen-MM-Plugins.git\n'
+    printf '  cd Qwen-MM-Plugins && bash install.sh local\n'
+    return 1
+  }
+  LOCAL_REPO_ROOT=$root
+  REPO_URL=$root
+  REPO_REF=''
+  do_install
+}
+
 # Guidance for a harness this installer doesn't automate, or installing skill + MCP separately.
 show_manual() {  # show_manual <install|uninstall>
   if [ "$1" = uninstall ]; then
@@ -858,8 +1077,11 @@ EOF
     cat <<EOF
 
   A) Plugin marketplace (any Claude-compatible harness — swap the verb per harness):
-    <harness> plugin marketplace add $REPO_URL
+    <harness> plugin marketplace add $(marketplace_source)
     <harness> plugin install       qwen-mm-plugins-core@qwen-mm-plugins
+
+     OpenClaw exception: its remote-marketplace policy rejects git-subdir entries. This installer
+     maintains $OPENCLAW_MARKETPLACE_DIR and passes that local checkout to OpenClaw instead.
 
   B) Claude Code — skill + MCP server separately:
     # 1) MCP server (uvx installs deps on first run)
@@ -1099,10 +1321,11 @@ menu() {
 
 case "${1:-}" in
   install)   do_install ;;
+  local)     do_local_install ;;
   configure) do_configure ;;
   verify)    do_verify ;;
   uninstall) do_uninstall ;;
   --verify)  shift; run_caps_noninteractive "$@" ;;
-  -h|--help) banner; printf '\n  Usage: install.sh [install|configure|verify|uninstall]   (no arg = interactive menu)\n         install.sh --verify [caps]   # non-interactive: check installed (or listed) caps\n\n  (No update action — uvx re-resolves the pinned git ref and pulls new commits on each launch.)\n\n' ;;
+  -h|--help) banner; printf '\n  Usage: install.sh [install|local|configure|verify|uninstall]   (no arg = interactive menu)\n         install.sh local             # install plugins from this checkout\n         install.sh --verify [caps]   # non-interactive: check installed (or listed) caps\n\n  Default: each plugin uses its latest immutable stable tag.\n  Rollback: QMP_REF=qwen-mm-plugins-<cap>-v<version> (select that cap only).\n\n' ;;
   *)         menu ;;
 esac

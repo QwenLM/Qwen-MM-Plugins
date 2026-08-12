@@ -18,7 +18,8 @@ New plugins need no explicit installation: `conftest.py` adds `src/` and each `s
 - `test_blender.py` / `test_freecad.py` — the thin-client capabilities (blender / freecad): schema/handler surface, graceful degradation when no app is listening, and the MCP stdio bridge.
 - `test_launch_autoinstall.py` — the rootless app auto-download + failure diagnosis behind blender/freecad `--launch-app` (hermetic; download/extract seams monkeypatched).
 - `test_renderers.py` / `test_visualize_real.py` — `visualize()` rendering tests.
-- `test_repo_sync.py` — consistency of the video-memory build copies; version consistency of `mcp_framework.__version__`.
+- `test_repo_sync.py` — consistency of the video-memory build copies and the per-plugin release
+  index, manifests, marketplace tags, MCP refs, and installer versions.
 
 ## Which layers a new plugin should write
 

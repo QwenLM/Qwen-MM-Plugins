@@ -3,8 +3,8 @@
 - The video-memory build pipeline keeps byte-identical copies of schema.py and
   embeddings.py (it runs as flat modules, separate from the installed server
   package). These must not diverge.
-- Both server packages re-export mcp_framework.__version__ (the single distribution
-  version source); this guards that the re-export stays wired.
+- Published capability versions, marketplace refs, manifests and MCP launch refs all agree with
+  plugin-versions.json. The Python distribution version is deliberately separate.
 """
 
 import json
@@ -31,28 +31,18 @@ def test_build_copies_stay_identical(fname):
     )
 
 
-def test_all_packages_share_one_version():
-    import mcp_framework
-    import qwen_mm_plugins_core
-    import qwen_mm_plugins_video_memory
-
-    assert qwen_mm_plugins_core.__version__ == mcp_framework.__version__, (
-        "qwen_mm_plugins_core must re-export mcp_framework.__version__ (the single version source)."
-    )
-    assert qwen_mm_plugins_video_memory.__version__ == mcp_framework.__version__, (
-        "qwen_mm_plugins_video_memory must re-export mcp_framework.__version__ (the single version source)."
-    )
-
-
 # ── manifest sync across the four harness formats + marketplace (F2) ──
 # Each capability hand-maintains .claude-plugin / .codex-plugin / .qoder-plugin / .mcp.json.
 # These guard that name, version, and the uvx launch spec stay in agreement across a capability's
 # own harness manifests (description is intentionally per-harness display text and is NOT checked).
-# Versions are PER-CAPABILITY and independent of the distribution mcp_framework.__version__: bump a
-# cap's version when its plugin layer (skill / manifest / .mcp.json launch spec) changes, so users'
-# `plugin update` re-fetches it. Server-only Python changes ride the uvx `@main` ref and need no bump.
+# Versions are PER-CAPABILITY and independent of the distribution mcp_framework.__version__. Every
+# released code/skill/manifest change bumps that capability and moves its immutable tag; no published
+# launch spec follows main.
 
 _CAPS_DIR = _ROOT / "src" / "capabilities"
+_RELEASE_INDEX = json.loads((_ROOT / "plugin-versions.json").read_text())
+_VERSIONS = _RELEASE_INDEX["plugins"]
+_TAG_FORMAT = _RELEASE_INDEX["tag_format"]
 
 
 def _capabilities() -> list[str]:
@@ -85,6 +75,8 @@ def test_manifest_name_and_version_agree(cap):
         f"{cap}: plugin version differs across its harness manifests: {versions}. "
         "Bump a capability's claude/codex/qoder manifests together."
     )
+    if cap in _VERSIONS:
+        assert next(iter(versions.values())) == _VERSIONS[cap]
 
 
 @pytest.mark.parametrize("cap", _server_capabilities())
@@ -103,6 +95,9 @@ def test_mcp_launch_spec_agrees(cap):
         f"{cap}: uvx launch args drifted between .claude-plugin (inline) and .mcp.json:\n"
         f"  claude: {claude_args}\n  mcp:    {mcp_args}"
     )
+    if cap in _VERSIONS:
+        tag = _TAG_FORMAT.format(cap=cap, version=_VERSIONS[cap])
+        assert claude_args[claude_args.index("--from") + 1].endswith(f"@{tag}")
 
 
 def test_marketplace_lists_every_capability():
@@ -122,3 +117,13 @@ def test_marketplace_lists_every_capability():
     assert market["metadata"]["version"] == mcp_framework.__version__, (
         "marketplace.json metadata.version must track mcp_framework.__version__."
     )
+    assert _RELEASE_INDEX["distribution_version"] == mcp_framework.__version__, (
+        "plugin-versions.json distribution_version must track mcp_framework.__version__."
+    )
+    assert set(_VERSIONS) == {name.removeprefix("qwen-mm-plugins-") for name in listed}
+    for plugin in market["plugins"]:
+        cap = plugin["name"].removeprefix("qwen-mm-plugins-")
+        source = plugin["source"]
+        assert source["source"] == "git-subdir"
+        assert source["path"] == f"src/capabilities/{cap}"
+        assert source["ref"] == _TAG_FORMAT.format(cap=cap, version=_VERSIONS[cap])

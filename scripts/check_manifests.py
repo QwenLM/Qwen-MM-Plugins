@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Cross-check plugin manifests: marketplace.json ↔ per-capability manifests ↔ pyproject.toml.
+"""Cross-check the release index, marketplace, capability manifests and pyproject.toml.
 
 For every capability under src/capabilities/<cap>/ this verifies the naming convention
 (capability name / plugin name / MCP-server key / console entry are all `qwen-mm-plugins-<cap>`)
 and that the three registration surfaces agree:
 
-- .claude-plugin/marketplace.json — each plugin's name matches its source dir, the dir exists and
-  carries a .claude-plugin/plugin.json; the marketplace metadata version matches mcp_framework.
+- plugin-versions.json — canonical latest stable version and tag format for each published plugin.
+- .claude-plugin/marketplace.json — each published plugin uses a git-subdir source pinned to its
+  canonical immutable tag; the marketplace metadata version matches mcp_framework.
 - src/capabilities/<cap>/{.claude-plugin,.codex-plugin,.qoder-plugin}/plugin.json (+ .mcp.json) —
-  same name, same version (== mcp_framework.__version__); for capabilities with an MCP-server
-  package, the mcpServers key AND the uvx entry are exactly `qwen-mm-plugins-<cap>`, codex/qoder
-  manifests reference the companion .mcp.json; skill-only capabilities declare no MCP server.
+  same name and per-capability version; MCP launch specs pin the same capability tag. A server's
+  `__version__` is the plugin version, independent of the one-distribution release-train version.
 - pyproject.toml — [project.scripts] has `qwen-mm-plugins-<cap> = "<import_name>.__main__:main"`
   and [tool.setuptools.package-dir] maps <import_name> to its capability dir (and nothing stale).
 
@@ -30,6 +30,7 @@ CAPABILITIES_DIR = REPO_ROOT / "src" / "capabilities"
 MARKETPLACE = REPO_ROOT / ".claude-plugin" / "marketplace.json"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 FRAMEWORK = REPO_ROOT / "src" / "mcp_framework.py"
+VERSIONS = REPO_ROOT / "plugin-versions.json"
 PREFIX = "qwen-mm-plugins-"
 
 errors: list[str] = []
@@ -58,6 +59,32 @@ def framework_version() -> str | None:
         fail(f"{rel(FRAMEWORK)}: __version__ not found")
         return None
     return m.group(1)
+
+
+def release_index() -> tuple[str | None, dict[str, str], str]:
+    data = load_json(VERSIONS)
+    if not isinstance(data, dict):
+        return None, {}, "qwen-mm-plugins-{cap}-v{version}"
+    distribution_version = data.get("distribution_version")
+    versions = data.get("plugins")
+    tag_format = data.get("tag_format")
+    if not isinstance(distribution_version, str) or not re.fullmatch(
+        r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", distribution_version
+    ):
+        fail(f"{rel(VERSIONS)}: distribution_version must be semver")
+        distribution_version = None
+    if not isinstance(versions, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in versions.items()
+    ):
+        fail(f"{rel(VERSIONS)}: plugins must be an object of capability -> version strings")
+        versions = {}
+    if not isinstance(tag_format, str) or "{cap}" not in tag_format or "{version}" not in tag_format:
+        fail(f"{rel(VERSIONS)}: tag_format must contain {{cap}} and {{version}}")
+        tag_format = "qwen-mm-plugins-{cap}-v{version}"
+    for cap, version in versions.items():
+        if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version):
+            fail(f"{rel(VERSIONS)}: {cap} has invalid semver {version!r}")
+    return distribution_version, versions, tag_format
 
 
 def parse_toml_table(text: str, table: str) -> dict[str, str]:
@@ -95,15 +122,43 @@ def entry_name_of(server_cfg: dict, expected: str, where: str) -> None:
         fail(f"{where}: console entry is {args[-1]!r}, expected {expected!r}")
 
 
-def check_mcp_servers(mcp_servers, expected_name: str, where: str) -> None:
+def check_launch_ref(server_cfg: dict, cap: str, tag: str, where: str) -> None:
+    args = server_cfg.get("args")
+    if not isinstance(args, list):
+        return
+    if "--from" not in args:
+        fail(f"{where}: MCP launch args must contain --from")
+        return
+    try:
+        spec = args[args.index("--from") + 1]
+    except IndexError:
+        fail(f"{where}: --from has no package spec")
+        return
+    expected_extra = f"qwen-mm-plugins[{cap}]"
+    if expected_extra not in spec or not spec.endswith(f"@{tag}"):
+        fail(f"{where}: --from must use [{cap}] and end in @{tag}, got {spec!r}")
+
+
+def check_mcp_servers(mcp_servers, expected_name: str, where: str) -> dict | None:
     if not isinstance(mcp_servers, dict) or set(mcp_servers) != {expected_name}:
         keys = sorted(mcp_servers) if isinstance(mcp_servers, dict) else mcp_servers
         fail(f"{where}: mcpServers keys {keys!r}, expected exactly [{expected_name!r}]")
-        return
-    entry_name_of(mcp_servers[expected_name], expected_name, f"{where} → {expected_name}")
+        return None
+    server_cfg = mcp_servers[expected_name]
+    if not isinstance(server_cfg, dict):
+        fail(f"{where} → {expected_name}: server configuration must be an object")
+        return None
+    entry_name_of(server_cfg, expected_name, f"{where} → {expected_name}")
+    return server_cfg
 
 
-def check_capability(cap_dir: Path, version: str | None, scripts: dict[str, str], package_dir: dict[str, str]) -> None:
+def check_capability(
+    cap_dir: Path,
+    version: str | None,
+    tag_format: str,
+    scripts: dict[str, str],
+    package_dir: dict[str, str],
+) -> None:
     cap = cap_dir.name
     expected_name = PREFIX + cap
     import_name = server_package(cap_dir)
@@ -126,18 +181,28 @@ def check_capability(cap_dir: Path, version: str | None, scripts: dict[str, str]
         if data.get("name") != expected_name:
             fail(f"{rel(path)}: name {data.get('name')!r}, expected {expected_name!r}")
         if version is not None and data.get("version") != version:
-            fail(f"{rel(path)}: version {data.get('version')!r} != mcp_framework __version__ {version!r}")
+            fail(f"{rel(path)}: version {data.get('version')!r} != release index {version!r}")
+
+    manifest_versions = {kind: data.get("version") for kind, data in loaded.items()}
+    if len(set(manifest_versions.values())) > 1:
+        fail(f"{rel(cap_dir)}: manifest versions differ: {manifest_versions}")
 
     if import_name is not None:
         # MCP-server capability: server key + entry consistent everywhere, and registered in pyproject.
         if "claude" in loaded:
-            check_mcp_servers(loaded["claude"].get("mcpServers"), expected_name, f"{rel(manifests['claude'])}")
+            cfg = check_mcp_servers(loaded["claude"].get("mcpServers"), expected_name, f"{rel(manifests['claude'])}")
+            if cfg is not None and version is not None:
+                tag = tag_format.format(cap=cap, version=version)
+                check_launch_ref(cfg, cap, tag, rel(manifests["claude"]))
         if not mcp_json_path.is_file():
             fail(f"{rel(cap_dir)}: server capability without .mcp.json (codex/qoder manifests need it)")
         else:
             mcp_json = load_json(mcp_json_path)
             if mcp_json is not None:
-                check_mcp_servers(mcp_json.get("mcpServers"), expected_name, rel(mcp_json_path))
+                cfg = check_mcp_servers(mcp_json.get("mcpServers"), expected_name, rel(mcp_json_path))
+                if cfg is not None and version is not None:
+                    tag = tag_format.format(cap=cap, version=version)
+                    check_launch_ref(cfg, cap, tag, rel(mcp_json_path))
         if "codex" in loaded and loaded["codex"].get("mcpServers") != "./.mcp.json":
             fail(f"{rel(manifests['codex'])}: mcpServers should reference './.mcp.json'")
         if "qoder" in loaded and loaded["qoder"].get("mcp") != ".mcp.json":
@@ -153,6 +218,12 @@ def check_capability(cap_dir: Path, version: str | None, scripts: dict[str, str]
                 f"pyproject.toml [tool.setuptools.package-dir]: {import_name} = "
                 f"{package_dir.get(import_name)!r}, expected {expected_pkg_dir!r}"
             )
+        if version is not None:
+            init_text = (cap_dir / import_name / "__init__.py").read_text(encoding="utf-8")
+            match = re.search(r'^__version__ = "([^"]+)"', init_text, re.MULTILINE)
+            if not match or match.group(1) != version:
+                actual = match.group(1) if match else None
+                fail(f"{rel(cap_dir / import_name / '__init__.py')}: __version__ {actual!r} != {version!r}")
     else:
         # Skill-only capability: must not declare an MCP server anywhere.
         if "claude" in loaded and "mcpServers" in loaded["claude"]:
@@ -162,7 +233,13 @@ def check_capability(cap_dir: Path, version: str | None, scripts: dict[str, str]
 
 
 def main() -> int:
-    version = framework_version()
+    framework_release = framework_version()
+    distribution_version, versions, tag_format = release_index()
+    if distribution_version is not None and framework_release != distribution_version:
+        fail(
+            f"{rel(FRAMEWORK)}: __version__ {framework_release!r} != "
+            f"release index distribution_version {distribution_version!r}"
+        )
     pyproject_text = PYPROJECT.read_text(encoding="utf-8")
     scripts = parse_toml_table(pyproject_text, "project.scripts")
     package_dir = parse_toml_table(pyproject_text, "tool.setuptools.package-dir")
@@ -173,28 +250,48 @@ def main() -> int:
     listed: set[str] = set()
     if marketplace is not None:
         meta_version = marketplace.get("metadata", {}).get("version")
-        if version is not None and meta_version != version:
-            fail(f"{rel(MARKETPLACE)}: metadata.version {meta_version!r} != mcp_framework __version__ {version!r}")
+        if distribution_version is not None and meta_version != distribution_version:
+            fail(
+                f"{rel(MARKETPLACE)}: metadata.version {meta_version!r} != "
+                f"release index distribution_version {distribution_version!r}"
+            )
         names = [p.get("name") for p in marketplace.get("plugins", [])]
         for name in {n for n in names if names.count(n) > 1}:
             fail(f"{rel(MARKETPLACE)}: duplicate plugin name {name!r}")
         for plugin in marketplace.get("plugins", []):
-            name, source = plugin.get("name"), plugin.get("source", "")
-            src_dir = (REPO_ROOT / source).resolve()
+            name, source = plugin.get("name"), plugin.get("source")
+            if not isinstance(source, dict) or source.get("source") != "git-subdir":
+                fail(f"{rel(MARKETPLACE)}: {name}: source must be a git-subdir object")
+                continue
+            source_path = source.get("path", "")
+            src_dir = (REPO_ROOT / source_path).resolve()
             cap = src_dir.name
             listed.add(cap)
             if name != PREFIX + cap:
                 fail(f"{rel(MARKETPLACE)}: plugin {name!r} does not match source dir name ({PREFIX}{cap!s})")
             if not src_dir.is_dir():
-                fail(f"{rel(MARKETPLACE)}: {name}: source {source!r} does not exist")
+                fail(f"{rel(MARKETPLACE)}: {name}: source path {source_path!r} does not exist")
             elif not (src_dir / ".claude-plugin" / "plugin.json").is_file():
                 fail(f"{rel(MARKETPLACE)}: {name}: source has no .claude-plugin/plugin.json")
+            version = versions.get(cap)
+            if version is None:
+                fail(f"{rel(MARKETPLACE)}: {name}: missing from {rel(VERSIONS)}")
+            else:
+                expected_tag = tag_format.format(cap=cap, version=version)
+                if source.get("ref") != expected_tag:
+                    fail(f"{rel(MARKETPLACE)}: {name}: ref {source.get('ref')!r}, expected {expected_tag!r}")
 
     # Per-capability manifests ↔ pyproject.
     for cap_dir in caps:
-        check_capability(cap_dir, version, scripts, package_dir)
+        check_capability(cap_dir, versions.get(cap_dir.name), tag_format, scripts, package_dir)
         if cap_dir.name not in listed:
             notes.append(f"note: {rel(cap_dir)} is not listed in {rel(MARKETPLACE)} (intentional for the template)")
+
+    if set(versions) != listed:
+        fail(
+            f"{rel(VERSIONS)} plugins must match marketplace capabilities: "
+            f"index={sorted(versions)}, marketplace={sorted(listed)}"
+        )
 
     # Reverse direction: nothing stale in pyproject.
     cap_names = {d.name for d in caps}

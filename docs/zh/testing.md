@@ -18,7 +18,8 @@
 - `test_blender.py` / `test_freecad.py` —— thin-client 能力(blender / freecad)：schema/handler 表面、无 app 监听时优雅降级、MCP stdio 桥。
 - `test_launch_autoinstall.py` —— blender/freecad `--launch-app` 背后的免 root app 自动下载与失败诊断(hermetic;下载/解压环节 monkeypatch)。
 - `test_renderers.py` / `test_visualize_real.py` —— `visualize()` 渲染测试。
-- `test_repo_sync.py` —— video-memory build 副本一致性；version一致性 `mcp_framework.__version__`。
+- `test_repo_sync.py` —— video-memory build 副本一致性，以及逐插件 release 索引、manifest、
+  marketplace tag、MCP ref 与安装器版本的一致性。
 
 ## 新插件要写哪几层
 

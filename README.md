@@ -47,7 +47,19 @@ One script handles **install · configure · verify · uninstall** across every 
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash
 ```
 
-Or run one action at a time — `bash install.sh install` / `configure` / `verify` / `uninstall` (what `configure` and `verify` do is detailed under [Configuration](#-configuration) and [Dependencies](#-dependencies)).
+Or run one action at a time — `bash install.sh install` / `local` / `configure` / `verify` / `uninstall`.
+
+Normal installs resolve every capability to its own latest immutable release tag, so updating one
+plugin does not move the others and no released MCP follows `main`. The current stable versions are
+listed in [`plugin-versions.json`](plugin-versions.json); explicit rollback/development refs are
+covered in the [detailed installation guide](docs/en/installation.md).
+
+To install unpublished code from a checkout, use the same guided flow locally:
+
+```bash
+git clone https://github.com/QwenLM/Qwen-MM-Plugins.git
+cd Qwen-MM-Plugins && bash install.sh local
+```
 
 **Windows x64:** use WSL2 (Ubuntu recommended) and clone the repository inside your WSL
 home directory (for example `~/code`), rather than under a mounted Windows drive such as
@@ -71,13 +83,22 @@ qodercli plugins install       qwen-mm-plugins-<cap>@qwen-mm-plugins
 # Codex
 codex    plugin  marketplace add https://github.com/QwenLM/Qwen-MM-Plugins.git
 codex    plugin  add           qwen-mm-plugins-<cap>@qwen-mm-plugins
-# OpenClaw
-openclaw plugins install       qwen-mm-plugins-<cap> --marketplace https://github.com/QwenLM/Qwen-MM-Plugins.git
+# OpenClaw (remote marketplaces reject git-subdir entries, so use a local checkout)
+mkdir -p ~/.qwen-mm-plugins
+test -d ~/.qwen-mm-plugins/openclaw-marketplace/.git || \
+  git clone https://github.com/QwenLM/Qwen-MM-Plugins.git ~/.qwen-mm-plugins/openclaw-marketplace
+git -C ~/.qwen-mm-plugins/openclaw-marketplace pull --ff-only
+openclaw plugins install qwen-mm-plugins-<cap> \
+  --marketplace ~/.qwen-mm-plugins/openclaw-marketplace
 # Qwen Code
-qwen extensions install https://github.com/QwenLM/Qwen-MM-Plugins.git:qwen-mm-plugins-<cap> --consent
+qwen extensions install https://github.com/QwenLM/Qwen-MM-Plugins.git:qwen-mm-plugins-<cap> \
+  --ref=qwen-mm-plugins-<cap>-v<version> --consent
 ```
 
-`marketplace add` also accepts a local repo path; re-running is safe. On **codex**, `marketplace add` does **not** refresh an already-added marketplace, so run `codex plugin marketplace upgrade qwen-mm-plugins` before `plugin add` to pick up newly-published capabilities.
+The guided installer manages OpenClaw's local catalog automatically. For local development,
+`bash install.sh local` handles the complete harness flow; `scripts/dev-plugin.sh <cap>` is the
+lower-level one-capability helper. On **codex**, run `plugin marketplace upgrade` before `plugin add`
+to refresh an existing remote catalog.
 
 **Other harnesses** (Gemini CLI · opencode · pi · QwenPaw · …) register the skill + MCP in their own config — exact per-harness blocks are in [`docs/en/installation.md`](docs/en/installation.md). Easiest of all: **just ask the agent** — "install `qwen-mm-plugins-<cap>`".
 
@@ -142,7 +163,8 @@ See each capability's 🍳 [cookbook](cookbooks/) for every tool, setup, and a w
 
 Development setup, contribution guidelines, and verification commands are in
 [`CONTRIBUTING.md`](CONTRIBUTING.md). Detailed guides: [local development](docs/en/local_development.md)
-· [adding a capability](docs/en/how_to_add_new_capability.md) · [testing](docs/en/testing.md).
+· [adding a capability](docs/en/how_to_add_new_capability.md) · [testing](docs/en/testing.md) ·
+[releasing plugins](docs/en/releasing.md).
 
 ## 📄 License
 

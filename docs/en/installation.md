@@ -1,6 +1,7 @@
 # Installation (detailed)
 
-The fast paths — plugin marketplace and the guided installer — are in the [README](../../README.md#-installation). This page covers **non-plugin harnesses** (manual skill + MCP install), the resulting tool-name prefixes, the full dependency reference, and the repository layout.
+The fast paths are in the [README](../../README.md#-installation). This page covers local checkout
+mode, manual harness setup, dependencies, and repository layout.
 
 ## Windows (WSL2)
 
@@ -17,11 +18,41 @@ When using Codex on Windows, set the agent environment to WSL2, restart Codex, a
 and use the plugin inside that same WSL environment. WSL2 is currently the only supported
 Windows environment; native Windows has not yet been validated.
 
+## Local checkout
+
+Run local installation from a clone whose root contains `pyproject.toml`:
+
+```bash
+git clone https://github.com/QwenLM/Qwen-MM-Plugins.git
+cd Qwen-MM-Plugins
+bash install.sh local
+```
+
+The command uses the normal harness/capability picker, switches only the selected marketplace and
+MCP sources to this checkout, and then runs the harness's native install command. Use a dedicated
+clone and keep it at the same path; the localized manifests stay changed while that install is in
+use. `scripts/dev-plugin.sh <cap>` uses the same rewriter with `uvx --refresh` for one-capability
+development. Restore the manifests only when leaving local mode:
+
+```bash
+scripts/dev-plugin.sh all --revert
+```
+
 ## Non-marketplace harnesses: register skill + MCP directly
 
 Harnesses without a plugin marketplace register the **skill** and **MCP server** in their own config. **Qwen Code** and **Gemini CLI** are automated by the [guided installer](../../README.md#-installation) (`bash install.sh` → pick the harness); the rest (opencode, pi, QwenPaw, …) are manual — per-harness steps below. For anything else, the easiest path is to **ask the agent to do it for you** ("install `qwen-mm-plugins-<cap>`").
 
 Each capability is `qwen-mm-plugins-<cap>` with uvx extras `[<cap>]`; in every block below, replace `<cap>` with a capability name (`core` / `api` / `search` / `video-memory` / `video-edit` / `blender` / `freecad`).
+
+Released plugins use `qwen-mm-plugins-<cap>-v<version>` from
+[`plugin-versions.json`](../../plugin-versions.json), never `main`; the installer resolves the
+latest version automatically. To install an older release, select only that capability and run:
+
+```bash
+QMP_REF=qwen-mm-plugins-search-v1.0.1 bash install.sh install
+```
+
+Use [local checkout](#local-checkout) mode for unpublished code.
 
 Claude Code can also install this way — the only difference from the marketplace path is the tool name: marketplace installs carry a plugin prefix + a server key (the capability's own name, e.g. `qwen-mm-plugins-<cap>`), whereas a manual `mcp add` uses the server name you choose. Taking a capability's `read_image` as an example:
 
@@ -35,7 +66,7 @@ Claude Code can also install this way — the only difference from the marketpla
 ln -s "$(pwd)/src/capabilities/<cap>/skill" ~/.claude/skills/qwen-mm-plugins-<cap>
 # 2) MCP (for local code, replace --from with "$(pwd)[<cap>]")
 claude mcp add qwen-mm-plugins-<cap> -- \
-  uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-<cap>
+  uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>" qwen-mm-plugins-<cap>
 ```
 
 To switch capabilities, replace the skill path, the `[<cap>]` profile, and the entry name `qwen-mm-plugins-<cap>` all together with those of the target capability.
@@ -50,7 +81,7 @@ To switch capabilities, replace the skill path, the `[<cap>]` profile, and the e
   "mcp": {
     "qwen-mm-plugins-<cap>": {
       "type": "local",
-      "command": ["uvx", "--from", "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main", "qwen-mm-plugins-<cap>"],
+      "command": ["uvx", "--from", "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>", "qwen-mm-plugins-<cap>"],
       "environment": { "DASHSCOPE_API_KEY": "{env:DASHSCOPE_API_KEY}" },
       "enabled": true
     }
@@ -69,14 +100,15 @@ Headless: `opencode run --auto "…"`. (A custom OpenAI-compatible provider must
 `npm i -g @qwen-code/qwen-code@latest`. Install a capability as a **native extension** (bundles skill + MCP + context) in one command, from the Claude marketplace over git:
 
 ```bash
-qwen extensions install https://github.com/QwenLM/Qwen-MM-Plugins.git:qwen-mm-plugins-<cap> --consent
+qwen extensions install https://github.com/QwenLM/Qwen-MM-Plugins.git:qwen-mm-plugins-<cap> \
+  --ref=qwen-mm-plugins-<cap>-v<version> --consent
 ```
 
 Or register just the MCP server (then copy the skill into `~/.qwen/skills/qwen-mm-plugins-<cap>`):
 
 ```bash
 qwen mcp add qwen-mm-plugins-<cap> --scope user --trust --timeout 600000 \
-  uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-<cap>
+  uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>" qwen-mm-plugins-<cap>
 ```
 
 Headless: `qwen -p "…" --yolo -o text`. Uninstall: `qwen extensions uninstall qwen-mm-plugins-<cap>`.
@@ -87,8 +119,9 @@ Headless: `qwen -p "…" --yolo -o text`. Uninstall: `qwen extensions uninstall 
 
 ```bash
 gemini mcp add -s user qwen-mm-plugins-<cap> \
-  uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-<cap>
-gemini skills install https://github.com/QwenLM/Qwen-MM-Plugins.git --path src/capabilities/<cap>/skill --consent
+  uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>" qwen-mm-plugins-<cap>
+# Gemini's skill installer has no --ref; install from a checkout of the same tag.
+gemini skills install /path/to/tagged-checkout --path src/capabilities/<cap>/skill --consent
 ```
 
 From a local checkout, `gemini extensions link src/capabilities/<cap>` bundles both. MCP loads only in **trusted** folders (trust it when prompted). Headless: `gemini -p "…" -y`. Uninstall: `gemini mcp remove -s user qwen-mm-plugins-<cap>` + `gemini skills uninstall qwen-mm-plugins-<cap>`.
@@ -111,7 +144,7 @@ pi install npm:pi-mcp-adapter                                               # on
   "settings": { "toolPrefix": "none" },
   "mcpServers": { "qwen-mm-plugins-<cap>": {
     "command": "uvx",
-    "args": ["--from", "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main", "qwen-mm-plugins-<cap>"],
+    "args": ["--from", "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>", "qwen-mm-plugins-<cap>"],
     "env": { "DASHSCOPE_API_KEY": "${DASHSCOPE_API_KEY}" },
     "directTools": ["read_image", "ocr", "visualize"]
   } }
@@ -141,7 +174,7 @@ qwenpaw skills config    # interactively check to enable
         "enabled": true,
         "transport": "stdio",
         "command": "uvx",
-        "args": ["--from", "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main", "qwen-mm-plugins-<cap>"]
+        "args": ["--from", "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>", "qwen-mm-plugins-<cap>"]
       }
     }
   }
@@ -168,7 +201,7 @@ qwenpaw skills config    # interactively check to enable
 
 How to see which system tools are missing:
 
-- Check with uvx: `uvx --from "qwen-mm-plugins[all] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-<cap> --check-system`.
+- Check with uvx: `uvx --from "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>" qwen-mm-plugins-<cap> --check-system`.
 - At server startup, if an installed extra is missing its system tool, a warning line is printed to stderr.
 - At actual tool-call time, you get a "please install X" text message, while other tools keep working.
 

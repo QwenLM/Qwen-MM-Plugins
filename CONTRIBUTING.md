@@ -17,7 +17,9 @@ scripts/dev-install.sh all      # full runtime profile
 
 See [local development](docs/en/local_development.md) for source and harness
 debugging, and [adding a capability](docs/en/how_to_add_new_capability.md) for
-the repository layout and registration steps.
+the repository layout and registration steps. Maintainers batch normal version
+bumps and immutable capability tags in the weekly release train; see
+[plugin releases](docs/en/releasing.md).
 
 ## Making changes
 

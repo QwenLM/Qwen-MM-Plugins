@@ -47,7 +47,18 @@
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash   # 引导菜单
 ```
 
-也可以只跑单个动作 —— `bash install.sh install` / `configure` / `verify` / `uninstall`（`configure` 和 `verify` 各自做什么，见下面的[配置](#-配置)与[依赖](#-依赖)）。
+也可以只跑单个动作 —— `bash install.sh install` / `local` / `configure` / `verify` / `uninstall`。
+
+普通安装会把每个能力分别解析到各自最新的不可变 release tag：更新一个插件不会带着其他
+插件移动，正式 MCP 也不再跟随 `main`。当前稳定版本见
+[`plugin-versions.json`](plugin-versions.json)；显式回退 / 开发 ref 见[详细安装说明](docs/zh/installation.md)。
+
+安装 checkout 中尚未发布的代码时，直接复用同一套引导流程：
+
+```bash
+git clone https://github.com/QwenLM/Qwen-MM-Plugins.git
+cd Qwen-MM-Plugins && bash install.sh local
+```
 
 **Windows x64：**推荐使用 WSL2（建议 Ubuntu），在 WSL home 目录中 clone 仓库
 （例如 `~/code`），不要放在 `/mnt/c` 这类 Windows 挂载盘下，然后运行相同命令。
@@ -70,13 +81,21 @@ qodercli plugins install       qwen-mm-plugins-<cap>@qwen-mm-plugins
 # Codex
 codex    plugin  marketplace add https://github.com/QwenLM/Qwen-MM-Plugins.git
 codex    plugin  add           qwen-mm-plugins-<cap>@qwen-mm-plugins
-# OpenClaw
-openclaw plugins install       qwen-mm-plugins-<cap> --marketplace https://github.com/QwenLM/Qwen-MM-Plugins.git
+# OpenClaw（远程 marketplace 不接受 git-subdir entry，需使用本地 checkout）
+mkdir -p ~/.qwen-mm-plugins
+test -d ~/.qwen-mm-plugins/openclaw-marketplace/.git || \
+  git clone https://github.com/QwenLM/Qwen-MM-Plugins.git ~/.qwen-mm-plugins/openclaw-marketplace
+git -C ~/.qwen-mm-plugins/openclaw-marketplace pull --ff-only
+openclaw plugins install qwen-mm-plugins-<cap> \
+  --marketplace ~/.qwen-mm-plugins/openclaw-marketplace
 # Qwen Code
-qwen extensions install https://github.com/QwenLM/Qwen-MM-Plugins.git:qwen-mm-plugins-<cap> --consent
+qwen extensions install https://github.com/QwenLM/Qwen-MM-Plugins.git:qwen-mm-plugins-<cap> \
+  --ref=qwen-mm-plugins-<cap>-v<version> --consent
 ```
 
-`marketplace add` 也接受本地仓库路径；重复执行是安全的。在 **codex** 上，`marketplace add` **不会**刷新已添加的 marketplace，所以要装入新增能力时，先执行 `codex plugin marketplace upgrade qwen-mm-plugins` 再 `plugin add`。
+引导式安装器会自动维护 OpenClaw 所需的本地 catalog。本地开发时，`bash install.sh local`
+负责完整 harness 流程；`scripts/dev-plugin.sh <cap>` 是只处理单个能力的底层助手。在
+**codex** 上，更新已有远程 catalog 后应先执行 `plugin marketplace upgrade` 再 `plugin add`。
 
 **其它 harness**（Gemini CLI · opencode · pi · QwenPaw · …）在各自配置里注册 skill + MCP —— 各 harness 的精确配置块见 [`docs/zh/installation.md`](docs/zh/installation.md)。最省事：**直接让 agent 帮你装** —— 「装一下 `qwen-mm-plugins-<cap>`」。
 
@@ -141,7 +160,7 @@ bash install.sh configure     # 交互式：API key、端点、目录、OSS、�
 
 开发环境、贡献规范和检查命令见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。详细指南：
 [本地调试](docs/zh/local_development.md) · [添加能力](docs/zh/how_to_add_new_capability.md) ·
-[测试](docs/zh/testing.md)。
+[测试](docs/zh/testing.md) · [发布插件](docs/zh/releasing.md)。
 
 ## 📄 License
 
