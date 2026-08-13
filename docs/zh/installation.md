@@ -68,7 +68,7 @@ local 模式会把所选插件的 manifest 和 MCP 包来源指向当前 checkou
 开发期间，受 Git 管理的 manifest 会保留绝对本地路径。退出 local 模式时恢复正式来源：
 
 ```bash
-scripts/dev-plugin.sh all --revert
+bash install.sh local --restore
 ```
 
 直接运行源码和定向调试方式见[本地开发](local_development.md)。

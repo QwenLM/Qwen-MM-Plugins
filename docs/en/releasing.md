@@ -39,19 +39,23 @@ require releases for every affected capability.
 
 2. Commit the code and generated release metadata together, open the PR, and wait for it to merge.
 
-3. Tag the exact commit now present on `origin/main`:
+3. Create the annotated tag on the exact commit now present on `origin/main`:
 
    ```bash
-   git fetch origin main --tags
-   git tag --list qwen-mm-plugins-search-v1.1.0   # must print nothing
-   git show origin/main:plugin-versions.json     # confirm the intended release is present
-   git tag -a qwen-mm-plugins-search-v1.1.0 origin/main \
-     -m "qwen-mm-plugins-search 1.1.0"
+   python3 scripts/tag_plugin_release.py search
+   git show qwen-mm-plugins-search-v1.1.0
    git push origin qwen-mm-plugins-search-v1.1.0
    ```
 
+   The helper fetches `origin/main` and existing tags, verifies the release metadata and target tag
+   are consistent, and builds the annotated message from non-merge commits that touched the
+   capability or its cookbook since the previous capability tag. It shows shared runtime commits
+   separately for review; include a relevant one with `--include-shared <commit>`. Pass `--dry-run`
+   to preview or `--push` to create and push in one step.
+
    Tagging after merge keeps releases on the main history even when GitHub uses squash or rebase
-   merges. Never move a published tag; issue a patch release instead.
+   merges. The helper refuses to replace a local or remote tag. Never move a published tag; issue a
+   patch release instead.
 
 4. Smoke-test the published tag using the [installation guide](installation.md).
 

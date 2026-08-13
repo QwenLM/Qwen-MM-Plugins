@@ -10,9 +10,9 @@ dedicated clone for full plugin-install testing.
 Install only the dependencies you need:
 
 ```bash
-scripts/dev-install.sh          # framework and base dependencies
-scripts/dev-install.sh core     # core + visualization stack
-scripts/dev-install.sh all      # every capability
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[core]'  # use '.[all]' for every capability
 ```
 
 Run a server directly from source:
@@ -52,8 +52,5 @@ do not move it while installed.
 Restore release sources before committing or leaving local mode:
 
 ```bash
-scripts/dev-plugin.sh all --revert
+bash install.sh local --restore
 ```
-
-`scripts/dev-plugin.sh <cap>` is the lower-level rewrite-only helper; use `--help` if you need to
-run a harness's marketplace commands yourself.

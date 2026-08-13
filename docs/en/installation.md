@@ -71,7 +71,7 @@ Local mode points the selected plugin manifests and MCP package specs at this ch
 is used for development. Restore release sources when leaving local mode:
 
 ```bash
-scripts/dev-plugin.sh all --revert
+bash install.sh local --restore
 ```
 
 See [Local development](local_development.md) for direct source execution and targeted debugging.
