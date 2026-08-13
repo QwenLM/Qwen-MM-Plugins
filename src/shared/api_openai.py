@@ -140,6 +140,7 @@ def call_openai_chat(
     base_url: str,
     api_key: str,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    optional_extra_body: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Any:
     """Call OpenAI-compatible chat completions, retrying transient failures.
@@ -147,6 +148,13 @@ def call_openai_chat(
     Retries on the SDK's typed transient errors (rate limit, timeout,
     connection, 5xx) and on retryable HTTP status codes, rather than matching
     substrings of the error message.
+
+    ``optional_extra_body`` carries provider hints the call can do without, such as DashScope's
+    ``enable_thinking``. An endpoint that validates request bodies strictly rejects an unknown
+    top-level field with a 400, which would otherwise take the whole tool down on a server the
+    rest of the call works against. Such a 400 drops the hints and retries once; the caller loses
+    the hint's effect, not the result. A server that accepts the field never reaches the retry.
+    Fields the request cannot work without belong in ``extra_body``, which is never dropped.
     """
     import openai
     from openai import OpenAI
@@ -171,12 +179,28 @@ def call_openai_chat(
         )
 
     client = OpenAI(api_key=api_key, base_url=base_url, timeout=_chat_timeout())
-    return retry_call(
-        lambda: client.chat.completions.create(**kwargs),
-        attempts=max_retries,
-        base_backoff=DEFAULT_RETRY_BACKOFF,
-        mode="linear",
-        should_retry=_is_transient,
-        on_exhausted="raise",
-        log=log,
-    )
+
+    def _create(hints: dict[str, Any] | None) -> Any:
+        call_kwargs = dict(kwargs)
+        if hints:
+            call_kwargs["extra_body"] = {**(call_kwargs.get("extra_body") or {}), **hints}
+        return retry_call(
+            lambda: client.chat.completions.create(**call_kwargs),
+            attempts=max_retries,
+            base_backoff=DEFAULT_RETRY_BACKOFF,
+            mode="linear",
+            should_retry=_is_transient,
+            on_exhausted="raise",
+            log=log,
+        )
+
+    try:
+        return _create(optional_extra_body)
+    except openai.BadRequestError:
+        if not optional_extra_body:
+            raise
+        log.warning(
+            "endpoint rejected optional request field(s) %s with 400; retrying without them",
+            ", ".join(sorted(optional_extra_body)),
+        )
+        return _create(None)

@@ -97,9 +97,11 @@ class _FakeCompletions:
     def __init__(self, behavior):
         self._behavior = behavior
         self.calls = 0
+        self.seen: list[dict] = []  # the kwargs of each attempt, for the hint-dropping tests
 
     def create(self, **kwargs):
         self.calls += 1
+        self.seen.append(kwargs)
         return self._behavior(self.calls)
 
 
@@ -144,6 +146,94 @@ def test_call_openai_chat_non_transient_raises_without_retry(monkeypatch):
     with pytest.raises(ValueError, match="bad request"):
         oa.call_openai_chat(base_url="http://local", api_key="k", max_retries=3, model="m", messages=[])
     assert holder["client"].chat.completions.calls == 1  # not retried
+
+
+def _bad_request(message="Extra inputs are not permitted"):
+    import openai
+
+    req = httpx.Request("POST", "http://local/v1")
+    return openai.BadRequestError(message, response=httpx.Response(400, request=req), body=None)
+
+
+def test_call_openai_chat_drops_optional_extra_body_on_400(monkeypatch):
+    """A strict endpoint 400s on the hint; the call is retried without it and succeeds."""
+
+    def behavior(n):
+        if n == 1:
+            raise _bad_request()
+        return "RESULT"
+
+    holder = _install_fake_openai(monkeypatch, behavior)
+    out = oa.call_openai_chat(
+        base_url="http://local",
+        api_key="k",
+        max_retries=3,
+        model="m",
+        messages=[],
+        optional_extra_body={"enable_thinking": False},
+    )
+    seen = holder["client"].chat.completions.seen
+    assert out == "RESULT"
+    assert len(seen) == 2  # the 400 is not itself retried, only the hint-free call follows
+    assert seen[0]["extra_body"] == {"enable_thinking": False}
+    assert "extra_body" not in seen[1]
+
+
+def test_call_openai_chat_keeps_required_extra_body_when_dropping_hints(monkeypatch):
+    """Only the optional fields are dropped — an explicit extra_body survives the retry."""
+
+    def behavior(n):
+        if n == 1:
+            raise _bad_request()
+        return "RESULT"
+
+    holder = _install_fake_openai(monkeypatch, behavior)
+    out = oa.call_openai_chat(
+        base_url="http://local",
+        api_key="k",
+        max_retries=3,
+        model="m",
+        messages=[],
+        extra_body={"modalities": ["text"]},
+        optional_extra_body={"enable_thinking": False},
+    )
+    seen = holder["client"].chat.completions.seen
+    assert out == "RESULT"
+    assert seen[0]["extra_body"] == {"modalities": ["text"], "enable_thinking": False}
+    assert seen[1]["extra_body"] == {"modalities": ["text"]}
+
+
+def test_call_openai_chat_400_without_hints_is_not_retried(monkeypatch):
+    """A 400 with nothing droppable is the caller's error and propagates on the first attempt."""
+    import openai
+
+    def behavior(n):
+        raise _bad_request("image is not a valid input")
+
+    holder = _install_fake_openai(monkeypatch, behavior)
+    with pytest.raises(openai.BadRequestError, match="image is not a valid input"):
+        oa.call_openai_chat(base_url="http://local", api_key="k", max_retries=3, model="m", messages=[])
+    assert holder["client"].chat.completions.calls == 1
+
+
+def test_call_openai_chat_400_after_dropping_hints_propagates(monkeypatch):
+    """When the hint was not the cause, the second 400 surfaces rather than the first."""
+    import openai
+
+    def behavior(n):
+        raise _bad_request("model does not exist" if n > 1 else "Extra inputs are not permitted")
+
+    holder = _install_fake_openai(monkeypatch, behavior)
+    with pytest.raises(openai.BadRequestError, match="model does not exist"):
+        oa.call_openai_chat(
+            base_url="http://local",
+            api_key="k",
+            max_retries=3,
+            model="m",
+            messages=[],
+            optional_extra_body={"enable_thinking": False},
+        )
+    assert holder["client"].chat.completions.calls == 2
 
 
 # ── shared.retry.retry_call (the primitive itself) ───────────────────
