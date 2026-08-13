@@ -80,8 +80,8 @@ bash install.sh local --restore
 
 ## 手动安装 Skill + MCP
 
-DeepSeek Harness、opencode、pi、QwenPaw 或其他没有兼容 marketplace 的 harness 使用此方式。
-对于包含 MCP 的能力，以下三处名称必须一致：
+DeepSeek Harness、Hermes Agent、opencode、pi、QwenPaw 或其他没有兼容 marketplace 的
+harness 使用此方式。对于包含 MCP 的能力，以下三处名称必须一致：
 
 - Skill：`src/capabilities/<cap>/skill`
 - 包 extra：`qwen-mm-plugins[<cap>]`

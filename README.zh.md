@@ -13,6 +13,9 @@
 引导式安装器支持 Claude Code、Codex、Qoder、OpenClaw、Qwen Code 和 Gemini CLI。它调用各
 harness 的原生安装命令，并通过 `~/.qwen-mm-plugins/config` 共享配置。
 
+DeepSeek Harness、Hermes Agent、opencode、pi 和 QwenPaw 可参考
+[手动配置其他 Harness](docs/zh/manual_harnesses.md)。
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash
 ```

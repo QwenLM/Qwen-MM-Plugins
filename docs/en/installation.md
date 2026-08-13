@@ -84,8 +84,8 @@ See [Local development](local_development.md) for direct source execution and ta
 
 ## Manual Skill + MCP installation
 
-Use this path for DeepSeek Harness, opencode, pi, QwenPaw, or another harness without a compatible
-marketplace. For an MCP capability, keep these three values aligned:
+Use this path for DeepSeek Harness, Hermes Agent, opencode, pi, QwenPaw, or another harness without
+a compatible marketplace. For an MCP capability, keep these three values aligned:
 
 - Skill: `src/capabilities/<cap>/skill`
 - package extra: `qwen-mm-plugins[<cap>]`

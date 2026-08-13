@@ -106,6 +106,43 @@ block 替换为 `content discarded`。`vision_chat`、OCR、ASR 和搜索等文�
 返回媒体内容的流程尚不完整。参见上游
 [`dsh-mcp-client` 限制](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/mcp/mcp-client/README.md#known-limitations-and-deferred-work)。
 
+## Hermes Agent
+
+已使用 Hermes Agent v0.19.0 验证。Hermes 必须安装 MCP 支持（`hermes-agent[mcp]` 或
+`hermes-agent[all]`）。请从 MCP 命令所用的同一不可变 tag 复制完整 Skill 目录。这里不要使用
+基于 URL 的 Skill installer：Hermes v0.19 可能漏掉引用目录中的运行时文件。
+
+```bash
+hermes_home=${HERMES_HOME:-"$HOME/.hermes"}
+mkdir -p "$hermes_home/skills"
+skill_target="$hermes_home/skills/qwen-mm-plugins-<cap>"
+[ ! -e "$skill_target" ] || \
+  mv "$skill_target" "$hermes_home/qwen-mm-plugins-<cap>.bak.$(date +%Y%m%d%H%M%S)"
+cp -R /path/to/tagged-checkout/src/capabilities/<cap>/skill \
+  "$skill_target"
+```
+
+注册并验证 MCP server（`edu-agent` 是纯 Skill）：
+
+```bash
+uvx_bin=$(command -v uvx)
+hermes mcp add qwen-mm-plugins-<cap> \
+  --command "$uvx_bin" \
+  --connect-timeout 180 \
+  --args --from \
+  "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>" \
+  qwen-mm-plugins-<cap>
+hermes mcp test qwen-mm-plugins-<cap>
+```
+
+请确认测试输出中包含 `Connected` 且工具数大于 0；Hermes v0.19 报告连接失败后仍可能
+以状态码 0 退出。
+
+**兼容性：** 在 provider 输入边界上，Hermes 与 DSH 类似，但机制不同。DSH 会丢弃 MCP 媒体
+block；Hermes 会在本地缓存返回的图片，仅向 provider 发送 `MEDIA:<本地路径>` 文本。文本和
+结构化结果仍可正常使用，但 provider 收不到图片像素。对于 `read_video`，时间戳和帧顺序会保留，
+但原始多帧视觉上下文会丢失；逐帧重新读取缓存图片也无法恢复原来的交错序列。
+
 ## pi
 
 pi 原生支持 Skill；MCP 工具需要社区 adapter：
