@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -12,6 +11,7 @@ from qwen_mm_plugins_core.renderers import (
     IMAGE_EXTENSIONS,
     SUPPORTED_EXTENSIONS,
     VIDEO_EXTENSIONS,
+    detect_extension,
     get_renderer,
 )
 from shared.content import require_file, text_error
@@ -43,7 +43,7 @@ TOOL: dict[str, Any] = {
         "Visualize any supported file for model consumption. "
         "Renders documents (PDF, DOCX, PPTX, XLSX, CSV), "
         "code files (syntax-highlighted), SVG, DrawIO diagrams, "
-        "subtitles (SRT/VTT), images, and videos as visual output. "
+        "subtitles (SRT/VTT), NIfTI medical volumes, images, and videos as visual output. "
         "Automatically detects file type and applies the appropriate renderer."
     ),
     "args": VisualizeArgs,
@@ -67,7 +67,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     if err := require_file(file_path):
         return err
 
-    ext = os.path.splitext(file_path)[1].lower()
+    ext = detect_extension(file_path)
     if not ext:
         return text_error(f"cannot determine file type (no extension): {file_path}")
 

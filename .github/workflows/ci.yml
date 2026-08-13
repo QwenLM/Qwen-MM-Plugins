@@ -41,6 +41,7 @@ jobs:
           --with "pydantic>=2"
           --with "pillow<12"
           --with "numpy<3"
+          --with "nibabel>=5,<6"
           --with requests
           --with openai
           python -m pytest -q -m "not reachability"

@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 
 | 能力 | 用途 | 主要依赖 | Cookbook |
 |---|---|---|---|
-| `core` | 读取图片和视频；可视化文档、代码、数据、3D 文件等 | 无需 API key；音视频需要 ffmpeg；其他格式按需安装应用 | [Cookbook](cookbooks/core/usage.md) |
+| `core` | 读取图片和视频；可视化文档、代码、数据、3D 文件、NIfTI 影像等 | 无需 API key；音视频需要 ffmpeg；NIfTI 需要 nibabel；其他格式按需安装应用 | [Cookbook](cookbooks/core/usage.md) |
 | `api` | Qwen VL/Omni 视觉理解、OCR、grounding、ASR、分割与音视频理解 | DashScope；本地音视频需要 ffmpeg | [Cookbook](cookbooks/api/usage.md) |
 | `search` | 网页搜索、页面抽取和反向图像搜索 | Serper、Exa 或 Tavily key；反向图搜需要 Serper | [Cookbook](cookbooks/search/usage.md) |
 | `video-memory` | 为长视频问答构建层次化记忆 | DashScope；构建需要 ffmpeg/ffprobe | [Cookbook](cookbooks/video-memory/usage.md) |
@@ -51,9 +51,11 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 @meeting.mp4         带说话人标签和时间戳转写这段会议。
 @place.jpg           判断照片拍摄地点，并联网核实。
 @lecture-2h.mp4      按时间戳列出这段长视频的主要观点。
+@brain.nii.gz        查看元数据和三个正交方向的中心切片。
 ```
 
 `core` 会以动态分辨率读取媒体，通常无需手动缩放。
+NIfTI 文件仅在本地以只读方式打开，不会上传；该可视化能力不用于临床诊断。
 
 ## 依赖与配置
 
