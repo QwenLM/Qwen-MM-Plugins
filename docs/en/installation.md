@@ -19,6 +19,12 @@ The installer supports Claude Code, Codex, Qoder, OpenClaw, Qwen Code, and Gemin
 each harness's native install mechanism and stores shared configuration in
 `~/.qwen-mm-plugins/config`.
 
+DeepSeek Harness is intentionally not in the harness picker. Its `dsh plugin` command manages the
+profile's JavaScript packages, but it does not register an MCP server or install a Skill. Use the
+[manual DeepSeek Harness setup](manual_harnesses.md#deepseek-harness-developer-preview) instead.
+The installer's **Configure** and **Verify** actions remain usable because they do not depend on a
+harness-specific registration command.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash
 ```
@@ -78,8 +84,8 @@ See [Local development](local_development.md) for direct source execution and ta
 
 ## Manual Skill + MCP installation
 
-Use this path for opencode, pi, QwenPaw, or another harness without a compatible marketplace. For
-an MCP capability, keep these three values aligned:
+Use this path for DeepSeek Harness, opencode, pi, QwenPaw, or another harness without a compatible
+marketplace. For an MCP capability, keep these three values aligned:
 
 - Skill: `src/capabilities/<cap>/skill`
 - package extra: `qwen-mm-plugins[<cap>]`

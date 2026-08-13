@@ -49,6 +49,66 @@ Copy the Skill to `~/.config/opencode/skills/qwen-mm-plugins-<cap>` and add:
 
 Use `~/.config/opencode/opencode.json` or a project-level `opencode.json`.
 
+## DeepSeek Harness (developer preview)
+
+Validated with `@deepseek-ai/dsh` 0.1.0-rc.6. DSH loads Skills from `$DSH_HOME/skills` (normally
+`~/.dsh/skills`) and connects stdio MCP servers through its bundled `@deepseek-ai/dsh-mcp-client`;
+it currently requires manual registration.
+
+Install and start DSH once to create the `web` profile:
+
+```bash
+npm install --global @deepseek-ai/dsh@0.1.0-rc.6
+dsh --profile web
+```
+
+DSH filters credential-like variables from MCP child environments, so write provider settings to
+the shared config file first:
+
+```bash
+bash install.sh configure
+```
+
+Copy the Skill from the tag used by the MCP command:
+
+```bash
+dsh_home=${DSH_HOME:-"$HOME/.dsh"}
+mkdir -p "$dsh_home/skills"
+cp -R /path/to/tagged-checkout/src/capabilities/<cap>/skill \
+  "$dsh_home/skills/qwen-mm-plugins-<cap>"
+```
+
+Add the MCP row to `$DSH_HOME/profiles/web/cordis.patch.yml` (normally
+`~/.dsh/profiles/web/cordis.patch.yml`). Replace an initial `[]`, or merge the row into the existing
+array:
+
+```yaml
+- insert:
+    - id: mcp-qwen-mm-plugins-<cap>
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: qwen-mm-plugins-<cap>
+        transport: stdio
+        command: uvx
+        args:
+          - '--from'
+          - 'qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>'
+          - 'qwen-mm-plugins-<cap>'
+        cwd: !!js process.cwd()
+```
+
+Add one child row per capability. Save the file, restart DSH, and open a new session:
+
+```bash
+dsh --profile web
+```
+
+**Compatibility:** DSH 0.1.0-rc.6 preserves MCP text and structured results but replaces image,
+audio, and resource blocks with `content discarded`. Text results from `vision_chat`, OCR, ASR, and
+search remain usable; workflows that depend on media returned by MCP are incomplete. See the
+upstream
+[`dsh-mcp-client` limitation](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/mcp/mcp-client/README.md#known-limitations-and-deferred-work).
+
 ## pi
 
 pi supports Skills directly; MCP tools require the community adapter:

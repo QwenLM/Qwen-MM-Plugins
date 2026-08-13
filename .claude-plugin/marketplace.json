@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Qwen multimodal understanding plugins — Agent Skills + MCP servers",
-    "version": "1.0.3"
+    "version": "1.0.4"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/core",
-        "ref": "qwen-mm-plugins-core-v1.0.1"
+        "ref": "qwen-mm-plugins-core-v1.0.2"
       },
       "description": "Read and visualize any file (images, video, docs, 3D, and more), plus image tools — crop, annotate, extract frames — as MCP tools."
     },
@@ -25,7 +25,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/api",
-        "ref": "qwen-mm-plugins-api-v1.0.2"
+        "ref": "qwen-mm-plugins-api-v1.0.3"
       },
       "description": "Cloud APIs for understanding media, by model family: VL (vision chat, OCR, grounding), Omni A/V (timestamped captioning, ASR / multi-speaker diarization, temporal grounding, event counting), plus ASR and segmentation (SAM3) — as MCP tools; currently supports DashScope."
     },
@@ -35,7 +35,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/search",
-        "ref": "qwen-mm-plugins-search-v1.0.2"
+        "ref": "qwen-mm-plugins-search-v1.0.3"
       },
       "description": "Web search and page extraction via Serper, Exa, or Tavily, plus Serper Lens reverse-image search as MCP tools."
     },

@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-search",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Qwen-MM-Plugins search — web search and page extraction via Serper, Exa, or Tavily, plus Serper Lens reverse-image search, exposed as an MCP server.",
   "skills": [
     "./skill"
@@ -10,7 +10,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "qwen-mm-plugins[search] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-search-v1.0.2",
+        "qwen-mm-plugins[search] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-search-v1.0.3",
         "qwen-mm-plugins-search"
       ]
     }
