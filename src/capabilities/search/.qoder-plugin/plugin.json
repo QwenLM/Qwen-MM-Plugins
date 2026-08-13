@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-search",
   "displayName": "Qwen MM Plugins Search",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Web search and page extraction via Serper, Exa, or Tavily, plus Serper Lens reverse-image search as MCP tools.",
   "skills": "./skill",
   "mcp": ".mcp.json"

@@ -30,7 +30,7 @@ LOCAL_REPO_ROOT=''
 CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.1 1.0.2 1.0.2 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1)
+CAP_VERSIONS=(1.0.2 1.0.3 1.0.3 1.0.1 1.0.1 1.0.1 1.0.1 1.0.1)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
@@ -48,7 +48,8 @@ is_skill_only() { case "$CAP_SKILL_ONLY" in *" $1 "*) return 0 ;; *) return 1 ;;
 #   MARKETPLACE harnesses install a bundled skill+MCP plugin via their own `plugin install` verb.
 #   CONFIG harnesses have no plugin marketplace, so we register the MCP server (+ skill) via each
 #   harness's native verb (see install_for). Harnesses that need a hand-edited config + a checkout-copied
-#   skill (opencode, QwenPaw, pi) stay docs-only (see docs/en/installation.md), not this menu.
+#   skill (DeepSeek Harness, opencode, QwenPaw, pi) stay docs-only (see docs/en/manual_harnesses.md),
+#   not this menu.
 # Menus, status, and detection iterate ALL_HARNESSES; install_for/_detect_mask/do_uninstall case per one.
 MP_HARNESSES="claude codex qoder openclaw"          # native plugin marketplace (skill+MCP bundled)
 CFG_HARNESSES="qwen-code gemini"                    # native-verb (extensions install / mcp add + skills install)
@@ -1467,8 +1468,9 @@ EOF
     ln -s /path/to/Qwen-MM-Plugins/src/capabilities/core/skill \\
       ~/.claude/skills/qwen-mm-plugins-core
 
-  C) Config-file harnesses (opencode · pi · QwenPaw) — register the MCP server + skill in the
-     harness's own config; exact per-harness blocks are in docs/en/installation.md. pi in brief:
+  C) Config-file harnesses (DeepSeek Harness · opencode · pi · QwenPaw) — register the MCP server +
+     skill in the harness's own config; exact blocks are in docs/en/manual_harnesses.md. DSH has no
+     native Skill/MCP install verb and uses its profile Cordis patch. pi in brief:
     cp -r /path/to/Qwen-MM-Plugins/src/capabilities/core/skill ~/.pi/agent/skills/qwen-mm-plugins-core
     pi install npm:pi-mcp-adapter      # pi's MCP goes through this adapter; skill-only caps need just the copy
 

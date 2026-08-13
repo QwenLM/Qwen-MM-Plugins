@@ -46,8 +46,8 @@ Issues = "https://github.com/QwenLM/Qwen-MM-Plugins/issues"
 
 [project.optional-dependencies]
 # capability extras — compose via the profiles below
-api = ["openai", "dashscope", "requests"]     # vision_chat / ocr / grounding / segmentation / ASR
-search = ["requests"]                          # search via Serper / Exa / Tavily; reverse-image via Serper
+api = ["openai", "dashscope", "httpx[socks]", "requests[socks]"]  # cloud media APIs + HTTP/SOCKS
+search = ["requests[socks]"]                    # Serper / Exa / Tavily + optional SOCKS proxy transport
 # viz = the full visualize stack — a `core` install then renders every format out of the box.
 viz = [
     "pypdfium2", "resvg-py", "lxml",          # PDF raster+text (pypdfium2) / SVG (resvg) / DrawIO / LaTeX
