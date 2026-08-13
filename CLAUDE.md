@@ -6,8 +6,8 @@ Keep this file limited to non-obvious repository rules. User-facing orientation 
 ## Local development
 
 Use `bash install.sh local` for the complete harness path and a dedicated clone: local mode writes
-absolute checkout paths into tracked manifests. Restore them with
-`scripts/dev-plugin.sh all --revert`. For server-only iteration, run Python directly; see
+absolute checkout paths into tracked manifests. Restore them with `bash install.sh local --restore`.
+For server-only iteration, run Python directly; see
 [Local development](docs/en/local_development.md).
 
 ## Architecture and packaging

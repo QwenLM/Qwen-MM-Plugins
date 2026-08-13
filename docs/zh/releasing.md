@@ -36,19 +36,22 @@ Marketplace entry 与 MCP `uvx --from` 固定到同一个插件 tag；`main` 只
 
 2. 将代码与生成的发布元数据放在同一 commit，创建 PR，并等待合并。
 
-3. 在 `origin/main` 当前实际存在的 commit 上打 tag：
+3. 在 `origin/main` 当前实际存在的 commit 上创建 annotated tag：
 
    ```bash
-   git fetch origin main --tags
-   git tag --list qwen-mm-plugins-search-v1.1.0   # 必须无输出
-   git show origin/main:plugin-versions.json     # 确认目标版本已合并
-   git tag -a qwen-mm-plugins-search-v1.1.0 origin/main \
-     -m "qwen-mm-plugins-search 1.1.0"
+   python3 scripts/tag_plugin_release.py search
+   git show qwen-mm-plugins-search-v1.1.0
    git push origin qwen-mm-plugins-search-v1.1.0
    ```
 
-   合并后再打 tag，可以避免 GitHub squash/rebase 导致 tag 脱离主线。已发布 tag 不得移动；发现
-   问题时发布新的 patch 版本。
+   该脚本会拉取 `origin/main` 和现有 tags，检查发布元数据与目标 tag 是否一致，并把自上一个
+   capability tag 以来、实际修改该 capability 或其 cookbook 的非 merge commits 写入 tag
+   message。shared runtime commits 会单独列出供人工判断；确认相关时使用
+   `--include-shared <commit>` 纳入说明。使用 `--dry-run` 预览，或使用 `--push` 一次完成创建和
+   推送。
+
+   合并后再打 tag，可以避免 GitHub squash/rebase 导致 tag 脱离主线。脚本会拒绝覆盖本地或
+   远端已有 tag。已发布 tag 不得移动；发现问题时发布新的 patch 版本。
 
 4. 按[安装文档](installation.md)对公开 tag 做 smoke test。
 

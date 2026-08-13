@@ -145,8 +145,8 @@ def main() -> int:
 
     print(f"Prepared qwen-mm-plugins-{cap} {version}")
     print(f"Distribution release train: {args.distribution_version}")
-    print("Next: run checks, commit all code + metadata, then create the immutable tag:")
-    print(f"  git tag -a {tag} -m 'qwen-mm-plugins-{cap} {version}'")
+    print("Next: run checks, commit all code + metadata, merge the PR, then create the immutable tag:")
+    print(f"  python3 scripts/tag_plugin_release.py {cap}")
     print("This script did not commit, tag, or push anything.")
     return 0
 

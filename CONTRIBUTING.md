@@ -10,8 +10,9 @@ Qwen-MM-Plugins supports Python 3.10 and newer. From a checkout, install the
 dependencies needed for the area you are changing:
 
 ```bash
-scripts/dev-install.sh          # base dependencies
-scripts/dev-install.sh core     # core and visualization
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[core]'
 ```
 
 See [local development](docs/en/local_development.md) for source and harness

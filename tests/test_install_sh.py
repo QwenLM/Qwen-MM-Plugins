@@ -210,6 +210,42 @@ def test_rewrite_plugin_sources_all_skips_skill_only_manifests(tmp_path):
     assert sources["qwen-mm-plugins-search"] == "./src/capabilities/search"
 
 
+def test_local_restore_cli_restores_all_published_refs(tmp_path):
+    checkout = _make_local_checkout(tmp_path)
+    shutil.copy2(ROOT / "install.sh", checkout)
+    localized = subprocess.run(
+        [
+            "python3",
+            str(checkout / "scripts/rewrite_plugin_sources.py"),
+            "--repo",
+            str(checkout),
+            "--refresh",
+            "all",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert localized.returncode == 0, localized.stderr
+
+    restored = subprocess.run(
+        ["bash", "install.sh", "local", "--restore"],
+        cwd=checkout,
+        env={**os.environ, "HOME": str(tmp_path / "home"), "NO_COLOR": "1"},
+        capture_output=True,
+        text=True,
+    )
+    assert restored.returncode == 0, restored.stderr
+    assert "restored published plugin refs" in restored.stdout
+
+    marketplace = json.loads((checkout / ".claude-plugin/marketplace.json").read_text())
+    sources = {item["name"]: item["source"] for item in marketplace["plugins"]}
+    assert sources["qwen-mm-plugins-core"]["ref"] == "qwen-mm-plugins-core-v1.0.1"
+    assert sources["qwen-mm-plugins-search"]["ref"] == "qwen-mm-plugins-search-v1.0.1"
+    manifest = (checkout / "src/capabilities/core/.mcp.json").read_text()
+    assert "@qwen-mm-plugins-core-v1.0.1" in manifest
+    assert "--refresh" not in manifest
+
+
 def test_local_checkout_root_comes_from_install_script_not_cwd(tmp_path):
     result = subprocess.run(
         ["bash", "-c", f"source {ROOT / 'install.sh'} --help >/dev/null; local_checkout_root"],
@@ -233,6 +269,57 @@ def test_local_install_dry_run_does_not_rewrite_manifests(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert manifest.read_text() == original
+
+
+@pytest.mark.parametrize("action", ["do_install", "do_update", "do_uninstall"])
+def test_missing_harness_stops_before_plugin_selection(action):
+    script = rf"""
+screen() {{ :; }}
+hr() {{ :; }}
+pick_count=0
+menu_pick() {{
+  pick_count=$((pick_count + 1))
+  if [ "$pick_count" -eq 1 ]; then PICK_I=0; PICK=openclaw
+  else PICK_I=-1; PICK=''
+  fi
+}}
+have() {{ return 1; }}
+choose_caps() {{ printf 'UNEXPECTED capability selection\n'; }}
+choose_caps_local() {{ printf 'UNEXPECTED capability selection\n'; }}
+choose_caps_update() {{ printf 'UNEXPECTED capability selection\n'; }}
+spin() {{ printf 'UNEXPECTED installed-plugin detection\n'; }}
+pause() {{ printf 'PAUSED\n'; }}
+{action}
+"""
+    result = _bash(script)
+    assert result.returncode == 0, result.stderr
+    assert "openclaw is not available — 'openclaw' is not installed or not on PATH" in result.stdout
+    assert result.stdout.count("PAUSED") == 1
+    assert "UNEXPECTED" not in result.stdout
+
+
+def test_verify_separates_capabilities_and_summarizes_results():
+    script = r"""
+screen() { :; }
+hr() { :; }
+spin() { printf -v "$2" 'core search edu-agent'; }
+load_caps() { MP_ITEMS=(core search edu-agent); MP_SEL=(1 1 1); }
+multi_pick() { MP_STATUS=ok; }
+ensure_uv() { return 0; }
+uvx_cap() { printf 'checked %s\n' "$1"; [ "$1" != search ]; }
+pause() { :; }
+do_verify
+"""
+    result = _bash(script)
+    assert result.returncode == 1
+    for cap in ("core", "search", "edu-agent"):
+        assert f"── qwen-mm-plugins-{cap} " in result.stdout
+    assert "checked core" in result.stdout
+    assert "checked search" in result.stdout
+    assert "Verify summary" in result.stdout
+    assert "passed       1" in result.stdout
+    assert "failed       1" in result.stdout
+    assert "skipped      1 (skill-only)" in result.stdout
 
 
 @pytest.mark.parametrize(
