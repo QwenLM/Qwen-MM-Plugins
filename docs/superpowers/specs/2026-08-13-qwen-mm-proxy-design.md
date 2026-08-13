@@ -19,7 +19,7 @@ Qwen-MM-Plugins 目前以 Skill + MCP server 形式为 Claude Code、Codex、Qod
 - Hook 派（CC-Vision、cc-vision-hook 等）：用 `UserPromptSubmit` / `PostToolUse` 把粘贴图和工具图转文字后 `additionalContext` 注入，但只能追加、不能删除原图，对“协议级硬拒绝图片”的模型无效。
 - MCP 工具派（vision-bridge-mcp 等）：提供图片转文字的 MCP 工具，靠模型主动调用，不拦截。
 
-本设计的目标：**在 Qwen-MM-Plugins 内新增 `proxy` capability，以协议代理为主、hooks 与 MCP 能力声明为兜底，在纯文本模型场景下统一拦截所有图片内容，并兼容多协议互转。**
+本设计的目标：**在 Qwen-MM-Plugins 内新增 `proxy` capability，以协议代理为主、hooks 与 MCP 工具为兜底，在纯文本模型场景下统一拦截所有图片内容，并兼容多协议互转。**
 
 ## 2. 范围与第一版边界
 
@@ -29,8 +29,8 @@ Qwen-MM-Plugins 目前以 Skill + MCP server 形式为 Claude Code、Codex、Qod
 - 协议归一化层：9 种组合（入站 3 × 上游 3）的请求转换；流式转换第一版支持“入站=上游”直通，以及 Anthropic ↔ Chat 两种常见跨协议转换，其余跨协议流式留第二版。
 - 图片处理管线：每次请求全量扫描、VLM 转文字、两层缓存、上下文预算、fail-open。
 - 模型能力判定：用户配置优先，内置供应商默认名单兜底，未知模型默认拦截。
-- Claude Code 侧 hooks（UserPromptSubmit + PostToolUse）与 MCP 能力声明裁剪。
-- 生命周期管理：`install.sh` 接入、`proxy start/stop/status/logs`、harness base_url 改写与回滚。
+- Claude Code 侧 hooks（UserPromptSubmit + PostToolUse）兜底；MCP 复用现有 api 能力（工具派）。
+- 生命周期管理：`install.sh` 接入、`proxy start/stop/status/logs/test-image`、harness base_url 改写与回滚。
 
 第一版不包含：
 
@@ -64,7 +64,7 @@ flowchart LR
     end
     subgraph Fallback["兜底层"]
         HOOKS["Claude Code Hooks<br/>UserPromptSubmit / PostToolUse"]
-        MCPF["MCP 能力声明裁剪<br/>text-only 隐藏 image 工具"]
+        MCPF["MCP 工具派兜底<br/>复用 api 能力"]
     end
     CC --> PARSE
     CX --> PARSE
@@ -117,6 +117,15 @@ IR 定义：
 | OpenAI Responses | `input[].input_image` 或 tool 输出 data URL | `image { url }` |
 | Anthropic | `content[].source`（base64 + media_type） | `image { base64, media_type }` |
 
+#### 4.2.1 tool_result / 工具输出里的图片
+
+工具结果里的图片分两种形态，IR 必须都归一化成 `image` 块并进入同一套管线：
+
+1. **结构化图片块**：Anthropic 的 `tool_result.content` 可含 `{type:"image", source:{...}}`；OpenAI Responses 的 `function_call_output.output` 可含 `input_image` 块；Chat 的 tool 消息 `content` 可含 `image_url` 块。
+2. **字符串内嵌 base64 data URL**：工具输出被序列化为字符串时（`function_call_output.output` 为字符串、Chat tool 消息 `content` 为字符串），`data:image/...;base64,...` 藏在文本里。这是最常见的漏网形态（Codex++ issue #1701：一张 639KB 图 → 66 万 token）。
+
+**base64 data URL 本质是纯文本**：纯文本模型不会对它报错，而是把它当乱码字符逐 token 读取、撑爆上下文。所以它不是「会不会被模型读到」的问题，而是「必须主动从字符串里抽出来」的问题。图片抽取层（§5.3）因此必须同时处理结构化块与字符串内嵌两种形态，用 `extract_data_urls` 等价逻辑扫描 `data:image/{subtype};base64,{payload}`（payload 由 `[A-Za-z0-9+/=]` 组成）。
+
 ### 4.3 转换矩阵
 
 请求转换：入站 3 × 上游 3 全部支持。相同协议直接透传结构；不同协议按 IR 重建。
@@ -129,17 +138,39 @@ IR 定义：
 
 ### 4.4 与中继工具共存
 
-CC Switch 等中继会把 Anthropic 转成 OpenAI 再发出；本代理在入站侧再接一层归一化，不依赖具体中继，只要入站是三种协议之一即可。
+cc-switch / Codex++ 等中继本质都是**改写 harness 的 base_url**：直连 = 指向真实上游；路由 = 指向自己的 relay 端口再转发。它们都能做协议互转（Anthropic ↔ Chat/Responses）。
+
+本代理与它们共存的铁律：**本代理必须是第一跳**，即 harness 的 base_url 指向本代理（`127.0.0.1:8787`），链路为：
+
+```
+harness → 本代理(8787) → [可选] cc-switch / codex++ → 真实上游
+```
+
+只要 harness 的 base_url 指向本代理，100% 流量先过本代理，后面接谁都能拦到。冲突点在于：多个工具都抢同一个 base_url，谁后运行谁生效，本代理可能被绕过。因此：
+
+- **幂等剥图**：剥图以图片内容哈希为幂等键。若本代理已把图替换成 `[图片描述]`，下游 codex++ 再剥图时看不到图片块，天然无副作用。
+- **单一图片路由代理原则**：链路里只开一个「路由+剥图」代理，其余中继关掉图片处理。若两个代理同时对同一张图各调一次 VLM，会产生双倍延迟与费用（竞态），故 `check` 需检测并告警（§8.3）。
+- **入站侧协议归一化不依赖具体中继**：只要入站是三种协议之一即可，不管它是 cc-switch 转来的还是 codex++ 转来的。
 
 ## 5. 图片处理管线
 
-### 5.1 扫描范围
+### 5.1 扫描范围与两阶段
 
-每次请求对 IR 全部消息扫描（最多最近 50 轮带图消息，黄金窗口 10 轮）。不只看本轮，原因：
+每次请求对 IR 全部 user/tool 消息扫描，深度与黄金窗口沿用 Codex++ 常量（`vision.rs`）：
 
-- 当前轮是纯文本追问但历史有图时，需要注入历史图描述。
+- `ANALYZE_DEPTH_LIMIT = 50`：最多回溯最近 50 条 user/tool 消息。
+- `GOLDEN_WINDOW_DEPTH = 10`：最近 10 条 user/tool 消息为「黄金窗口」。
+
+分**两阶段**处理：
+
+- **Phase 1 同步**（阻塞请求）：当前轮不限量 + 黄金窗口内历史（受 X 预算封顶，§5.7）→ 同步调 VLM 并注入描述。
+- **Phase 2 后台**（`asyncio`/线程后台）：仅当 `X > 10` 时，收集黄金窗口外、分析深度内、未缓存的深层图，异步调 VLM **只写缓存、不注入当前消息**；失败静默，缓存保持未命中待后续请求重试。
+
+不只看本轮的原因：
+
+- 当前轮是纯文本追问但历史有图时，需要注入历史图描述（§5.8）。
 - 代理启用前已经进过上下文的图片需要兜底。
-- 上下文预算需要基于全量计算。
+- 上下文预算需要基于全量计算（§5.7）。
 
 ### 5.2 能力判定接入
 
@@ -151,23 +182,33 @@ CC Switch 等中继会把 Anthropic 转成 OpenAI 再发出；本代理在入站
 
 ### 5.3 图片抽取
 
-从 IR 图片块抽取 `url` / `base64` / `data URL`，用户消息与 tool_result 均覆盖。多图按 `[[图片K]]` 顺序标记。
+从 IR 抽取图片，用户消息与 tool_result 均覆盖，且**两种形态都处理**：
+
+- 结构化图片块：`image { url / base64 }`。
+- 字符串内嵌 base64 data URL：用 `extract_data_urls` 等价逻辑扫描文本中的 `data:image/{subtype};base64,{payload}`，逐段抽出（payload 由 `[A-Za-z0-9+/=]` 组成）。
+
+多图按 `[[图片K]]` 顺序标记。
 
 ### 5.4 VLM 调用
 
 - 当前轮：有用户文字问题时用 Tier2（`URL+问题` 缓存键 + 聚焦 prompt）；无问题退回 Tier1（全面描述）。
 - 历史轮：只用 Tier1。
-- 批量：`BATCH_SIZE=5`，单批失败隔离、各自重试。
+- 批量：`BATCH_SIZE=5`，单批失败隔离、各自重试；`BATCH_MAX_ATTEMPTS=2`（每批共 3 次尝试），指数退避 `3·2^(n-1)` 加抖动。
 - 后端：默认 DashScope Qwen（`qwen3.5-omni-plus` / `qwen-vl-max`），可配任意 OpenAI-compatible 或 Anthropic 端点。
+- **格式独立于主模型**：VLM 后端单独配 `format ∈ {anthropic, responses, chat}`（默认 `chat`）。主模型与 VLM 常非同一厂商、协议不同，故默认不自动跟随主 relay；枚举与主入口一致，可选 `auto` 跟随匹配到的主 relay 协议（仅同厂商时方便）。
 
 ### 5.5 缓存
 
-两层，磁盘持久化 + TTL，按图片内容哈希：
+两层，**内存为主 + 可选磁盘**，按图片内容哈希。结构与 Codex++ 一致：
 
 - Tier1：`URL → 描述`（历史轮/无问题当前轮）。
 - Tier2：`(URL, 问题) → 描述`（有问题的当前轮）。
 
-缓存命中不调 VLM。
+关键实现（抄 `vision.rs`）：
+
+- **结构化缓存键**：用 `(URL)` / `(URL, 问题)` 完整结构做键（HashMap 的 Eq 比较原始字符串），**不用 hash 值**，彻底消除 64 位哈希碰撞导致的「张冠李戴」。
+- **内存层**：容量 `CACHE_CAPACITY=500`，TTL `24h`，满时按写入时间踢最旧（LRU）；缓存命中零 VLM 调用。
+- **磁盘层（可选，默认关）**：`cache_disk=true` 时按内容哈希落盘 + TTL，重启后命中，跨会话省 VLM 费用。MVP 默认内存，磁盘留二版或开关开启。
 
 ### 5.6 注入与 fail-open
 
@@ -177,9 +218,10 @@ CC Switch 等中继会把 Anthropic 转成 OpenAI 再发出；本代理在入站
 
 ### 5.7 上下文预算
 
-- 先剥图估算纯文本 token，留 10% 安全余量。
-- `X = available / AVG_DESC_BUDGET` 决定历史轮可注入描述数量。
-- 当前轮不限量；预算不足优先最近消息；深层历史只保留缓存命中项。
+- 先剥图估算纯文本 token（`bytes/2` 粗估，主流 tokenizer 压缩比约 1.5–2 bytes/token，取保守），留 10% 安全余量（`CONTEXT_SAFETY_MARGIN=0.9`）。
+- `available = context_window × 0.9 − 纯文本估算`；`X = available / AVG_DESC_BUDGET`（`AVG_DESC_BUDGET=100` token ≈ 200 字）决定可注入描述数量。
+- 当前轮不限量；黄金窗口受 X 封顶；预算不足优先最近消息；深层历史只注入缓存命中项，未命中的交给 Phase 2 后台。
+- `available ≤ 1` 视为上下文已满：剥离全部图片 + 注入「上下文已满」提示，返回。
 
 ### 5.8 追问检测
 
@@ -219,6 +261,11 @@ CC Switch 等中继会把 Anthropic 转成 OpenAI 再发出；本代理在入站
 ### 6.3 relay 配置
 
 ```toml
+[server]
+bind_host = "127.0.0.1"        # 不写死，可改
+bind_port = 8787               # 数据面：harness base_url 指向它，冲突时改端口
+ui_port = 8788                 # 控制面：管理 API + 内置 Web UI，独立于数据面
+
 [[relays]]
 name = "deepseek-official"
 protocol = "responses"        # anthropic | responses | chat
@@ -233,9 +280,16 @@ protocol = "anthropic"
 base_url = "https://api.anthropic.com"
 api_key = "…"
 models = ["anthropic/*"]
+
+[vlm]                          # VLM 后端，独立于主 relay
+model = "qwen-vl-max"          # 或 qwen3.5-omni-plus
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key = "…"
+format = "chat"                # anthropic | responses | chat | auto，默认 chat，独立于主模型
+cache_disk = false             # 内存缓存为主，磁盘可选
 ```
 
-按请求 model + 入站协议匹配 relay；匹配不到用默认 relay。第一版不做轮转。
+按请求 model + 入站协议匹配 relay；匹配不到用默认 relay。第一版不做轮转。VLM 后端与主 relay 解耦，可指向不同厂商、不同协议。
 
 ### 6.4 判定结果缓存
 
@@ -245,26 +299,25 @@ models = ["anthropic/*"]
 
 api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的标记，真实上游 key 不下发到 harness；日志不写明文 key。
 
-## 7. hooks / MCP 兜底层
+## 7. hooks / MCP 兜底层（非主机制，MVP 收敛）
 
-### 7.1 Claude Code hooks
+代理是主机制；hooks / MCP 只做代理覆盖不到的兜底，参考社区主流「Hook 派」「MCP 工具派」做法，MVP 不做花哨扩展。
+
+### 7.1 Claude Code hooks（参考 cc-vision-hook）
 
 - `UserPromptSubmit`：用户粘贴图片时从 image-cache 目录取新图 → VLM 转文字 → `additionalContext` 注入。
-- `PostToolUse`：通用递归提取器从 `tool_response` 抽图（兼容 MCP content-block 数组、Read 对象结构、Bash data URI）→ VLM 转文字 → `additionalContext` 注入。
-- 内容哈希 + 磁盘缓存，同一图只描述一次。
-- 已知边界：hooks 只能追加 `additionalContext`，不能删除原图；对协议级硬拒绝图片的模型必须靠代理。
+- `PostToolUse`：从 `tool_response` 抽图（兼容 MCP content-block 数组、Read 对象结构、Bash data URI）→ VLM 转文字 → `additionalContext` 注入。
+- 内容哈希 + 缓存，同一图只描述一次。
+- 已知边界：hooks 只能**追加** `additionalContext`、不能删除原图；对协议级硬拒绝图片的模型必须靠代理。
 
-### 7.2 MCP 能力声明裁剪
+### 7.2 MCP 工具派（复用现有 api 能力，不新增）
 
-- 给现有 capability 增加 `output_modalities` 元数据：`core` 工具返回 `image`，`api` 工具返回 `text`。
-- `text_only` 模型下：隐藏 core 中返回图片的工具，或让其返回文字占位；只保留 `api` 文字工具。
-- `vision` 模型下：全部保留。
-- 实现为“安装时 manifest 裁剪 + proxy 启动时配置注入”，不侵入 core/api 现有逻辑。
+现有 `api` capability 本身就是「MCP 工具派」路径：纯文本主模型按 Skill 指引主动调用 `vision_chat`/`ocr` 等工具，由 Qwen VLM 返回文字。MVP 直接复用，**不做** `output_modalities` 元数据、manifest 裁剪等扩展（留二版）。
 
 ### 7.3 范围与开关
 
-- 第一版 hooks 与 MCP 裁剪只做 Claude Code 侧，配置开关 `enable_hooks`、`enable_mcp_filter`（默认开）。
-- Codex / Qwen Code 侧第一版只依赖代理。
+- 第一版只做 Claude Code 侧 hooks，开关 `enable_hooks`（默认开）。Codex / Qwen Code 侧只依赖代理。
+- 已走代理的图片，hooks 按内容哈希去重、不重复描述，避免「代理 + hooks 双通道」重复调用 VLM。
 
 ## 8. 生命周期与 harness 接入
 
@@ -272,23 +325,31 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 
 新增 `src/capabilities/proxy/`，Python，MCP 无关（常驻 HTTP server），入口 `qwen-mm-plugins-proxy`，遵循仓库 capability 规范（manifest、版本 tag、发布流程）。
 
+**组件形态**：proxy 是常驻 HTTP server，分**数据面 / 控制面**两个端口：
+
+- **数据面（`127.0.0.1:8787`，`bind_port`）**：服务三种入站协议（`/v1/messages`·`/v1/responses`·`/v1/chat/completions`），这是与 harness 的稳定契约（base_url 指向它），不随 UI 变化。
+- **控制面（`127.0.0.1:8788`，`ui_port`）**：暴露一份 **JSON 管理 API**（路由开关、路由态、status、Tier1/Tier2 测试）+ 内置一个本地 Web UI（自包含 HTML/JS，直接消费这份 API）。harness 完全感知不到控制面。
+
+分离的好处：数据面保持稳定，UI 只是管理 API 的消费者。后期要换独立前端（Rust/Tauri 或任何形态），只要让它去请求 8788 的同一套 JSON 接口即可，数据面 8787 一个字不改。不引入 Rust/Tauri——本仓库是 Python 仓库，用 Rust 会额外引入一套构建与分发链；proxy 本就是 HTTP server，控制面直接骑在它上面即可。
+
 ### 8.2 安装器接入
 
 `bash install.sh` 新增 `proxy` 能力，安装时：
 
-- 生成 `~/.qwen-mm-plugins/proxy.toml` 默认配置。
-- 改写 harness base_url 指向 `http://127.0.0.1:8787`：
+- 生成 `~/.qwen-mm-plugins/proxy.toml` 默认配置；`bind_host`/`bind_port` 可配（默认 `127.0.0.1:8787`），`Configure` 阶段探测端口，被 cc-switch / codex++ / 自建服务占用时提示换端口。
+- 改写 harness base_url 指向本地代理（**不写死端口**，用上面探测到的值）：
   - Claude Code：`ANTHROPIC_BASE_URL` / settings 环境变量。
   - Codex：`~/.codex/config.toml` model provider `base_url`（覆盖 Codex++ 的 Responses 直连问题）。
   - Qwen Code / DashScope 兼容：`DASHSCOPE_BASE_URL`。
 - 改写前备份原配置，`proxy uninstall` 可回滚。
+- **冲突检测**：改写前读当前 base_url 归属，若已是 cc-switch / codex++ / 其它代理，提示链路顺序（本代理需为第一跳，§4.4）而非静默覆盖。
 
 ### 8.3 运行命令
 
 - `qwen-mm-plugins-proxy start`：启动常驻服务（默认绑定 `127.0.0.1:8787`，PID 文件 + 单实例锁）。
 - `stop` / `status` / `logs`：停止、健康检查、查看结构化日志。
-- `test-image <path>`：验证 VLM 后端连通与描述质量。
-- `check`：`--check-system` 依赖自检（端口占用、VLM key、relay 配置）。
+- `test-image <path> [--question <q>]`：验证 VLM 后端连通与描述质量；无 `--question` 走 Tier1 全面描述，带 `--question` 走 Tier2 聚焦描述，两条结果并排返回，直接对比。
+- `check`：`--check-system` 依赖自检（端口占用、VLM key、relay 配置）+ **路由态识别**：读 harness 当前 base_url 归属、探测 cc-switch / codex++ 监听端口与运行进程、检测「双重剥图」竞态，冲突时告警并给顺序建议。
 
 ### 8.4 日志与观测
 
@@ -296,15 +357,35 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 
 ## 9. 错误处理与容错
 
-| 场景 | 行为 |
-|---|---|
-| VLM 调用失败 / 超时 | fail-open：注入“看不到图”提示后继续转发 |
-| 上下文溢出 | 剥离图片 + 注入溢出提示 |
-| 协议解析失败 | 返回明确错误，不静默放行 |
-| 上游连接失败 | 原样透传错误 |
-| 代理自身异常 | fail-open：不阻断请求，保证不比没有安全网更糟 |
-| 缓存 miss + VLM 不可用 | 剥离图片 + fail-open 提示，历史缓存命中项仍注入 |
-| 并发 | 请求并发处理；VLM 批量调用限流防打爆 |
+铁律（抄 Codex++ 差异 1）：**任何失败都 fail-open** —— 图片被剥离 + 注入「看不到图」系统提示（说明原因 + 当前模式 + 修正建议 + 禁止编造），请求继续转发，**绝不比没有安全网更糟**。VLM 配置缺失时按 Strip 降级（绝不把 base64 透传给纯文本模型）。
+
+### 表 A：三态 × 失败场景行为矩阵
+
+| 场景 \ 模式 | send-as-is（vision 模型） | strip（纯文本·未配 VLM） | vlm（纯文本·已配 VLM） |
+|---|---|---|---|
+| VLM 成功 | 不进入管线，图片原样直通 | —（不调 VLM） | 图片 → 描述替换，注入 `[图片描述]` |
+| VLM 调用失败 / 超时 | — | — | 剥离图片 + 注入「视觉模型调用失败」，历史缓存命中项仍注入 |
+| 上下文溢出（available≤1） | 直通（vision 模型不走管线） | 剥离图片 + 注入「上下文已满」 | 剥离图片 + 注入「上下文已满」 |
+| VLM 配置缺失 | — | 剥离图片 + 注入「图片已省略」 | 降级为 Strip：剥离 + 注入「图片已省略」 |
+| 协议解析失败 | 返回明确协议错误，不静默放行 | 同左 | 同左 |
+| 上游连接失败 | 原样透传上游错误 | 同左 | 同左 |
+| 代理自身异常 | fail-open：不阻断请求 | 同左 | 同左 |
+| 并发 | 请求并发；VLM 批量限流（信号量 5）防打爆 | 同左 | 同左 |
+
+### 表 B：fail-open 注入与埋点矩阵
+
+| 失败场景 | 剥离动作 | 注入提示 | 埋点（`vl_strip` reason） | 请求是否继续 |
+|---|---|---|---|---|
+| VLM 超时 / send_error | 剥离当前轮图片 | 「看不到图」+ 原因 + 换多模态模型 / 配 VLM 建议 + 禁止编造 | `vl_failed` | 继续（fail-open）|
+| VLM http_error（非 2xx） | 同上 | 同上 | `vl_failed` | 继续 |
+| VLM json_error / parse_error | 同上 | 同上 | `vl_failed` | 继续 |
+| 上下文溢出 | 剥离全部图片 | 「上下文已满，图片未处理」 | `overflow` | 继续（返回前注入）|
+| 缓存 miss + VLM 不可用 | 剥离图片 | 「看不到图」提示；历史缓存命中项仍注入 | `vl_failed` | 继续 |
+| VLM 配置缺失 | Strip 降级（不透传 base64） | 「图片已省略」 | `strip` | 继续 |
+| 批解析失败（多图） | 该批剥离 | 「视觉模型调用失败」 | `vl_failed` | 继续 |
+| 深层 Phase 2 失败 | 无（只写缓存不注入） | 无 | `vlm_phase2_error` | 继续（缓存保持未命中）|
+
+> 对应 Codex++ 差异 4：剥图后必须注入状态提示，把「界面无标识 / 配置误操作 / 纯文本模型已识图」的误解显式暴露在对话里，防模型编造。
 
 ## 10. 测试与发布
 
@@ -337,17 +418,18 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 | 覆盖 harness | 仅 CodexApp | Claude Code + Codex + Qwen Code，后续可扩展 TRAE/Kimi |
 | 协议 | 仅 OpenAI（Responses/Chat），且 Responses 直连上游 | 三协议归一化，入站 3 × 上游 3，base_url 一律指向代理 |
 | 图片安全网位置 | messages 数组层 | IR 层，三协议共用一份处理逻辑 |
-| 工具/用户图片 | 代理层处理 tool data URL | 代理 + hooks + MCP 能力声明三层 |
+| 工具/用户图片 | 代理层处理 tool data URL | 代理 + hooks + MCP 工具三层 |
 | 模型能力判定 | per-model checkbox | 配置优先 + 内置供应商名单 + 未知默认拦截 |
 | 注入格式 | 消息内追加 `[图片描述]` / fail-open 提示 | 同 Codex++ 位置，文案风格按 Qwen 库 |
-| 缓存/预算 | 两层缓存 + golden window + X budget | 复用相同思路，加磁盘持久化 + TTL |
+| 缓存/预算 | 两层缓存 + golden window + X budget | 复用相同思路，内存 + 可选磁盘，加 TTL |
 | 生命周期 | 内嵌于 Codex++ | 独立 capability + install.sh + 备份回滚 |
+| 管理界面 | Tauri 桌面应用（Rust） | 内置本地 Web UI（Python proxy serve）|
 
 优化点：
 
 - 修复 Codex++ 的 Responses 直连问题：本设计所有协议统一走本地代理。
 - 通过 IR 归一化消除三份重复的图片处理实现。
-- 补上 hooks 兜底与 MCP 工具面裁剪，覆盖代理覆盖不到的通道。
+- 补上 hooks 兜底与 MCP 工具派（复用 api 能力），覆盖代理覆盖不到的通道。
 - 模型能力判定从“写死名单”改为“配置为主 + 名单兜底”，避免名称启发式误判。
 
 ## 12. 已确认决策记录
@@ -359,6 +441,11 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 - 注入格式：位置按 Codex++（消息内追加 + fail-open 系统提示），文案风格按 Qwen 库。
 - 协议归一化：9 种请求转换全部实现；流式先做同协议直通 + Anthropic ↔ Chat。
 - 兜底行为：按 Qwen-MM-Plugins 现有库的处理方式。
+- 缓存：内存为主 + 可选磁盘（`cache_disk`，默认关），结构化键（URL / URL+问题），容量 500 + TTL 24h + LRU。
+- VLM 后端格式：独立配置 `format ∈ {anthropic,responses,chat,auto}`，默认 `chat`，不自动跟随主模型。
+- 组件形态：Python 常驻 HTTP server + 内置本地 Web UI（端口可配），不引入 Rust/Tauri。
+- base_url 不写死：`bind_host`/`bind_port` 可配，`check` 做路由态识别与冲突告警。
+- hooks/MCP 兜底收敛为 MVP：hooks 参考 cc-vision-hook（追加不删除），MCP 复用 api 能力，不做 manifest 裁剪。
 
 ## 13. 风险与开放问题
 
@@ -367,3 +454,5 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 - TRAE / Kimi Code 的 hooks 接入、relay 轮转、服务端部署留后续版本。
 - 未知模型默认拦截会引入额外 VLM 调用成本，后续可加“按供应商启发式自动学习”。
 - 官方上游是否接受“常驻 HTTP 代理”这一新能力形态，取决于 PR 评审，fork 阶段不受影响。
+- base_url 冲突：cc-switch / codex++ / 自建服务可能已占用 harness base_url 或端口，需 `check` 检测与顺序指引（§4.4 / §8.3）。
+- Web UI 为 MVP 新增面：若不想维护，可退化为纯 CLI（§8.3 的 test-image 已覆盖 Tier1/Tier2 测试）。
