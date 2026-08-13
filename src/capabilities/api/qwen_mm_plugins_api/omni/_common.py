@@ -39,7 +39,6 @@ from shared.api_omni import (
     _VIDEO_EXTS,
     DEFAULT_OMNI_FPS,
     DEFAULT_OMNI_MAX_PIXELS,
-    DEFAULT_OMNI_MODEL,
     OMNI_MAX_B64_BYTES,
     OMNI_MAX_B64_FRAMES,
     OMNI_MAX_UPLOAD_BYTES,
@@ -54,6 +53,7 @@ from shared.api_omni import (
     omni_video_max_sec,
     omni_video_part,
     resolve_omni_endpoint,
+    resolve_omni_model,
 )
 from shared.api_openai import is_url
 from shared.content import require_dep, require_file, text_error
@@ -572,7 +572,7 @@ def run_omni(
 
     fps = arguments.get("fps") or default_fps
     max_pixels = arguments.get("max_pixels") or default_max_pixels
-    model = arguments.get("model") or DEFAULT_OMNI_MODEL
+    model = resolve_omni_model(arguments.get("model"))
     base_url, api_key = resolve_omni_endpoint(arguments)
 
     if arguments.get("dry_run"):

@@ -29,6 +29,8 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 |---|---|---|
 | `DASHSCOPE_API_KEY` | — | vision, OCR, grounding, ASR, generation, memory builds *(secret)* |
 | `DASHSCOPE_BASE_URL` | DashScope compat URL | override the DashScope OpenAI-compatible base URL |
+| `QWEN_MM_API_VL_MODEL` | qwen3.7-plus | default VL model for vision_chat, OCR, and grounding |
+| `QWEN_MM_API_OMNI_MODEL` | qwen3.5-omni-plus | default Omni model for audio/video understanding tools |
 | `SAM3_SERVER_URL` | — | segmentation SAM3 server URL |
 | `ASR_SERVER_URLS` | — | self-hosted ASR fallback URLs (comma-separated) |
 
