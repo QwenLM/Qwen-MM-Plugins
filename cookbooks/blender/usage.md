@@ -13,11 +13,6 @@ See the [Cases](#cases) below. (For parametric CAD, see [cookbooks/freecad](../f
 
 ## Tools
 
-Thin client: the tools talk to a live Blender carrying the bundled blender-mcp addon.
-`QWEN_MM_AUTOLAUNCH=1` (preset in the plugin manifests) brings Blender up on the first tool call,
-auto-downloading it on Linux-x86_64 if missing; otherwise start it with
-`qwen-mm-plugins-blender --launch-app`.
-
 **Scene & code**
 - `execute_blender_code` — run arbitrary Python in Blender (the workhorse)
 - `get_scene_info` — summarize the current scene
@@ -36,6 +31,8 @@ auto-downloading it on Linux-x86_64 if missing; otherwise start it with
 **Hunyuan3D generation**
 - `get_hunyuan3d_status`, `generate_hunyuan3d_model`, `poll_hunyuan_job_status`, `import_generated_asset_hunyuan`
 
+For exact schemas, check the installed Skill or the MCP tool list.
+
 ---
 
 ## Install
@@ -53,6 +50,26 @@ sudo apt install xvfb
 ```
 
 > Skip this on a desktop with a real display.
+
+### Other harnesses
+
+Codex installs the same way (`codex plugin marketplace add …`, then
+`codex plugin add qwen-mm-plugins-blender@qwen-mm-plugins`). A harness with no plugin marketplace
+needs two things by hand: this MCP server entry, and the Skill copied from
+`src/capabilities/blender/skill/`.
+
+```json
+{
+  "command": "uvx",
+  "args": ["--from",
+           "qwen-mm-plugins[blender] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-blender-v1.0.1",
+           "qwen-mm-plugins-blender"],
+  "env": {"QWEN_MM_AUTOLAUNCH": "1"}
+}
+```
+
+The Blender add-on needs no separate install — it ships inside the package, and the launcher hands
+Blender its path (`BLENDER_MCP_ADDON_PATH`) on startup.
 
 ## Environment variables (usually none needed)
 
@@ -73,17 +90,75 @@ sudo apt install xvfb
 
 ## Cases
 
-No case recorded yet. Add one in either style — see [core](../core/usage.md) for worked examples of both:
 
-- **Trace** — a full session rendered to a self-contained HTML page, linked by URL.
-- **Result** — the query plus a public link to the produced artifact (video / model / file) and/or a preview screenshot.
+
+### Case 1 — model a desk lamp from scratch, then render it with Cycles (Claude Code)
+
+```text
+Model a desk lamp from scratch — articulated arm, weighted base, a shade with a visible bulb
+inside. Real-world dimensions, brushed metal plus an emissive bulb, lit from inside the scene.
+Render it with Cycles when it looks right.
+```
+
+44 tool calls: `get_scene_info` on the empty scene, then 28 × `execute_blender_code` in small chunks —
+bmesh lathes for the base and shade, a bevelled helix for the tension spring, a 26× radial array for
+the knurled knobs. Verification went through renders rather than viewport screenshots: it rendered to
+a PNG and read the file back 13 times before it was satisfied.
+
+▶ **[View the detailed trace in Claude Code](case-blender-cc-desk-lamp.html)**
+
+<p align="center">
+  <img src="assets/blender-desk-lamp.png" alt="Cycles render — articulated desk lamp modelled from scratch" width="520">
+</p>
+
+Two of the fixes are things only a render could reveal: a clear-glass bulb that read as a white blob,
+and a back wall too narrow for the frame. That is the **verify** half of the loop doing actual work.
+
+### Case 2 — glass greenhouse terrarium, debugged through viewport screenshots (Codex)
+
+```text
+Model a miniature greenhouse terrarium from scratch: a clear glass house with a pitched roof,
+black metal frame bars, a hinged front door with tiny handle, layered soil and pebbles inside,
+moss mounds, several small leafy plants, condensation droplets on the glass, and warm grow-light
+strips under the roof. Use real-world dimensions, transparent glass and varied plant materials,
+set up camera and Cycles lighting, verify visually with at least one render or viewport screenshot,
+then save the finished scene and final render to cookbooks/blender/assets/ as
+blender-codex-terrarium.blend and blender-codex-terrarium.png.
+
+Work only through the qwen-mm-plugins-blender MCP tools. Do not use shell commands.
+```
+
+16 Blender MCP calls: `get_scene_info` to read the scene, 10 × `execute_blender_code`, 4 ×
+`get_viewport_screenshot` interleaved as visual checks, and a closing `get_scene_info`. The terrarium
+is laid out at tabletop scale (1.20 m long, 0.65 m deep, ~1.05 m to the ridge) and the finished scene
+carries **873 objects and 37 materials** — glass panes, metal frame bars, a hinged door with handle,
+layered substrate, pebbles, moss, individual leaves, condensation droplets, and grow-light strips.
+
+▶ **[View the detailed trace in Codex](case-blender-codex-terrarium.html)**
+
+<p align="center">
+  <img src="assets/blender-codex-terrarium.png" alt="Cycles render — miniature glass greenhouse terrarium with plants and condensation" width="520">
+</p>
+
+
+
+### Case 3 — ask a GUI harness to install Blender support
+
+The agent is asked to install the `blender` plugin from this repository:
+
+<p align="center">
+  <img src="assets/blender.png" alt="QoderWork after installing the Blender capability: server online, 22 tools listed" width="520">
+</p>
+
+
 
 ---
 
 ## Troubleshooting
 
 - **Can't connect / first call is slow**: the first call downloads Blender (~300 MB) in the
-  background and starts it — wait 1–2 min; subsequent queries connect instantly.
+  background and starts it — wait 1–2 min; subsequent queries connect instantly. To start it
+  yourself instead, run `qwen-mm-plugins-blender --launch-app`.
 - **Headless machine reports xvfb errors**: `sudo apt install xvfb` (needs root). Not needed with a
   real display.
 - **PolyHaven / Sketchfab / Hyper3D tools report "disabled"**: those asset / generation services

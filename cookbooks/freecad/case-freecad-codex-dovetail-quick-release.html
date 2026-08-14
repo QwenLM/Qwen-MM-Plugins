@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parametric dovetail camera quick-release plate, spreadsheet-driven</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fbfbfa; color: #1a1a1a;
+         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 32px; letter-spacing: -0.01em; }
+  h1 .tag { display: inline-block; vertical-align: middle; margin-left: 10px;
+            font-size: 11px; font-weight: 600; letter-spacing: 0.03em; color: #5b4bdb;
+            background: #efeafe; border: 1px solid #ddd4fb; border-radius: 999px;
+            padding: 2px 10px; }
+  .who { font-size: 11px; font-weight: 600; text-transform: uppercase;
+         letter-spacing: 0.06em; color: #8a8a85; margin-bottom: 6px; }
+  .u, .a { margin: 24px 0; }
+  .bubble { word-wrap: break-word; overflow-wrap: break-word; }
+  .u .bubble { color: #111; }
+  .a .bubble { color: #333; }
+  .bubble p { margin: 0 0 10px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble h2 { font-size: 17px; margin: 18px 0 8px; }
+  .bubble h3 { font-size: 15px; margin: 16px 0 6px; }
+  .bubble h4 { font-size: 14px; margin: 14px 0 6px; color: #444; }
+  .bubble ul, .bubble ol { margin: 6px 0 10px; padding-left: 22px; }
+  .bubble li { margin: 2px 0; }
+  .bubble code { background: #f0f0ec; padding: 1px 5px; border-radius: 4px;
+                 font: 12.5px ui-monospace, "SF Mono", Menlo, monospace; }
+  .bubble pre.md { background: #f4f4f1; padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+  .bubble pre.md code { background: none; padding: 0; }
+  .bubble blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid #d9d9d4;
+                       color: #555; }
+  .bubble a { color: #5b4bdb; }
+  .bubble table { border-collapse: collapse; margin: 10px 0; font-size: 13px; display: block;
+                  overflow-x: auto; max-width: 100%; }
+  .bubble th, .bubble td { border: 1px solid #e0e0db; padding: 6px 10px; text-align: left;
+                           vertical-align: top; }
+  .bubble th { background: #f4f4f1; font-weight: 600; }
+  .t { margin: 12px 0; padding-left: 14px; border-left: 2px solid #e5e5e0; }
+  .tline { display: flex; gap: 8px; align-items: baseline; }
+  .tn { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+        font-weight: 600; color: #5b4bdb; }
+  .ts { color: #8a8a85; font-size: 13px; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; }
+  pre.out { margin: 8px 0 0; padding: 10px 12px; background: #f4f4f1;
+            border-radius: 6px; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+            white-space: pre-wrap; word-break: break-word; max-height: 320px;
+            overflow: auto; color: #444; }
+  pre.out.err { background: #fdf0ef; color: #b3261e; }
+  pre.args { margin: 8px 0 0; padding: 10px 12px; background: #f3f2fb;
+             border: 1px solid #e7e4fb; border-radius: 6px;
+             font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+             white-space: pre-wrap; word-break: break-word; max-height: 300px;
+             overflow: auto; color: #444; }
+  details.think { margin: 16px 0; }
+  details.think > summary { cursor: pointer; color: #8a8a85; font-size: 13px;
+                            list-style: none; }
+  details.think .bubble { margin-top: 8px; padding-left: 14px; border-left: 2px solid #e5e5e0;
+                          color: #666; }
+  .frames-note { margin: 8px 0 4px; color: #8a8a85; font-size: 12px; }
+  .strip { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px;
+           scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+  .strip figure { flex: 0 0 auto; margin: 0; scroll-snap-align: start; text-align: center; }
+  .strip img { height: 150px; width: auto; max-width: none; border: 1px solid #e5e5e0;
+               border-radius: 6px; cursor: zoom-in; display: block; background: #fff; }
+  .strip figcaption { margin-top: 4px; color: #8a8a85; font-size: 11px;
+                      font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .strip::-webkit-scrollbar { height: 8px; }
+  .strip::-webkit-scrollbar-thumb { background: #d0d0cc; border-radius: 4px; }
+  #lb { display: none; position: fixed; inset: 0; z-index: 100; cursor: zoom-out;
+        background: rgba(0,0,0,.85); align-items: center; justify-content: center; }
+  #lb.on { display: flex; }
+  #lb img { max-width: 94vw; max-height: 94vh; border-radius: 6px; }
+</style></head><body><main>
+<h1>Parametric dovetail camera quick-release plate, spreadsheet-driven <span class="tag">Codex</span></h1>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>I’m going to use the <code>qwen-mm-plugins-freecad</code> skill and keep the actual modeling/export/verification inside its MCP tool path, as requested.</p></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>I have the FreeCAD MCP tools available now. I’m going to build this as a real FreeCAD parametric feature whose driving properties are expression-linked to <code>Spreadsheet::Sheet</code> aliases, then use spreadsheet edits plus recompute for the requested variation.</p></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The model will use a trapezoidal dovetail prism along the 100 mm length, boolean cuts for the two through-slots and the screw/counterbore, then fused raised slot lips and a rear stop. I’ll keep the editable dimensions in <code>Sheet</code> aliases and drive the feature properties with FreeCAD expressions such as <code>Sheet.DovetailTopWidth</code>, so a spreadsheet edit is what changes the geometry.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">list_documents</span><span class="ts">{}</span></div><pre class="args">{}</pre><pre class="out">Wall time: 16.3914 seconds
+Output:
+[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;[\n  \&quot;Codex_Dovetail_QuickRelease\&quot;\n]&quot;}]</pre></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>I’m about to create the FreeCAD document, spreadsheet aliases, expression-driven feature, and export pipeline in one FreeCAD-side script. After the first export, the same script will edit only the spreadsheet cells, recompute, validate the resulting solid, collect mass properties, and overwrite the exports with the changed model.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;: &quot;import os, math, traceback\nimport FreeCAD as App\nimport FreeCADGui as Gui\nimport Part\n</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os, math, traceback\nimport FreeCAD as App\nimport FreeCADGui as Gui\nimport Part\n\ntry:\n    import Import\nexcept Exception:\n    Import = None\ntry:\n    import Mesh\nexcept Exception:\n    Mesh = None\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nASSET_DIR = \&quot;/path/to/assets\&quot;\nBASE = \&quot;freecad-codex-dovetail-quick-release\&quot;\nfcstd_path = os.path.join(ASSET_DIR, BASE + \&quot;.FCStd\&quot;)\nstep_path = os.path.join(ASSET_DIR, BASE + \&quot;.step\&quot;)\nstl_path = os.path.join(ASSET_DIR, BASE + \&quot;.stl\&quot;)\npng_path = os.path.join(ASSET_DIR, BASE + \&quot;.png\&quot;)\n\nos.makedirs(ASSET_DIR, exist_ok=True)\n\n# Reset this named document only.\nif App.getDocument(DOC_NAME):\n    App.closeDocument(DOC_NAME)\ndoc = App.newDocument(DOC_NAME)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\n\nclass DovetailQuickReleaseProxy:\n    def __init__(self, obj):\n        obj.Proxy = self\n\n    def __getstate__(self):\n        return {}\n\n    def __setstate__(self, state):\n        return None\n\n    @staticmethod\n    def _mm(value):\n        try:\n            return float(value.Value)\n        except Exception:\n            return float(value)\n\n    def _trapezoid_prism(self, L, Wb, Wt, H):\n        x0, x1 = -L / 2.0, L / 2.0\n        yb, yt = Wb / 2.0, Wt / 2.0\n        pts = [\n            App.Vector(x0, -yb, 0), App.Vector(x1, -yb, 0), App.Vector(x1, yb, 0), App.Vector(x0, yb, 0),\n            App.Vector(x0, -yt, H), App.Vector(x1, -yt, H), App.Vector(x1, yt, H), App.Vector(x0, yt, H),\n        ]\n        faces_idx = [\n            (0, 1, 2, 3),  # bottom\n            (4, 7, 6, 5),  # top\n            (0, 4, 5, 1),  # left rail face\n            (1, 5, 6, 2),  # front end\n            (2, 6, 7, 3),  # right rail face\n            (3, 7, 4, 0),  # rear end\n        ]\n        faces = []\n        for idx in faces_idx:\n            wire = Part.makePolygon([pts[i] for i in idx] + [pts[idx[0]]])\n            faces.append(Part.Face(wire))\n        shell = Part.makeShell(faces)\n        solid = Part.makeSolid(shell)\n        solid = solid.removeSplitter()\n        if not solid.isValid():\n            solid = solid.fix(0.01, 0.01, 0.01)\n        return solid\n\n    def _capsule_solid(self, cx, cy, z, length, width, height):\n        r = width / 2.0\n        straight = max(length - width, 0.1)\n        box = Part.makeBox(straight, width, height, App.Vector(cx - straight / 2.0, cy - r, z))\n        cyl1 = Part.makeCylinder(r, height, App.Vector(cx - straight / 2.0, cy, z), App.Vector(0, 0, 1))\n        cyl2 = Part.makeCylinder(r, height, App.Vector(cx + straight / 2.0, cy, z), App.Vector(0, 0, 1))\n        return box.fuse(cyl1).fuse(cyl2).removeSplitter()\n\n    def execute(self, obj):\n        L = self._mm(obj.PlateLength)\n        Wb = self._mm(obj.BottomWidth)\n        Wt = self._mm(obj.DovetailTopWidth)\n        H = self._mm(obj.PlateThickness)\n        slot_l = self._mm(obj.SlotLength)\n        slot_w = self._mm(obj.SlotWidth)\n        slot_spacing = self._mm(obj.SlotSpacing)\n        lip_margin = self._mm(obj.LipMargin)\n        lip_height = self._mm(obj.LipHeight)\n        clearance_d = self._mm(obj.ClearanceDiameter)\n        cb_d = self._mm(obj.CounterboreDiameter)\n        cb_depth = self._mm(obj.CounterboreDepth)\n        stop_l = self._mm(obj.StopLength)\n        stop_h = self._mm(obj.StopHeight)\n\n        # Conservative clamps keep spreadsheet edits from producing inverted rail geometry.\n        Wt = min(max(Wt, 8.0), Wb - 2.0)\n        slot_w = min(max(slot_w, 2.0), max(2.0, Wt - 8.0))\n        stop_l = min(max(stop_l, 2.0), L / 3.0)\n\n        plate = self._trapezoid_prism(L, Wb, Wt, H)\n\n        # Through elongated mounting slots, centered on the top rail and separated along X.\n        for cx in (-slot_spacing / 2.0, slot_spacing / 2.0):\n            slot_cut = self._capsule_solid(cx, 0.0, -1.0, slot_l, slot_w, H + lip_height + stop_h + 3.0)\n            plate = plate.cut(slot_cut).removeSplitter()\n\n        # Centered 1/4-20 clearance hole plus top counterbore.\n        through = Part.makeCylinder(clearance_d / 2.0, H + lip_height + stop_h + 3.0, App.Vector(0, 0, -1.0), App.Vector(0, 0, 1))\n        c_bore = Part.makeCylinder(cb_d / 2.0, cb_depth + 1.0, App.Vector(0, 0, H - cb_depth), App.Vector(0, 0, 1))\n        plate = plate.cut(through).cut(c_bore).removeSplitter()\n\n        # Raised lips around the two slots, modeled as capsule rings on the top face.\n        lips = []\n        for cx in (-slot_spacing / 2.0, slot_spacing / 2.0):\n            outer = self._capsule_solid(cx, 0.0, H, slot_l + 2.0 * lip_margin, slot_w + 2.0 * lip_margin, lip_height)\n            inner = self._capsule_solid(cx, 0.0, H - 0.2, slot_l, slot_w, lip_height + 0.4)\n            lip = outer.cut(inner).removeSplitter()\n            lips.append(lip)\n        if lips:\n            plate = plate.fuse(lips[0]).fuse(lips[1]).removeSplitter()\n\n        # Rear stop block across the top rail at the positive-X end.\n        stop = Part.makeBox(stop_l, Wt, stop_h, App.Vector(L / 2.0 - stop_l, -Wt / 2.0, H))\n        plate = plate.fuse(stop).removeSplitter()\n        plate = plate.removeSplitter()\n        if not plate.isValid():\n            fixed = plate.fix(0.01, 0.01, 0.01)\n            if fixed and fixed.isValid():\n                plate = fixed\n        obj.Shape = plate\n\n# Spreadsheet with user-editable driving dimensions.\nsheet = doc.addObject(\&quot;Spreadsheet::Sheet\&quot;, \&quot;Sheet\&quot;)\nrows = [\n    (\&quot;PlateLength\&quot;, \&quot;100 mm\&quot;, \&quot;overall length\&quot;),\n    (\&quot;BottomWidth\&quot;, \&quot;42 mm\&quot;, \&quot;dovetail lower width\&quot;),\n    (\&quot;DovetailTopWidth\&quot;, \&quot;34 mm\&quot;, \&quot;dovetail top width\&quot;),\n    (\&quot;PlateThickness\&quot;, \&quot;10 mm\&quot;, \&quot;plate thickness\&quot;),\n    (\&quot;SlotLength\&quot;, \&quot;24 mm\&quot;, \&quot;elongated slot length\&quot;),\n    (\&quot;SlotWidth\&quot;, \&quot;7 mm\&quot;, \&quot;elongated slot width\&quot;),\n    (\&quot;SlotSpacing\&quot;, \&quot;54 mm\&quot;, \&quot;slot center spacing\&quot;),\n    (\&quot;LipMargin\&quot;, \&quot;3 mm\&quot;, \&quot;raised lip margin around slots\&quot;),\n    (\&quot;LipHeight\&quot;, \&quot;1.5 mm\&quot;, \&quot;raised lip height\&quot;),\n    (\&quot;ClearanceDiameter\&quot;, \&quot;6.8 mm\&quot;, \&quot;1/4-20 clearance diameter\&quot;),\n    (\&quot;CounterboreDiameter\&quot;, \&quot;13 mm\&quot;, \&quot;counterbore diameter\&quot;),\n    (\&quot;CounterboreDepth\&quot;, \&quot;3.2 mm\&quot;, \&quot;counterbore depth\&quot;),\n    (\&quot;StopLength\&quot;, \&quot;10 mm\&quot;, \&quot;rear stop length\&quot;),\n    (\&quot;StopHeight\&quot;, \&quot;8 mm\&quot;, \&quot;rear stop height\&quot;),\n]\nsheet.set(\&quot;A1\&quot;, \&quot;Parameter\&quot;)\nsheet.set(\&quot;B1\&quot;, \&quot;Value\&quot;)\nsheet.set(\&quot;C1\&quot;, \&quot;Note\&quot;)\nfor idx, (name, value, note) in enumerate(rows, start=2):\n    sheet.set(f\&quot;A{idx}\&quot;, name)\n    sheet.set(f\&quot;B{idx}\&quot;, value)\n    sheet.set(f\&quot;C{idx}\&quot;, note)\n    sheet.setAlias(f\&quot;B{idx}\&quot;, name)\n\nobj = doc.addObject(\&quot;Part::FeaturePython\&quot;, \&quot;DovetailQuickRelease\&quot;)\nobj.Label = \&quot;Expression-driven dovetail quick-release plate\&quot;\nDovetailQuickReleaseProxy(obj)\nfor prop in [\n    \&quot;PlateLength\&quot;, \&quot;BottomWidth\&quot;, \&quot;DovetailTopWidth\&quot;, \&quot;PlateThickness\&quot;, \&quot;SlotLength\&quot;, \&quot;SlotWidth\&quot;,\n    \&quot;SlotSpacing\&quot;, \&quot;LipMargin\&quot;, \&quot;LipHeight\&quot;, \&quot;ClearanceDiameter\&quot;, \&quot;CounterboreDiameter\&quot;,\n    \&quot;CounterboreDepth\&quot;, \&quot;StopLength\&quot;, \&quot;StopHeight\&quot;,\n]:\n    obj.addProperty(\&quot;App::PropertyLength\&quot;, prop, \&quot;Driving Dimensions\&quot;, f\&quot;Expression-bound to Sheet.{prop}\&quot;)\n    obj.setExpression(prop, f\&quot;Sheet.{prop}\&quot;)\n\n# Cosmetic display state.\nobj.ViewObject.ShapeColor = (0.72, 0.74, 0.70, 0.0)\nobj.ViewObject.LineColor = (0.12, 0.12, 0.12, 0.0)\nobj.ViewObject.DisplayMode = \&quot;Shaded\&quot;\ndoc.recompute()\n\n# Initial export before parameter edits.\nif Import:\n    Import.export([obj], step_path)\nif Mesh:\n    Mesh.export([obj], stl_path)\ndoc.saveAs(fcstd_path)\nGui.ActiveDocument.ActiveView.viewIsometric()\nGui.ActiveDocument.ActiveView.fitAll()\nGui.ActiveDocument.ActiveView.saveImage(png_path, 1400, 1000, \&quot;White\&quot;)\ninitial = {\n    \&quot;bbox\&quot;: tuple(round(v, 4) for v in (obj.Shape.BoundBox.XLength, obj.Shape.BoundBox.YLength, obj.Shape.BoundBox.ZLength)),\n    \&quot;volume\&quot;: round(obj.Shape.Volume, 4),\n    \&quot;valid\&quot;: obj.Shape.isValid(),\n    \&quot;shape_type\&quot;: obj.Shape.ShapeType,\n    \&quot;solid_count\&quot;: len(obj.Shape.Solids),\n}\n\n# Requested parametric edit: modify only spreadsheet cells, then recompute.\nsheet.set(\&quot;B4\&quot;, \&quot;31 mm\&quot;)      # DovetailTopWidth\nsheet.set(\&quot;B7\&quot;, \&quot;8.2 mm\&quot;)     # SlotWidth\nsheet.set(\&quot;B15\&quot;, \&quot;12 mm\&quot;)     # StopHeight\ndoc.recompute()\n\n# Final validity and export after edit.\nshape = obj.Shape\nbbox = shape.BoundBox\nfinal = {\n    \&quot;bbox_min\&quot;: (round(bbox.XMin, 4), round(bbox.YMin, 4), round(bbox.ZMin, 4)),\n    \&quot;bbox_max\&quot;: (round(bbox.XMax, 4), round(bbox.YMax, 4), round(bbox.ZMax, 4)),\n    \&quot;bbox_size\&quot;: (round(bbox.XLength, 4), round(bbox.YLength, 4), round(bbox.ZLength, 4)),\n    \&quot;volume_mm3\&quot;: round(shape.Volume, 4),\n    \&quot;valid\&quot;: bool(shape.isValid()),\n    \&quot;shape_type\&quot;: shape.ShapeType,\n    \&quot;solid_count\&quot;: len(shape.Solids),\n    \&quot;edited_cells\&quot;: {\n        \&quot;Sheet.DovetailTopWidth\&quot;: sheet.get(\&quot;B4\&quot;),\n        \&quot;Sheet.SlotWidth\&quot;: sheet.get(\&quot;B7\&quot;),\n        \&quot;Sheet.StopHeight\&quot;: sheet.get(\&quot;B15\&quot;),\n    },\n}\nif shape.ShapeType != \&quot;Solid\&quot; or len(shape.Solids) != 1 or not shape.isValid():\n    raise RuntimeError(\&quot;Final model is not a single valid solid: %r\&quot; % final)\n\nif Import:\n    Import.export([obj], step_path)\nelse:\n    raise RuntimeError(\&quot;FreeCAD Import module unavailable; STEP export skipped\&quot;)\nif Mesh:\n    Mesh.export([obj], stl_path)\nelse:\n    raise RuntimeError(\&quot;FreeCAD Mesh module unavailable; STL export skipped\&quot;)\n\ndoc.saveAs(fcstd_path)\nGui.ActiveDocument.ActiveView.viewIsometric()\nGui.ActiveDocument.ActiveView.fitAll()\nGui.ActiveDocument.ActiveView.saveImage(png_path, 1400, 1000, \&quot;White\&quot;)\n\nprint(\&quot;Created expression-driven spreadsheet-parametric quick-release plate\&quot;)\nprint(\&quot;Initial export stats:\&quot;, initial)\nprint(\&quot;Final edited-cell stats:\&quot;, final)\nprint(\&quot;Exports:\&quot;)\nprint(\&quot;  FCStd:\&quot;, fcstd_path)\nprint(\&quot;  STEP:\&quot;, step_path)\nprint(\&quot;  STL:\&quot;, stl_path)\nprint(\&quot;  PNG:\&quot;, png_path)\n&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 17.9070 seconds
+Output:
+[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;Failed to execute code: ValueError: &#x27;Shaded&#x27; is not part of the enumeration in Codex_Dovetail_QuickRelease#DovetailQuickRelease.ViewObject.DisplayMode&quot;}]</pre></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>FreeCAD rejected one cosmetic view setting (<code>DisplayMode = &quot;Shaded&quot;</code>) before the model reached export. I’m rerunning the same FreeCAD-side build without that nonessential view property.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import os, math, traceback\nimport FreeCAD as App\nimport FreeCADGui as Gui\nimport Part\n\</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os, math, traceback\nimport FreeCAD as App\nimport FreeCADGui as Gui\nimport Part\n\ntry:\n    import Import\nexcept Exception:\n    Import = None\ntry:\n    import Mesh\nexcept Exception:\n    Mesh = None\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nASSET_DIR = \&quot;/path/to/assets\&quot;\nBASE = \&quot;freecad-codex-dovetail-quick-release\&quot;\nfcstd_path = os.path.join(ASSET_DIR, BASE + \&quot;.FCStd\&quot;)\nstep_path = os.path.join(ASSET_DIR, BASE + \&quot;.step\&quot;)\nstl_path = os.path.join(ASSET_DIR, BASE + \&quot;.stl\&quot;)\npng_path = os.path.join(ASSET_DIR, BASE + \&quot;.png\&quot;)\n\nos.makedirs(ASSET_DIR, exist_ok=True)\n\nif App.getDocument(DOC_NAME):\n    App.closeDocument(DOC_NAME)\ndoc = App.newDocument(DOC_NAME)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\n\nclass DovetailQuickReleaseProxy:\n    def __init__(self, obj):\n        obj.Proxy = self\n    def __getstate__(self):\n        return {}\n    def __setstate__(self, state):\n        return None\n    @staticmethod\n    def _mm(value):\n        try:\n            return float(value.Value)\n        except Exception:\n            return float(value)\n    def _trapezoid_prism(self, L, Wb, Wt, H):\n        x0, x1 = -L / 2.0, L / 2.0\n        yb, yt = Wb / 2.0, Wt / 2.0\n        pts = [\n            App.Vector(x0, -yb, 0), App.Vector(x1, -yb, 0), App.Vector(x1, yb, 0), App.Vector(x0, yb, 0),\n            App.Vector(x0, -yt, H), App.Vector(x1, -yt, H), App.Vector(x1, yt, H), App.Vector(x0, yt, H),\n        ]\n        faces_idx = [(0,1,2,3),(4,7,6,5),(0,4,5,1),(1,5,6,2),(2,6,7,3),(3,7,4,0)]\n        faces = []\n        for idx in faces_idx:\n            wire = Part.makePolygon([pts[i] for i in idx] + [pts[idx[0]]])\n            faces.append(Part.Face(wire))\n        solid = Part.makeSolid(Part.makeShell(faces)).removeSplitter()\n        if not solid.isValid():\n            fixed = solid.fix(0.01, 0.01, 0.01)\n            if fixed:\n                solid = fixed\n        return solid\n    def _capsule_solid(self, cx, cy, z, length, width, height):\n        r = width / 2.0\n        straight = max(length - width, 0.1)\n        box = Part.makeBox(straight, width, height, App.Vector(cx - straight / 2.0, cy - r, z))\n        cyl1 = Part.makeCylinder(r, height, App.Vector(cx - straight / 2.0, cy, z), App.Vector(0, 0, 1))\n        cyl2 = Part.makeCylinder(r, height, App.Vector(cx + straight / 2.0, cy, z), App.Vector(0, 0, 1))\n        return box.fuse(cyl1).fuse(cyl2).removeSplitter()\n    def execute(self, obj):\n        L = self._mm(obj.PlateLength)\n        Wb = self._mm(obj.BottomWidth)\n        Wt = self._mm(obj.DovetailTopWidth)\n        H = self._mm(obj.PlateThickness)\n        slot_l = self._mm(obj.SlotLength)\n        slot_w = self._mm(obj.SlotWidth)\n        slot_spacing = self._mm(obj.SlotSpacing)\n        lip_margin = self._mm(obj.LipMargin)\n        lip_height = self._mm(obj.LipHeight)\n        clearance_d = self._mm(obj.ClearanceDiameter)\n        cb_d = self._mm(obj.CounterboreDiameter)\n        cb_depth = self._mm(obj.CounterboreDepth)\n        stop_l = self._mm(obj.StopLength)\n        stop_h = self._mm(obj.StopHeight)\n        Wt = min(max(Wt, 8.0), Wb - 2.0)\n        slot_w = min(max(slot_w, 2.0), max(2.0, Wt - 8.0))\n        stop_l = min(max(stop_l, 2.0), L / 3.0)\n        plate = self._trapezoid_prism(L, Wb, Wt, H)\n        for cx in (-slot_spacing / 2.0, slot_spacing / 2.0):\n            slot_cut = self._capsule_solid(cx, 0.0, -1.0, slot_l, slot_w, H + lip_height + stop_h + 3.0)\n            plate = plate.cut(slot_cut).removeSplitter()\n        through = Part.makeCylinder(clearance_d / 2.0, H + lip_height + stop_h + 3.0, App.Vector(0, 0, -1.0), App.Vector(0, 0, 1))\n        c_bore = Part.makeCylinder(cb_d / 2.0, cb_depth + 1.0, App.Vector(0, 0, H - cb_depth), App.Vector(0, 0, 1))\n        plate = plate.cut(through).cut(c_bore).removeSplitter()\n        for cx in (-slot_spacing / 2.0, slot_spacing / 2.0):\n            outer = self._capsule_solid(cx, 0.0, H, slot_l + 2.0 * lip_margin, slot_w + 2.0 * lip_margin, lip_height)\n            inner = self._capsule_solid(cx, 0.0, H - 0.2, slot_l, slot_w, lip_height + 0.4)\n            lip = outer.cut(inner).removeSplitter()\n            plate = plate.fuse(lip).removeSplitter()\n        stop = Part.makeBox(stop_l, Wt, stop_h, App.Vector(L / 2.0 - stop_l, -Wt / 2.0, H))\n        plate = plate.fuse(stop).removeSplitter()\n        if not plate.isValid():\n            fixed = plate.fix(0.01, 0.01, 0.01)\n            if fixed and fixed.isValid():\n                plate = fixed\n        obj.Shape = plate\n\nsheet = doc.addObject(\&quot;Spreadsheet::Sheet\&quot;, \&quot;Sheet\&quot;)\nrows = [\n    (\&quot;PlateLength\&quot;, \&quot;100 mm\&quot;, \&quot;overall length\&quot;),\n    (\&quot;BottomWidth\&quot;, \&quot;42 mm\&quot;, \&quot;dovetail lower width\&quot;),\n    (\&quot;DovetailTopWidth\&quot;, \&quot;34 mm\&quot;, \&quot;dovetail top width\&quot;),\n    (\&quot;PlateThickness\&quot;, \&quot;10 mm\&quot;, \&quot;plate thickness\&quot;),\n    (\&quot;SlotLength\&quot;, \&quot;24 mm\&quot;, \&quot;elongated slot length\&quot;),\n    (\&quot;SlotWidth\&quot;, \&quot;7 mm\&quot;, \&quot;elongated slot width\&quot;),\n    (\&quot;SlotSpacing\&quot;, \&quot;54 mm\&quot;, \&quot;slot center spacing\&quot;),\n    (\&quot;LipMargin\&quot;, \&quot;3 mm\&quot;, \&quot;raised lip margin around slots\&quot;),\n    (\&quot;LipHeight\&quot;, \&quot;1.5 mm\&quot;, \&quot;raised lip height\&quot;),\n    (\&quot;ClearanceDiameter\&quot;, \&quot;6.8 mm\&quot;, \&quot;1/4-20 clearance diameter\&quot;),\n    (\&quot;CounterboreDiameter\&quot;, \&quot;13 mm\&quot;, \&quot;counterbore diameter\&quot;),\n    (\&quot;CounterboreDepth\&quot;, \&quot;3.2 mm\&quot;, \&quot;counterbore depth\&quot;),\n    (\&quot;StopLength\&quot;, \&quot;10 mm\&quot;, \&quot;rear stop length\&quot;),\n    (\&quot;StopHeight\&quot;, \&quot;8 mm\&quot;, \&quot;rear stop height\&quot;),\n]\nsheet.set(\&quot;A1\&quot;, \&quot;Parameter\&quot;)\nsheet.set(\&quot;B1\&quot;, \&quot;Value\&quot;)\nsheet.set(\&quot;C1\&quot;, \&quot;Note\&quot;)\nfor idx, (name, value, note) in enumerate(rows, start=2):\n    sheet.set(f\&quot;A{idx}\&quot;, name)\n    sheet.set(f\&quot;B{idx}\&quot;, value)\n    sheet.set(f\&quot;C{idx}\&quot;, note)\n    sheet.setAlias(f\&quot;B{idx}\&quot;, name)\n\nobj = doc.addObject(\&quot;Part::FeaturePython\&quot;, \&quot;DovetailQuickRelease\&quot;)\nobj.Label = \&quot;Expression-driven dovetail quick-release plate\&quot;\nDovetailQuickReleaseProxy(obj)\nfor prop in [\&quot;PlateLength\&quot;, \&quot;BottomWidth\&quot;, \&quot;DovetailTopWidth\&quot;, \&quot;PlateThickness\&quot;, \&quot;SlotLength\&quot;, \&quot;SlotWidth\&quot;, \&quot;SlotSpacing\&quot;, \&quot;LipMargin\&quot;, \&quot;LipHeight\&quot;, \&quot;ClearanceDiameter\&quot;, \&quot;CounterboreDiameter\&quot;, \&quot;CounterboreDepth\&quot;, \&quot;StopLength\&quot;, \&quot;StopHeight\&quot;]:\n    obj.addProperty(\&quot;App::PropertyLength\&quot;, prop, \&quot;Driving Dimensions\&quot;, f\&quot;Expression-bound to Sheet.{prop}\&quot;)\n    obj.setExpression(prop, f\&quot;Sheet.{prop}\&quot;)\nobj.ViewObject.ShapeColor = (0.72, 0.74, 0.70, 0.0)\nobj.ViewObject.LineColor = (0.12, 0.12, 0.12, 0.0)\n\ndoc.recompute()\nif Import:\n    Import.export([obj], step_path)\nelse:\n    raise RuntimeError(\&quot;FreeCAD Import module unavailable; STEP export skipped\&quot;)\nif Mesh:\n    Mesh.export([obj], stl_path)\nelse:\n    raise RuntimeError(\&quot;FreeCAD Mesh module unavailable; STL export skipped\&quot;)\ndoc.saveAs(fcstd_path)\nGui.ActiveDocument.ActiveView.viewIsometric()\nGui.ActiveDocument.ActiveView.fitAll()\nGui.ActiveDocument.ActiveView.saveImage(png_path, 1400, 1000, \&quot;White\&quot;)\ninitial = {\&quot;bbox_size\&quot;: tuple(round(v, 4) for v in (obj.Shape.BoundBox.XLength, obj.Shape.BoundBox.YLength, obj.Shape.BoundBox.ZLength)), \&quot;volume_mm3\&quot;: round(obj.Shape.Volume, 4), \&quot;valid\&quot;: obj.Shape.isValid(), \&quot;shape_type\&quot;: obj.Shape.ShapeType, \&quot;solid_count\&quot;: len(obj.Shape.Solids)}\n\nsheet.set(\&quot;B4\&quot;, \&quot;31 mm\&quot;)\nsheet.set(\&quot;B7\&quot;, \&quot;8.2 mm\&quot;)\nsheet.set(\&quot;B15\&quot;, \&quot;12 mm\&quot;)\ndoc.recompute()\nshape = obj.Shape\nbbox = shape.BoundBox\nfinal = {\&quot;bbox_min\&quot;: (round(bbox.XMin, 4), round(bbox.YMin, 4), round(bbox.ZMin, 4)), \&quot;bbox_max\&quot;: (round(bbox.XMax, 4), round(bbox.YMax, 4), round(bbox.ZMax, 4)), \&quot;bbox_size\&quot;: (round(bbox.XLength, 4), round(bbox.YLength, 4), round(bbox.ZLength, 4)), \&quot;volume_mm3\&quot;: round(shape.Volume, 4), \&quot;valid\&quot;: bool(shape.isValid()), \&quot;shape_type\&quot;: shape.ShapeType, \&quot;solid_count\&quot;: len(shape.Solids), \&quot;edited_cells\&quot;: {\&quot;Sheet.DovetailTopWidth\&quot;: sheet.get(\&quot;B4\&quot;), \&quot;Sheet.SlotWidth\&quot;: sheet.get(\&quot;B7\&quot;), \&quot;Sheet.StopHeight\&quot;: sheet.get(\&quot;B15\&quot;)}}\nif shape.ShapeType != \&quot;Solid\&quot; or len(shape.Solids) != 1 or not shape.isValid():\n    raise RuntimeError(\&quot;Final model is not a single valid solid: %r\&quot; % final)\nImport.export([obj], step_path)\nMesh.export([obj], stl_path)\ndoc.saveAs(fcstd_path)\nGui.ActiveDocument.ActiveView.viewIsometric()\nGui.ActiveDocument.ActiveView.fitAll()\nGui.ActiveDocument.ActiveView.saveImage(png_path, 1400, 1000, \&quot;White\&quot;)\n\nprint(\&quot;Created expression-driven spreadsheet-parametric quick-release plate\&quot;)\nprint(\&quot;Initial export stats:\&quot;, initial)\nprint(\&quot;Final edited-cell stats:\&quot;, final)\nprint(\&quot;Exports:\&quot;)\nprint(\&quot;  FCStd:\&quot;, fcstd_path)\nprint(\&quot;  STEP:\&quot;, step_path)\nprint(\&quot;  STL:\&quot;, stl_path)\nprint(\&quot;  PNG:\&quot;, png_path)\n&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 13.3249 seconds
+Output:
+[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;Failed to execute code: RuntimeError: Final model is not a single valid solid: {&#x27;bbox_min&#x27;: (-50.0, -21.0, 0.0), &#x27;bbox_max&#x27;: (50.0, 21.0, 22.0), &#x27;bbox_size&#x27;: (100.0, 42.0, 22.0), &#x27;volume_mm3&#x27;: 36481.5795, &#x27;valid&#x27;: True, &#x27;shape_type&#x27;: &#x27;Compound&#x27;, &#x27;solid_count&#x27;: 1, &#x27;edited_cells&#x27;: {&#x27;Sheet.DovetailTopWidth&#x27;: 31.0 mm, &#x27;Sheet.SlotWidth&#x27;: 8.2 mm, &#x27;Sheet.StopHeight&#x27;: 12.0 mm}}&quot;}]</pre></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The recomputed result is geometrically valid and contains one solid, but FreeCAD wrapped it as a <code>Compound</code> after the booleans. I’m tightening the feature so it normalizes any one-solid compound back to a <code>Solid</code> before validation/export.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import os\nimport FreeCAD as App\nimport FreeCADGui as Gui\nimport Part\nimport Import\nimp</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os\nimport FreeCAD as App\nimport FreeCADGui as Gui\nimport Part\nimport Import\nimport Mesh\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nASSET_DIR = \&quot;/path/to/assets\&quot;\nBASE = \&quot;freecad-codex-dovetail-quick-release\&quot;\nfcstd_path = os.path.join(ASSET_DIR, BASE + \&quot;.FCStd\&quot;)\nstep_path = os.path.join(ASSET_DIR, BASE + \&quot;.step\&quot;)\nstl_path = os.path.join(ASSET_DIR, BASE + \&quot;.stl\&quot;)\npng_path = os.path.join(ASSET_DIR, BASE + \&quot;.png\&quot;)\nos.makedirs(ASSET_DIR, exist_ok=True)\nif App.getDocument(DOC_NAME):\n    App.closeDocument(DOC_NAME)\ndoc = App.newDocument(DOC_NAME)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\n\nclass DovetailQuickReleaseProxy:\n    def __init__(self, obj):\n        obj.Proxy = self\n    def __getstate__(self):\n        return {}\n    def __setstate__(self, state):\n        return None\n    @staticmethod\n    def _mm(value):\n        try:\n            return float(value.Value)\n        except Exception:\n            return float(value)\n    @staticmethod\n    def _one_solid(shape):\n        shape = shape.removeSplitter()\n        if shape.ShapeType == \&quot;Solid\&quot;:\n            return shape\n        solids = shape.Solids\n        if len(solids) == 1:\n            return solids[0].removeSplitter()\n        return shape\n    def _trapezoid_prism(self, L, Wb, Wt, H):\n        x0, x1 = -L/2.0, L/2.0\n        yb, yt = Wb/2.0, Wt/2.0\n        pts = [App.Vector(x0,-yb,0), App.Vector(x1,-yb,0), App.Vector(x1,yb,0), App.Vector(x0,yb,0), App.Vector(x0,-yt,H), App.Vector(x1,-yt,H), App.Vector(x1,yt,H), App.Vector(x0,yt,H)]\n        faces = []\n        for idx in [(0,1,2,3),(4,7,6,5),(0,4,5,1),(1,5,6,2),(2,6,7,3),(3,7,4,0)]:\n            faces.append(Part.Face(Part.makePolygon([pts[i] for i in idx] + [pts[idx[0]]])))\n        return self._one_solid(Part.makeSolid(Part.makeShell(faces)))\n    def _capsule_solid(self, cx, cy, z, length, width, height):\n        r = width/2.0\n        straight = max(length - width, 0.1)\n        box = Part.makeBox(straight, width, height, App.Vector(cx - straight/2.0, cy - r, z))\n        cyl1 = Part.makeCylinder(r, height, App.Vector(cx - straight/2.0, cy, z), App.Vector(0,0,1))\n        cyl2 = Part.makeCylinder(r, height, App.Vector(cx + straight/2.0, cy, z), App.Vector(0,0,1))\n        return self._one_solid(box.fuse(cyl1).fuse(cyl2))\n    def execute(self, obj):\n        L = self._mm(obj.PlateLength); Wb = self._mm(obj.BottomWidth); Wt = self._mm(obj.DovetailTopWidth); H = self._mm(obj.PlateThickness)\n        slot_l = self._mm(obj.SlotLength); slot_w = self._mm(obj.SlotWidth); slot_spacing = self._mm(obj.SlotSpacing)\n        lip_margin = self._mm(obj.LipMargin); lip_height = self._mm(obj.LipHeight)\n        clearance_d = self._mm(obj.ClearanceDiameter); cb_d = self._mm(obj.CounterboreDiameter); cb_depth = self._mm(obj.CounterboreDepth)\n        stop_l = self._mm(obj.StopLength); stop_h = self._mm(obj.StopHeight)\n        Wt = min(max(Wt, 8.0), Wb - 2.0)\n        slot_w = min(max(slot_w, 2.0), max(2.0, Wt - 8.0))\n        stop_l = min(max(stop_l, 2.0), L/3.0)\n        plate = self._trapezoid_prism(L, Wb, Wt, H)\n        for cx in (-slot_spacing/2.0, slot_spacing/2.0):\n            slot_cut = self._capsule_solid(cx, 0, -1, slot_l, slot_w, H + lip_height + stop_h + 3)\n            plate = self._one_solid(plate.cut(slot_cut))\n        through = Part.makeCylinder(clearance_d/2.0, H + lip_height + stop_h + 3, App.Vector(0,0,-1), App.Vector(0,0,1))\n        c_bore = Part.makeCylinder(cb_d/2.0, cb_depth + 1, App.Vector(0,0,H - cb_depth), App.Vector(0,0,1))\n        plate = self._one_solid(self._one_solid(plate.cut(through)).cut(c_bore))\n        for cx in (-slot_spacing/2.0, slot_spacing/2.0):\n            outer = self._capsule_solid(cx, 0, H, slot_l + 2*lip_margin, slot_w + 2*lip_margin, lip_height)\n            inner = self._capsule_solid(cx, 0, H - 0.2, slot_l, slot_w, lip_height + 0.4)\n            lip = self._one_solid(outer.cut(inner))\n            plate = self._one_solid(plate.fuse(lip))\n        stop = Part.makeBox(stop_l, Wt, stop_h, App.Vector(L/2.0 - stop_l, -Wt/2.0, H))\n        plate = self._one_solid(plate.fuse(stop))\n        if not plate.isValid():\n            fixed = plate.fix(0.01, 0.01, 0.01)\n            if fixed and fixed.isValid():\n                plate = self._one_solid(fixed)\n        obj.Shape = self._one_solid(plate)\n\nsheet = doc.addObject(\&quot;Spreadsheet::Sheet\&quot;, \&quot;Sheet\&quot;)\nrows = [(\&quot;PlateLength\&quot;,\&quot;100 mm\&quot;,\&quot;overall length\&quot;),(\&quot;BottomWidth\&quot;,\&quot;42 mm\&quot;,\&quot;dovetail lower width\&quot;),(\&quot;DovetailTopWidth\&quot;,\&quot;34 mm\&quot;,\&quot;dovetail top width\&quot;),(\&quot;PlateThickness\&quot;,\&quot;10 mm\&quot;,\&quot;plate thickness\&quot;),(\&quot;SlotLength\&quot;,\&quot;24 mm\&quot;,\&quot;elongated slot length\&quot;),(\&quot;SlotWidth\&quot;,\&quot;7 mm\&quot;,\&quot;elongated slot width\&quot;),(\&quot;SlotSpacing\&quot;,\&quot;54 mm\&quot;,\&quot;slot center spacing\&quot;),(\&quot;LipMargin\&quot;,\&quot;3 mm\&quot;,\&quot;raised lip margin around slots\&quot;),(\&quot;LipHeight\&quot;,\&quot;1.5 mm\&quot;,\&quot;raised lip height\&quot;),(\&quot;ClearanceDiameter\&quot;,\&quot;6.8 mm\&quot;,\&quot;1/4-20 clearance diameter\&quot;),(\&quot;CounterboreDiameter\&quot;,\&quot;13 mm\&quot;,\&quot;counterbore diameter\&quot;),(\&quot;CounterboreDepth\&quot;,\&quot;3.2 mm\&quot;,\&quot;counterbore depth\&quot;),(\&quot;StopLength\&quot;,\&quot;10 mm\&quot;,\&quot;rear stop length\&quot;),(\&quot;StopHeight\&quot;,\&quot;8 mm\&quot;,\&quot;rear stop height\&quot;)]\nsheet.set(\&quot;A1\&quot;, \&quot;Parameter\&quot;); sheet.set(\&quot;B1\&quot;, \&quot;Value\&quot;); sheet.set(\&quot;C1\&quot;, \&quot;Note\&quot;)\nfor idx, (name, value, note) in enumerate(rows, start=2):\n    sheet.set(f\&quot;A{idx}\&quot;, name); sheet.set(f\&quot;B{idx}\&quot;, value); sheet.set(f\&quot;C{idx}\&quot;, note); sheet.setAlias(f\&quot;B{idx}\&quot;, name)\nobj = doc.addObject(\&quot;Part::FeaturePython\&quot;, \&quot;DovetailQuickRelease\&quot;)\nobj.Label = \&quot;Expression-driven dovetail quick-release plate\&quot;\nDovetailQuickReleaseProxy(obj)\nprops = [\&quot;PlateLength\&quot;,\&quot;BottomWidth\&quot;,\&quot;DovetailTopWidth\&quot;,\&quot;PlateThickness\&quot;,\&quot;SlotLength\&quot;,\&quot;SlotWidth\&quot;,\&quot;SlotSpacing\&quot;,\&quot;LipMargin\&quot;,\&quot;LipHeight\&quot;,\&quot;ClearanceDiameter\&quot;,\&quot;CounterboreDiameter\&quot;,\&quot;CounterboreDepth\&quot;,\&quot;StopLength\&quot;,\&quot;StopHeight\&quot;]\nfor prop in props:\n    obj.addProperty(\&quot;App::PropertyLength\&quot;, prop, \&quot;Driving Dimensions\&quot;, f\&quot;Expression-bound to Sheet.{prop}\&quot;)\n    obj.setExpression(prop, f\&quot;Sheet.{prop}\&quot;)\nobj.ViewObject.ShapeColor = (0.72,0.74,0.70,0.0)\nobj.ViewObject.LineColor = (0.12,0.12,0.12,0.0)\ndoc.recompute()\nImport.export([obj], step_path); Mesh.export([obj], stl_path); doc.saveAs(fcstd_path)\nGui.ActiveDocument.ActiveView.viewIsometric(); Gui.ActiveDocument.ActiveView.fitAll(); Gui.ActiveDocument.ActiveView.saveImage(png_path, 1400, 1000, \&quot;White\&quot;)\ninitial = {\&quot;bbox_size\&quot;: tuple(round(v,4) for v in (obj.Shape.BoundBox.XLength,obj.Shape.BoundBox.YLength,obj.Shape.BoundBox.ZLength)), \&quot;volume_mm3\&quot;: round(obj.Shape.Volume,4), \&quot;valid\&quot;: obj.Shape.isValid(), \&quot;shape_type\&quot;: obj.Shape.ShapeType, \&quot;solid_count\&quot;: len(obj.Shape.Solids)}\nsheet.set(\&quot;B4\&quot;, \&quot;31 mm\&quot;); sheet.set(\&quot;B7\&quot;, \&quot;8.2 mm\&quot;); sheet.set(\&quot;B15\&quot;, \&quot;12 mm\&quot;)\ndoc.recompute()\nshape = obj.Shape\nbbox = shape.BoundBox\nfinal = {\&quot;bbox_min\&quot;: (round(bbox.XMin,4),round(bbox.YMin,4),round(bbox.ZMin,4)), \&quot;bbox_max\&quot;: (round(bbox.XMax,4),round(bbox.YMax,4),round(bbox.ZMax,4)), \&quot;bbox_size\&quot;: (round(bbox.XLength,4),round(bbox.YLength,4),round(bbox.ZLength,4)), \&quot;volume_mm3\&quot;: round(shape.Volume,4), \&quot;valid\&quot;: bool(shape.isValid()), \&quot;shape_type\&quot;: shape.ShapeType, \&quot;solid_count\&quot;: len(shape.Solids), \&quot;edited_cells\&quot;: {\&quot;Sheet.DovetailTopWidth\&quot;: sheet.get(\&quot;B4\&quot;), \&quot;Sheet.SlotWidth\&quot;: sheet.get(\&quot;B7\&quot;), \&quot;Sheet.StopHeight\&quot;: sheet.get(\&quot;B15\&quot;)}}\nif shape.ShapeType != \&quot;Solid\&quot; or len(shape.Solids) != 1 or not shape.isValid():\n    raise RuntimeError(\&quot;Final model is not a single valid solid: %r\&quot; % final)\nImport.export([obj], step_path); Mesh.export([obj], stl_path); doc.saveAs(fcstd_path)\nGui.ActiveDocument.ActiveView.viewIsometric(); Gui.ActiveDocument.ActiveView.fitAll(); Gui.ActiveDocument.ActiveView.saveImage(png_path, 1400, 1000, \&quot;White\&quot;)\nprint(\&quot;Created expression-driven spreadsheet-parametric quick-release plate\&quot;)\nprint(\&quot;Initial export stats:\&quot;, initial)\nprint(\&quot;Final edited-cell stats:\&quot;, final)\nprint(\&quot;Exports:\&quot;)\nprint(\&quot;  FCStd:\&quot;, fcstd_path)\nprint(\&quot;  STEP:\&quot;, step_path)\nprint(\&quot;  STL:\&quot;, stl_path)\nprint(\&quot;  PNG:\&quot;, png_path)\n&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 8.1539 seconds
+Output:
+Code executed successfully: Python code executed successfully.
+Output: Created expression-driven spreadsheet-parametric quick-release plate
+Initial export stats: {&#x27;bbox_size&#x27;: (100.0, 42.0, 18.0), &#x27;volume_mm3&#x27;: 37467.9283, &#x27;valid&#x27;: True, &#x27;shape_type&#x27;: &#x27;Solid&#x27;, &#x27;solid_count&#x27;: 1}
+Final edited-cell stats: {&#x27;bbox_min&#x27;: (-50.0, -21.0, 0.0), &#x27;bbox_max&#x27;: (50.0, 21.0, 22.0), &#x27;bbox_size&#x27;: (100.0, 42.0, 22.0), &#x27;volume_mm3&#x27;: 36481.5795, &#x27;valid&#x27;: True, &#x27;shape_type&#x27;: &#x27;Solid&#x27;, &#x27;solid_count&#x27;: 1, &#x27;edited_cells&#x27;: {&#x27;Sheet.DovetailTopWidth&#x27;: 31.0 mm, &#x27;Sheet.SlotWidth&#x27;: 8.2 mm, &#x27;Sheet.StopHeight&#x27;: 12.0 mm}}
+Exports:
+  FCStd: /path/to/freecad-codex-dovetail-quick-release.FCStd
+  STEP: /path/to/freecad-codex-dovetail-quick-release.step
+  STL: /path/to/freecad-codex-dovetail-quick-release.stl
+  PNG: /path/to/freecad-codex-dovetail-quick-release.png</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRpgAAABXRUJQVlA4TIwAAAAvZ8kjAQfQ+973vv8BAEX6/58i+p/63//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v/9HAw==" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The final recompute/export passed validation. I’m doing one FreeCAD view check now because the tool’s automatic screenshot came back as an empty viewport even though the saved files and shape stats were produced.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">get_view</span><span class="ts">{&quot;view_name&quot;:&quot;Isometric&quot;,&quot;focus_object&quot;:&quot;DovetailQuickRelease&quot;,&quot;width&quot;:1200,&quot;height&quot;:800}</span></div><pre class="args">{
+  &quot;view_name&quot;: &quot;Isometric&quot;,
+  &quot;focus_object&quot;: &quot;DovetailQuickRelease&quot;,
+  &quot;width&quot;: 1200,
+  &quot;height&quot;: 800
+}</pre><pre class="out">Wall time: 8.1610 seconds
+Output:</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRkwAAABXRUJQVlA4TEAAAAAvr8THAAfQ+973vv8BAUnS//2BEf3P+M9//vOf//znP//5z3/+85///Oc///nPf/7zn//85z//+c9//vOf/28D" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The object is present and exported, but FreeCAD’s viewport capture is still blank. I’m checking the document object state and then I’ll regenerate the PNG using FreeCAD’s offscreen/image path inside the same MCP environment if the live viewport is not rendering the scene.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">get_object</span><span class="ts">{&quot;doc_name&quot;:&quot;Codex_Dovetail_QuickRelease&quot;,&quot;obj_name&quot;:&quot;DovetailQuickRelease&quot;}</span></div><pre class="args">{
+  &quot;doc_name&quot;: &quot;Codex_Dovetail_QuickRelease&quot;,
+  &quot;obj_name&quot;: &quot;DovetailQuickRelease&quot;
+}</pre><pre class="out">Wall time: 6.6493 seconds
+Output:
+{
+  &quot;Name&quot;: &quot;DovetailQuickRelease&quot;,
+  &quot;Label&quot;: &quot;Expression-driven dovetail quick-release plate&quot;,
+  &quot;TypeId&quot;: &quot;Part::FeaturePython&quot;,
+  &quot;Properties&quot;: {
+    &quot;BottomWidth&quot;: &quot;42.0 mm&quot;,
+    &quot;ClearanceDiameter&quot;: &quot;6.8 mm&quot;,
+    &quot;CounterboreDepth&quot;: &quot;3.2 mm&quot;,
+    &quot;CounterboreDiameter&quot;: &quot;13.0 mm&quot;,
+    &quot;DovetailTopWidth&quot;: &quot;31.0 mm&quot;,
+    &quot;ExpressionEngine&quot;: [
+      [
+        &quot;BottomWidth&quot;,
+        &quot;Sheet.BottomWidth&quot;
+      ],
+      [
+        &quot;ClearanceDiameter&quot;,
+        &quot;Sheet.ClearanceDiameter&quot;
+      ],
+      [
+        &quot;CounterboreDepth&quot;,
+        &quot;Sheet.CounterboreDepth&quot;
+      ],
+      [
+        &quot;CounterboreDiameter&quot;,
+        &quot;Sheet.CounterboreDiameter&quot;
+      ],
+      [
+        &quot;DovetailTopWidth&quot;,
+        &quot;Sheet.DovetailTopWidth&quot;
+      ],
+      [
+        &quot;LipHeight&quot;,
+        &quot;Sheet.LipHeight&quot;
+      ],
+      [
+        &quot;LipMargin&quot;,
+        &quot;Sheet.LipMargin&quot;
+      ],
+      [
+        &quot;PlateLength&quot;,
+        &quot;Sheet.PlateLength&quot;
+      ],
+      [
+        &quot;PlateThickness&quot;,
+        &quot;Sheet.PlateThickness&quot;
+      ],
+      [
+        &quot;SlotLength&quot;,
+        &quot;Sheet.SlotLength&quot;
+      ],
+      [
+        &quot;SlotSpacing&quot;,
+        &quot;Sheet.SlotSpacing&quot;
+      ],
+      [
+        &quot;SlotWidth&quot;,
+        &quot;Sheet.SlotWidth&quot;
+      ],
+      [
+        &quot;StopHeight&quot;,
+        &quot;Sheet.StopHeight&quot;
+      ],
+      [
+        &quot;StopLength&quot;,
+        &quot;Sheet.StopLength&quot;
+      ]
+    ],
+    &quot;Label&quot;: &quot;Expression-driven dovetail quick-release plate&quot;,
+    &quot;Label2&quot;: &quot;&quot;,
+    &quot;LipHeight&quot;: &quot;1.5 mm&quot;,
+    &quot;LipMargin&quot;: &quot;3.0 mm&quot;,
+    &quot;Placement&quot;: {
+      &quot;Base&quot;: {
+        &quot;x&quot;: 0.0,
+        &quot;y&quot;: 0.0,
+        &quot;z&quot;: 0.0
+      },
+      &quot;Rotation&quot;: {
+        &quot;Axis&quot;: {
+          &quot;x&quot;: 0.0,
+          &quot;y&quot;: 0.0,
+          &quot;z&quot;: 1.0
+        },
+        &quot;Angle&quot;: 0.0
+      }
+    },
+    &quot;PlateLength&quot;: &quot;100.0 mm&quot;,
+    &quot;PlateThickness&quot;: &quot;10.0 mm&quot;,
+    &quot;Proxy&quot;: &quot;&lt;rpc_server.rpc_server.DovetailQuickReleaseProxy object at 0x122c6dbd0&gt;&quot;,
+    &quot;Shape&quot;: &quot;&lt;Solid object at 0xbc69a2800&gt;&quot;,
+    &quot;ShapeMaterial&quot;: &quot;&lt;Material at 0xbcb41d500&gt;&quot;,
+    &quot;SlotLength&quot;: &quot;24.0 mm&quot;,
+    &quot;SlotSpacing&quot;: &quot;54.0 mm&quot;,
+    &quot;SlotWidth&quot;: &quot;8.2 mm&quot;,
+    &quot;StopHeight&quot;: &quot;12.0 mm&quot;,
+    &quot;StopLength&quot;: &quot;10.0 mm&quot;,
+    &quot;Visibility&quot;: true,
+    &quot;_ElementMapVersion&quot;: &quot;15.70200.5&quot;
+  },
+  &quot;Placement&quot;: {
+    &quot;Base&quot;: {
+      &quot;x&quot;: 0.0,
+      &quot;y&quot;: 0.0,
+      &quot;z&quot;: 0.0
+    },
+    &quot;Rotation&quot;: {
+      &quot;Axis&quot;: {
+        &quot;x&quot;: 0.0,
+        &quot;y&quot;: 0.0,
+        &quot;z&quot;: 1.0
+      },
+      &quot;Angle&quot;: 0.0
+    }
+  },
+  &quot;Shape&quot;: {
+    &quot;Volume&quot;: 36481.57948296661,
+    &quot;Area&quot;: 12287.114161100935,
+    &quot;VertexCount&quot;: 56,
+    &quot;EdgeCount&quot;: 84,
+    &quot;FaceCount&quot;: 32
+  },
+  &quot;ViewObject&quot;: {
+    &quot;ShapeColor&quot;: [
+      0.7200000286102295,
+      0.7400000095367432,
+      0.699999988079071,
+      0.0
+    ],
+    &quot;Transparency&quot;: 0,
+    &quot;Visibility&quot;: true
+  }
+}</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRpgAAABXRUJQVlA4TIwAAAAvZ8kjAQfQ+973vv8BAEX6/58i+p/63//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v/9HAw==" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The GUI viewport renderer is not drawing into screenshots in this session, but the solid is available. I’m replacing the blank PNG with an isometric raster generated from the FreeCAD shape tessellation inside <code>execute_code</code>, including a pixel check so the saved PNG is not empty.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import os, math\nimport FreeCAD as App\nfrom PIL import Image, ImageDraw\n\nDOC_NAME = \&quot;Co</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os, math\nimport FreeCAD as App\nfrom PIL import Image, ImageDraw\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nASSET_DIR = \&quot;/path/to/assets\&quot;\npng_path = os.path.join(ASSET_DIR, \&quot;freecad-codex-dovetail-quick-release.png\&quot;)\ndoc = App.getDocument(DOC_NAME)\nobj = doc.getObject(\&quot;DovetailQuickRelease\&quot;)\nshape = obj.Shape\nverts, tris = shape.tessellate(0.45)\n\n# Isometric-style orthographic projection from final FreeCAD geometry.\nyaw = math.radians(-45.0)\npitch = math.radians(35.2643897)\ncy, sy = math.cos(yaw), math.sin(yaw)\ncp, sp = math.cos(pitch), math.sin(pitch)\n\ndef transform(v):\n    x, y, z = v.x, v.y, v.z\n    x1 = cy*x - sy*y\n    y1 = sy*x + cy*y\n    z1 = z\n    x2 = x1\n    y2 = cp*y1 - sp*z1\n    z2 = sp*y1 + cp*z1\n    return (x2, y2, z2)\n\nproj = [transform(v) for v in verts]\nxs = [p[0] for p in proj]; ys = [p[1] for p in proj]\nW, H = 1400, 1000\nmargin = 90\nscale = min((W - 2*margin)/(max(xs)-min(xs)), (H - 2*margin)/(max(ys)-min(ys)))\ncx = W/2.0 - scale*(min(xs)+max(xs))/2.0\ncy2 = H/2.0 + scale*(min(ys)+max(ys))/2.0\n\ndef screen(p):\n    return (cx + scale*p[0], cy2 - scale*p[1])\n\nlight = (0.35, -0.45, 0.82)\nllen = math.sqrt(sum(a*a for a in light)); light = tuple(a/llen for a in light)\ntri_records = []\nfor tri in tris:\n    p0, p1, p2 = [proj[i] for i in tri]\n    depth = (p0[2] + p1[2] + p2[2]) / 3.0\n    v0, v1, v2 = [verts[i] for i in tri]\n    ax, ay, az = v1.x-v0.x, v1.y-v0.y, v1.z-v0.z\n    bx, by, bz = v2.x-v0.x, v2.y-v0.y, v2.z-v0.z\n    nx, ny, nz = ay*bz-az*by, az*bx-ax*bz, ax*by-ay*bx\n    nlen = math.sqrt(nx*nx + ny*ny + nz*nz) or 1.0\n    nx, ny, nz = nx/nlen, ny/nlen, nz/nlen\n    shade = max(0.18, min(1.0, 0.55 + 0.45*(nx*light[0] + ny*light[1] + nz*light[2])))\n    base = (168, 174, 166)\n    color = tuple(max(0, min(255, int(c*shade))) for c in base)\n    tri_records.append((depth, [screen(p0), screen(p1), screen(p2)], color))\n\nimg = Image.new(\&quot;RGB\&quot;, (W, H), \&quot;white\&quot;)\ndraw = ImageDraw.Draw(img)\nfor depth, poly, color in sorted(tri_records, key=lambda r: r[0]):\n    draw.polygon(poly, fill=color)\nfor tri in tris:\n    pts = [screen(proj[i]) for i in tri]\n    draw.line([pts[0], pts[1], pts[2], pts[0]], fill=(70, 72, 70), width=1)\n\nimg.save(png_path)\nnonwhite = 0\npix = img.load()\nfor y in range(0, H, 5):\n    for x in range(0, W, 5):\n        if pix[x, y] != (255, 255, 255):\n            nonwhite += 1\n\nprint({\&quot;png\&quot;: png_path, \&quot;triangles\&quot;: len(tris), \&quot;sampled_nonwhite_pixels\&quot;: nonwhite, \&quot;bbox_size\&quot;: (round(shape.BoundBox.XLength, 4), round(shape.BoundBox.YLength, 4), round(shape.BoundBox.ZLength, 4)), \&quot;volume_mm3\&quot;: round(shape.Volume, 4), \&quot;valid\&quot;: shape.isValid(), \&quot;shape_type\&quot;: shape.ShapeType, \&quot;solid_count\&quot;: len(shape.Solids)})&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 14.2670 seconds
+Output:
+Code executed successfully: Python code executed successfully.
+Output: {&#x27;png&#x27;: &#x27;/path/to/freecad-codex-dovetail-quick-release.png&#x27;, &#x27;triangles&#x27;: 680, &#x27;sampled_nonwhite_pixels&#x27;: 11979, &#x27;bbox_size&#x27;: (100.0, 42.0, 22.0), &#x27;volume_mm3&#x27;: 36481.5795, &#x27;valid&#x27;: True, &#x27;shape_type&#x27;: &#x27;Solid&#x27;, &#x27;solid_count&#x27;: 1}</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRpgAAABXRUJQVlA4TIwAAAAvZ8kjAQfQ+973vv8BAEX6/58i+p/63//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v/9HAw==" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>Done. Created and re-exported:</p>
+<ul><li><a href="/path/to/freecad-codex-dovetail-quick-release.FCStd" target="_blank" rel="noopener">FCStd</a></li><li><a href="/path/to/freecad-codex-dovetail-quick-release.step" target="_blank" rel="noopener">STEP</a></li><li><a href="/path/to/freecad-codex-dovetail-quick-release.stl" target="_blank" rel="noopener">STL</a></li><li><a href="/path/to/freecad-codex-dovetail-quick-release.png" target="_blank" rel="noopener">PNG</a></li></ul>
+<p>The model has a <code>Spreadsheet::Sheet</code> with aliased driving cells, and the <code>DovetailQuickRelease</code> feature properties are expression-bound to those cells, e.g. <code>Sheet.DovetailTopWidth</code>, <code>Sheet.SlotWidth</code>, <code>Sheet.StopHeight</code>.</p>
+<p>Edited spreadsheet cells and recomputed:</p>
+<ul><li><code>Sheet.DovetailTopWidth</code>: <code>34 mm</code> -&gt; <code>31 mm</code></li><li><code>Sheet.SlotWidth</code>: <code>7 mm</code> -&gt; <code>8.2 mm</code></li><li><code>Sheet.StopHeight</code>: <code>8 mm</code> -&gt; <code>12 mm</code></li></ul>
+<p>Final verification after recompute:</p>
+<ul><li>Shape type: <code>Solid</code></li><li>Solid count: <code>1</code></li><li>Valid: <code>True</code></li><li>Bounding box min: <code>(-50.0, -21.0, 0.0) mm</code></li><li>Bounding box max: <code>(50.0, 21.0, 22.0) mm</code></li><li>Bounding box size: <code>(100.0, 42.0, 22.0) mm</code></li><li>Volume: <code>36481.5795 mm^3</code></li></ul>
+<p>FreeCAD’s live viewport capture was blank in this session, so I generated the PNG from the final FreeCAD shape tessellation through the FreeCAD MCP execution path and verified it is non-empty.</p></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>I’ll fix the PNG from the existing FreeCAD document through the FreeCAD MCP tools: first I’ll inspect the actual <code>DisplayMode</code> enum, then hide/delete mesh artifacts if present, set an allowed solid display mode, and overwrite the PNG from the isometric view.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">exec_command</span><span class="ts">{&quot;cmd&quot;:&quot;sed -n &#x27;1,240p&#x27; /path/to/qwen-mm-plugins-fr</span></div><pre class="args">{
+  &quot;cmd&quot;: &quot;sed -n &#x27;1,240p&#x27; /path/to/SKILL.md&quot;,
+  &quot;yield_time_ms&quot;: 10000,
+  &quot;max_output_tokens&quot;: 20000
+}</pre><pre class="out">Chunk ID: f787e9
+Wall time: 0.0913 seconds
+Process exited with code 0
+Original token count: 1259
+Output:
+---
+name: qwen-mm-plugins-freecad
+description: Use whenever a task involves parametric CAD in FreeCAD — modeling parts and assemblies, editing object properties, technical drawings, importing/exporting STEP/STL/OBJ/DXF, PDF/Excel reports from a model, or finite-element (FEM/CalculiX) analysis. Requires a running FreeCAD instance with the FreeCADMCP addon (see Prerequisite).
+---
+
+You build parametric CAD content in FreeCAD by creating/editing document objects and, when needed, writing Python — against a **running** FreeCAD instance.
+
+## Prerequisite: a live FreeCAD + addon (started for you on first use)
+
+These tools are a **thin client**: they talk XML-RPC to a **running** FreeCAD carrying the FreeCADMCP
+addon (bundled in this plugin), and do **not** launch FreeCAD while serving. Normally you start
+nothing — just call a tool.
+
+- **Default (plugin install):** `QWEN_MM_AUTOLAUNCH=1` is preset, so the **first tool call** brings
+  FreeCAD up itself: it auto-installs the pinned FreeCAD 1.1.x if missing (Linux-x86_64, rootless,
+  FUSE-free AppImage, ~1 GB one-time), copies the bundled addon into your FreeCAD Mod dir, and starts
+  it on `$FREECAD_RPC_HOST:$FREECAD_RPC_PORT` (default `localhost:9875`). Just call a tool such as
+  `get_objects`; the **first** call may take a couple of minutes while it downloads (expected), later
+  calls are instant.
+- **Don&#x27;t shell out to `qwen-mm-plugins-freecad --launch-app` under a plugin install** — that console
+  entry lives inside the uvx environment, not your shell PATH (`command not found`). Use it only from
+  a source checkout, or for a manual / GUI start:
+  ```bash
+  python3 src/capabilities/freecad/qwen_mm_plugins_freecad --launch-app        # headless (xvfb)
+  python3 src/capabilities/freecad/qwen_mm_plugins_freecad --launch-app --gui  # real display
+  ```
+
+Auto-launch can&#x27;t cover a few things: (1) auto-download is **Linux-x86_64 only** — elsewhere install
+FreeCAD yourself (`apt install freecad`, or extract an AppImage and set `FREECAD_BINARY=&lt;AppRun&gt;`);
+(2) a headless box needs a virtual display (`apt install xvfb`, needs root); (3) FEM needs the
+CalculiX solver (`ccx`) on PATH. If a tool reports it can&#x27;t connect, it&#x27;s almost always one of the
+first two — the error message spells out which; from a checkout, `... --check-system` lists every
+missing system tool. Set `FREECAD_ONLY_TEXT_FEEDBACK=1` to drop the screenshot most tools attach.
+
+## Asset creation strategy
+
+When creating content in FreeCAD, follow these steps:
+
+0. Before starting any task, always use `get_objects` to confirm the current state of the document (and `list_documents` / `create_document` as needed).
+1. **Utilize the parts library**: check available parts with `get_parts_list`; if the required part exists, use `insert_part_from_library` to insert it.
+2. **If the part isn&#x27;t in the library**: create basic shapes (`Part::Box`, `Part::Cylinder`, `Part::Sphere`, `Draft::*`, `PartDesign::*`, …) with `create_object`, then refine detailed properties with `edit_object`.
+3. Always assign clear, descriptive names to objects.
+4. Explicitly set position, scale, and rotation (Placement) via `create_object`/`edit_object` to ensure correct spatial relationships.
+5. After editing an object, **verify** the properties actually applied using `get_object`.
+6. For detailed customization or specialized operations, use `execute_code` to run custom Python.
+
+Only fall back to basic creation methods when: the asset isn&#x27;t in the parts library, a basic shape is explicitly requested, or a complex shape requires custom scripting.
+
+## execute_code vs execute_code_async
+
+- **`execute_code`** runs on FreeCAD&#x27;s GUI thread — the safe default for anything that touches documents, document objects, `FreeCADGui`, the active view, selection, `recompute()`, or save.
+- **`execute_code_async`** runs in a background thread — ONLY for long, pure OCCT/CPU computations that do NOT touch the GUI or the document tree. Pattern: fetch shapes with `execute_code`, stash intermediates in a module-level Python variable, run the heavy compute async, then apply results back via `execute_code`.
+
+## Visual verification
+
+Use `get_view` (Isometric/Front/Top/…) to inspect geometry, and re-check with `get_object` after edits. Most mutating tools already return a screenshot unless `FREECAD_ONLY_TEXT_FEEDBACK` is set.
+
+## FEM (finite-element) analysis
+
+`run_fem_analysis` runs the CalculiX solver on a `Fem::AnalysisPython` container. Prerequisites in the document: a solid geometry, a `Fem::MaterialCommon`, a `Fem::FemMeshGmsh` referencing the geometry, and at least one `Fem::ConstraintFixed` + one `Fem::ConstraintForce`/`ConstraintPressure` — all added to the analysis (create them via `create_object`). CalculiX (`ccx`) must be installed. Returns max von Mises stress, max/min displacement, and node count.
+
+## Output files
+
+Save the final `.FCStd` and any generated outputs (images, PDFs, Excel, STEP/STL/OBJ/DXF exports) to the `exports/` directory unless the task specifies otherwise.</pre></div>
+<div class="t"><div class="tline"><span class="tn">get_objects</span><span class="ts">{&quot;doc_name&quot;:&quot;Codex_Dovetail_QuickRelease&quot;}</span></div><pre class="args">{
+  &quot;doc_name&quot;: &quot;Codex_Dovetail_QuickRelease&quot;
+}</pre><pre class="out">Wall time: 16.3640 seconds
+Output:
+[
+  {
+    &quot;Name&quot;: &quot;Sheet&quot;,
+    &quot;Label&quot;: &quot;Sheet&quot;,
+    &quot;TypeId&quot;: &quot;Spreadsheet::Sheet&quot;,
+    &quot;Properties&quot;: {
+      &quot;A1&quot;: &quot;Parameter&quot;,
+      &quot;A10&quot;: &quot;LipHeight&quot;,
+      &quot;A11&quot;: &quot;ClearanceDiameter&quot;,
+      &quot;A12&quot;: &quot;CounterboreDiameter&quot;,
+      &quot;A13&quot;: &quot;CounterboreDepth&quot;,
+      &quot;A14&quot;: &quot;StopLength&quot;,
+      &quot;A15&quot;: &quot;StopHeight&quot;,
+      &quot;A2&quot;: &quot;PlateLength&quot;,
+      &quot;A3&quot;: &quot;BottomWidth&quot;,
+      &quot;A4&quot;: &quot;DovetailTopWidth&quot;,
+      &quot;A5&quot;: &quot;PlateThickness&quot;,
+      &quot;A6&quot;: &quot;SlotLength&quot;,
+      &quot;A7&quot;: &quot;SlotWidth&quot;,
+      &quot;A8&quot;: &quot;SlotSpacing&quot;,
+      &quot;A9&quot;: &quot;LipMargin&quot;,
+      &quot;B1&quot;: &quot;Value&quot;,
+      &quot;B10&quot;: &quot;1.5 mm&quot;,
+      &quot;B11&quot;: &quot;6.8 mm&quot;,
+      &quot;B12&quot;: &quot;13.0 mm&quot;,
+      &quot;B13&quot;: &quot;3.2 mm&quot;,
+      &quot;B14&quot;: &quot;10.0 mm&quot;,
+      &quot;B15&quot;: &quot;12.0 mm&quot;,
+      &quot;B2&quot;: &quot;100.0 mm&quot;,
+      &quot;B3&quot;: &quot;42.0 mm&quot;,
+      &quot;B4&quot;: &quot;31.0 mm&quot;,
+      &quot;B5&quot;: &quot;10.0 mm&quot;,
+      &quot;B6&quot;: &quot;24.0 mm&quot;,
+      &quot;B7&quot;: &quot;8.2 mm&quot;,
+      &quot;B8&quot;: &quot;54.0 mm&quot;,
+      &quot;B9&quot;: &quot;3.0 mm&quot;,
+      &quot;C1&quot;: &quot;Note&quot;,
+      &quot;C10&quot;: &quot;raised lip height&quot;,
+      &quot;C11&quot;: &quot;1/4-20 clearance diameter&quot;,
+      &quot;C12&quot;: &quot;counterbore diameter&quot;,
+      &quot;C13&quot;: &quot;counterbore depth&quot;,
+      &quot;C14&quot;: &quot;rear stop length&quot;,
+      &quot;C15&quot;: &quot;rear stop height&quot;,
+      &quot;C2&quot;: &quot;overall length&quot;,
+      &quot;C3&quot;: &quot;dovetail lower width&quot;,
+      &quot;C4&quot;: &quot;dovetail top width&quot;,
+      &quot;C5&quot;: &quot;plate thickness&quot;,
+      &quot;C6&quot;: &quot;elongated slot length&quot;,
+      &quot;C7&quot;: &quot;elongated slot width&quot;,
+      &quot;C8&quot;: &quot;slot center spacing&quot;,
+      &quot;C9&quot;: &quot;raised lip margin around slots&quot;,
+      &quot;ExpressionEngine&quot;: [],
+      &quot;Label&quot;: &quot;Sheet&quot;,
+      &quot;Label2&quot;: &quot;&quot;,
+      &quot;Visibility&quot;: true,
+      &quot;cells&quot;: &quot;&lt;PropertySheet object&gt;&quot;,
+      &quot;columnWidths&quot;: &quot;&lt;PropertyColumnWidths object&gt;&quot;,
+      &quot;rowHeights&quot;: &quot;&lt;PropertyRowHeights object&gt;&quot;
+    },
+    &quot;Placement&quot;: &quot;None&quot;,
+    &quot;Shape&quot;: null,
+    &quot;ViewObject&quot;: {
+      &quot;Visibility&quot;: true
+    }
+  },
+  {
+    &quot;Name&quot;: &quot;DovetailQuickRelease&quot;,
+    &quot;Label&quot;: &quot;Expression-driven dovetail quick-release plate&quot;,
+    &quot;TypeId&quot;: &quot;Part::FeaturePython&quot;,
+    &quot;Properties&quot;: {
+      &quot;BottomWidth&quot;: &quot;42.0 mm&quot;,
+      &quot;ClearanceDiameter&quot;: &quot;6.8 mm&quot;,
+      &quot;CounterboreDepth&quot;: &quot;3.2 mm&quot;,
+      &quot;CounterboreDiameter&quot;: &quot;13.0 mm&quot;,
+      &quot;DovetailTopWidth&quot;: &quot;31.0 mm&quot;,
+      &quot;ExpressionEngine&quot;: [
+        [
+          &quot;BottomWidth&quot;,
+          &quot;Sheet.BottomWidth&quot;
+        ],
+        [
+          &quot;ClearanceDiameter&quot;,
+          &quot;Sheet.ClearanceDiameter&quot;
+        ],
+        [
+          &quot;CounterboreDepth&quot;,
+          &quot;Sheet.CounterboreDepth&quot;
+        ],
+        [
+          &quot;CounterboreDiameter&quot;,
+          &quot;Sheet.CounterboreDiameter&quot;
+        ],
+        [
+          &quot;DovetailTopWidth&quot;,
+          &quot;Sheet.DovetailTopWidth&quot;
+        ],
+        [
+          &quot;LipHeight&quot;,
+          &quot;Sheet.LipHeight&quot;
+        ],
+        [
+          &quot;LipMargin&quot;,
+          &quot;Sheet.LipMargin&quot;
+        ],
+        [
+          &quot;PlateLength&quot;,
+          &quot;Sheet.PlateLength&quot;
+        ],
+        [
+          &quot;PlateThickness&quot;,
+          &quot;Sheet.PlateThickness&quot;
+        ],
+        [
+          &quot;SlotLength&quot;,
+          &quot;Sheet.SlotLength&quot;
+        ],
+        [
+          &quot;SlotSpacing&quot;,
+          &quot;Sheet.SlotSpacing&quot;
+        ],
+        [
+          &quot;SlotWidth&quot;,
+          &quot;Sheet.SlotWidth&quot;
+        ],
+        [
+          &quot;StopHeight&quot;,
+          &quot;Sheet.StopHeight&quot;
+        ],
+        [
+          &quot;StopLength&quot;,
+          &quot;Sheet.StopLength&quot;
+        ]
+      ],
+      &quot;Label&quot;: &quot;Expression-driven dovetail quick-release plate&quot;,
+      &quot;Label2&quot;: &quot;&quot;,
+      &quot;LipHeight&quot;: &quot;1.5 mm&quot;,
+      &quot;LipMargin&quot;: &quot;3.0 mm&quot;,
+      &quot;Placement&quot;: {
+        &quot;Base&quot;: {
+          &quot;x&quot;: 0.0,
+          &quot;y&quot;: 0.0,
+          &quot;z&quot;: 0.0
+        },
+        &quot;Rotation&quot;: {
+          &quot;Axis&quot;: {
+            &quot;x&quot;: 0.0,
+            &quot;y&quot;: 0.0,
+            &quot;z&quot;: 1.0
+          },
+          &quot;Angle&quot;: 0.0
+        }
+      },
+      &quot;PlateLength&quot;: &quot;100.0 mm&quot;,
+      &quot;PlateThickness&quot;: &quot;10.0 mm&quot;,
+      &quot;Proxy&quot;: &quot;&lt;rpc_server.rpc_server.DovetailQuickReleaseProxy object at 0x122c6dbd0&gt;&quot;,
+      &quot;Shape&quot;: &quot;&lt;Solid object at 0xbc6bedf40&gt;&quot;,
+      &quot;ShapeMaterial&quot;: &quot;&lt;Material at 0xbcb41f900&gt;&quot;,
+      &quot;SlotLength&quot;: &quot;24.0 mm&quot;,
+      &quot;SlotSpacing&quot;: &quot;54.0 mm&quot;,
+      &quot;SlotWidth&quot;: &quot;8.2 mm&quot;,
+      &quot;StopHeight&quot;: &quot;12.0 mm&quot;,
+      &quot;StopLength&quot;: &quot;10.0 mm&quot;,
+      &quot;Visibility&quot;: true,
+      &quot;_ElementMapVersion&quot;: &quot;15.70200.5&quot;
+    },
+    &quot;Placement&quot;: {
+      &quot;Base&quot;: {
+        &quot;x&quot;: 0.0,
+        &quot;y&quot;: 0.0,
+        &quot;z&quot;: 0.0
+      },
+      &quot;Rotation&quot;: {
+        &quot;Axis&quot;: {
+          &quot;x&quot;: 0.0,
+          &quot;y&quot;: 0.0,
+          &quot;z&quot;: 1.0
+        },
+        &quot;Angle&quot;: 0.0
+      }
+    },
+    &quot;Shape&quot;: {
+      &quot;Volume&quot;: 36481.57948296661,
+      &quot;Area&quot;: 12287.114161100935,
+      &quot;VertexCount&quot;: 56,
+      &quot;EdgeCount&quot;: 84,
+      &quot;FaceCount&quot;: 32
+    },
+    &quot;ViewObject&quot;: {
+      &quot;ShapeColor&quot;: [
+        0.7200000286102295,
+        0.7400000095367432,
+        0.699999988079071,
+        0.0
+      ],
+      &quot;Transparency&quot;: 0,
+      &quot;Visibility&quot;: true
+    }
+  }
+]</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRpgAAABXRUJQVlA4TIwAAAAvZ8kjAQfQ+973vv8BAEX6/58i+p/63//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v/9HAw==" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The document currently contains only the spreadsheet and the solid; there are no separate <code>Mesh::</code> temporary objects to delete. The solid is visible and expression-bound, so I’m checking its display-mode enumeration and using one of those exact values for the reshoot.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import os\nimport FreeCAD as App\nimport FreeCADGui as Gui\n\nDOC_NAME = \&quot;Codex_Dovetail_Q</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os\nimport FreeCAD as App\nimport FreeCADGui as Gui\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nPNG_PATH = \&quot;/path/to/freecad-codex-dovetail-quick-release.png\&quot;\ndoc = App.getDocument(DOC_NAME)\nif doc is None:\n    raise RuntimeError(f\&quot;Document {DOC_NAME} is not open\&quot;)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\nobj = doc.getObject(\&quot;DovetailQuickRelease\&quot;)\nif obj is None:\n    raise RuntimeError(\&quot;DovetailQuickRelease object is missing\&quot;)\n\nmesh_objects = []\nfor candidate in list(doc.Objects):\n    type_id = getattr(candidate, \&quot;TypeId\&quot;, \&quot;\&quot;)\n    if type_id.startswith(\&quot;Mesh::\&quot;) or \&quot;Mesh\&quot; in type_id:\n        mesh_objects.append((candidate.Name, type_id))\n        try:\n            candidate.ViewObject.Visibility = False\n        except Exception:\n            pass\n\nenum = list(obj.ViewObject.getEnumerationsOfProperty(\&quot;DisplayMode\&quot;))\nprint(\&quot;DisplayMode enumeration:\&quot;, enum)\n\npreferred = None\nfor mode in (\&quot;Shaded\&quot;, \&quot;Flat Lines\&quot;, \&quot;Wireframe\&quot;, \&quot;Points\&quot;):\n    if mode in enum:\n        preferred = mode\n        break\nif preferred is None and enum:\n    preferred = enum[0]\nif preferred is None:\n    raise RuntimeError(\&quot;DisplayMode enumeration is empty\&quot;)\nobj.ViewObject.DisplayMode = preferred\nobj.ViewObject.Visibility = True\nobj.ViewObject.ShapeColor = (0.72, 0.74, 0.70, 0.0)\nobj.ViewObject.LineColor = (0.12, 0.12, 0.12, 0.0)\ndoc.recompute()\n\nview = Gui.ActiveDocument.ActiveView\n# Try to ensure the document root object is shown in the 3D view before saving.\ntry:\n    Gui.Selection.clearSelection()\n    Gui.Selection.addSelection(doc.Name, obj.Name)\nexcept Exception:\n    pass\nview.viewIsometric()\nview.fitAll()\ntry:\n    view.setAxisCross(False)\nexcept Exception:\n    pass\nview.saveImage(PNG_PATH, 1400, 1000, \&quot;White\&quot;)\n\nprint(\&quot;Hidden mesh objects:\&quot;, mesh_objects)\nprint(\&quot;Applied DisplayMode:\&quot;, obj.ViewObject.DisplayMode)\nprint(\&quot;PNG overwritten:\&quot;, PNG_PATH)\nprint(\&quot;Solid validity:\&quot;, obj.Shape.ShapeType, obj.Shape.isValid(), len(obj.Shape.Solids))&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 29.8695 seconds
+Output:
+[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;Failed to execute code: RuntimeError: DisplayMode enumeration is empty&quot;}]</pre></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The direct enum call returned an empty list on the custom <code>Part::FeaturePython</code> view provider, which explains the earlier <code>Shaded</code> assignment failure. I’m going to probe the view object’s actual properties and test the available display-mode strings without changing the geometry, then use a plain Part display copy only if the custom view provider cannot render.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import FreeCAD as App\nimport FreeCADGui as Gui\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import FreeCAD as App\nimport FreeCADGui as Gui\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\ndoc = App.getDocument(DOC_NAME)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\nobj = doc.getObject(\&quot;DovetailQuickRelease\&quot;)\nvo = obj.ViewObject\nprint(\&quot;ViewObject type:\&quot;, type(vo).__name__)\nprint(\&quot;DisplayMode in PropertiesList:\&quot;, \&quot;DisplayMode\&quot; in list(vo.PropertiesList))\nprint(\&quot;Properties containing Display/Mode:\&quot;, [p for p in vo.PropertiesList if \&quot;Display\&quot; in p or \&quot;Mode\&quot; in p])\ntry:\n    print(\&quot;getEnumerationsOfProperty DisplayMode:\&quot;, list(vo.getEnumerationsOfProperty(\&quot;DisplayMode\&quot;)))\nexcept Exception as e:\n    print(\&quot;getEnumerationsOfProperty error:\&quot;, repr(e))\ntry:\n    print(\&quot;DisplayModes attribute:\&quot;, vo.DisplayModes)\nexcept Exception as e:\n    print(\&quot;DisplayModes attribute error:\&quot;, repr(e))\nfor mode in [\&quot;Flat Lines\&quot;, \&quot;Shaded\&quot;, \&quot;Wireframe\&quot;, \&quot;Points\&quot;, \&quot;Hidden Line\&quot;, \&quot;No Shading\&quot;]:\n    try:\n        vo.DisplayMode = mode\n        print(\&quot;accepted DisplayMode:\&quot;, mode, \&quot;-&gt;\&quot;, vo.DisplayMode)\n    except Exception as e:\n        print(\&quot;rejected DisplayMode:\&quot;, mode, \&quot;-&gt;\&quot;, repr(e))\nprint(\&quot;current DisplayMode value:\&quot;, getattr(vo, \&quot;DisplayMode\&quot;, None))&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 281.7695 seconds
+Output:
+Code executed successfully: Python code executed successfully.
+Output: ViewObject type: ViewProviderPartExt
+DisplayMode in PropertiesList: True
+Properties containing Display/Mode: [&#x27;DisplayMode&#x27;]
+getEnumerationsOfProperty DisplayMode: []
+DisplayModes attribute error: AttributeError(&quot;&#x27;PartGui.ViewProviderPartExt&#x27; object has no attribute &#x27;DisplayModes&#x27;&quot;)
+rejected DisplayMode: Flat Lines -&gt; ValueError(&quot;&#x27;Flat Lines&#x27; is not part of the enumeration in Codex_Dovetail_QuickRelease#DovetailQuickRelease.ViewObject.DisplayMode&quot;)
+rejected DisplayMode: Shaded -&gt; ValueError(&quot;&#x27;Shaded&#x27; is not part of the enumeration in Codex_Dovetail_QuickRelease#DovetailQuickRelease.ViewObject.DisplayMode&quot;)
+rejected DisplayMode: Wireframe -&gt; ValueError(&quot;&#x27;Wireframe&#x27; is not part of the enumeration in Codex_Dovetail_QuickRelease#DovetailQuickRelease.ViewObject.DisplayMode&quot;)
+rejected DisplayMode: Points -&gt; ValueError(&quot;&#x27;Points&#x27; is not part of the enumeration in Codex_Dovetail_QuickRelease#DovetailQuickRelease.ViewObject.DisplayMode&quot;)
+rejected DisplayMode: Hidden Line -&gt; ValueError(&quot;&#x27;Hidden Line&#x27; is not part of the enumeration in Codex_Dovetail_QuickRelease#DovetailQuickRelease.ViewObject.DisplayMode&quot;)
+rejected DisplayMode: No Shading -&gt; ValueError(&quot;&#x27;No Shading&#x27; is not part of the enumeration in Codex_Dovetail_QuickRelease#DovetailQuickRelease.ViewObject.DisplayMode&quot;)
+current DisplayMode value: None</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRpgAAABXRUJQVlA4TIwAAAAvZ8kjAQfQ+973vv8BAEX6/58i+p/63//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///vf//73v/9HAw==" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The custom feature’s <code>ViewProviderPartExt</code> exposes a <code>DisplayMode</code> property but its enumeration is empty, so there is no legal string to assign on that view provider. I’m adding a minimal view-provider proxy that supplies real display modes for the existing solid, then I’ll set <code>Shaded</code>, reshoot, and check the PNG pixels.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import os, time\nimport FreeCAD as App\nimport FreeCADGui as Gui\n\nDOC_NAME = \&quot;Codex_Dove</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os, time\nimport FreeCAD as App\nimport FreeCADGui as Gui\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nPNG_PATH = \&quot;/path/to/freecad-codex-dovetail-quick-release.png\&quot;\ndoc = App.getDocument(DOC_NAME)\nif doc is None:\n    raise RuntimeError(f\&quot;Document {DOC_NAME} is not open\&quot;)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\nobj = doc.getObject(\&quot;DovetailQuickRelease\&quot;)\nif obj is None:\n    raise RuntimeError(\&quot;DovetailQuickRelease object is missing\&quot;)\n\nclass DovetailQuickReleaseViewProvider:\n    def __init__(self, view_object):\n        view_object.Proxy = self\n    def attach(self, view_object):\n        self.ViewObject = view_object\n    def getDisplayModes(self, view_object):\n        return [\&quot;Shaded\&quot;, \&quot;Wireframe\&quot;]\n    def getDefaultDisplayMode(self):\n        return \&quot;Shaded\&quot;\n    def setDisplayMode(self, mode):\n        return mode\n    def onChanged(self, view_object, prop):\n        return None\n    def updateData(self, obj, prop):\n        return None\n    def __getstate__(self):\n        return {}\n    def __setstate__(self, state):\n        return None\n\n# Hide/delete only mesh-type temporary objects. None are expected, but keep the cleanup explicit.\nmesh_objects = []\nfor candidate in list(doc.Objects):\n    type_id = getattr(candidate, \&quot;TypeId\&quot;, \&quot;\&quot;)\n    if type_id.startswith(\&quot;Mesh::\&quot;) or \&quot;Mesh\&quot; in type_id:\n        mesh_objects.append((candidate.Name, type_id))\n        try:\n            candidate.ViewObject.Visibility = False\n        except Exception:\n            pass\n\nDovetailQuickReleaseViewProvider(obj.ViewObject)\ndoc.recompute()\nGui.updateGui()\n\nenum = list(obj.ViewObject.getEnumerationsOfProperty(\&quot;DisplayMode\&quot;))\nprint(\&quot;DisplayMode enumeration after view-provider proxy:\&quot;, enum)\nif \&quot;Shaded\&quot; not in enum:\n    raise RuntimeError(f\&quot;Shaded is still not assignable; enum={enum!r}\&quot;)\nobj.ViewObject.DisplayMode = \&quot;Shaded\&quot;\nobj.ViewObject.Visibility = True\nobj.ViewObject.ShapeColor = (0.72, 0.74, 0.70, 0.0)\nobj.ViewObject.LineColor = (0.12, 0.12, 0.12, 0.0)\n\n# Hide spreadsheet from the 3D scene and make sure only the solid is visible for the shot.\nsheet = doc.getObject(\&quot;Sheet\&quot;)\nif sheet and hasattr(sheet, \&quot;ViewObject\&quot;):\n    sheet.ViewObject.Visibility = False\n\ndoc.recompute()\nGui.updateGui()\nview = Gui.ActiveDocument.ActiveView\ntry:\n    Gui.SendMsgToActiveView(\&quot;ViewFit\&quot;)\nexcept Exception:\n    pass\nview.viewIsometric()\nview.fitAll()\nGui.updateGui()\ntime.sleep(0.5)\nview.saveImage(PNG_PATH, 1400, 1000, \&quot;White\&quot;)\n\n# Pixel check for the saved PNG without using shell commands.\nfrom PIL import Image\nimg = Image.open(PNG_PATH).convert(\&quot;RGB\&quot;)\nnonwhite = 0\nunique = set()\nfor y in range(0, img.height, 5):\n    for x in range(0, img.width, 5):\n        px = img.getpixel((x, y))\n        unique.add(px)\n        if px != (255, 255, 255):\n            nonwhite += 1\n\nprint(\&quot;Hidden mesh objects:\&quot;, mesh_objects)\nprint(\&quot;Applied DisplayMode:\&quot;, obj.ViewObject.DisplayMode)\nprint(\&quot;PNG overwritten:\&quot;, PNG_PATH)\nprint(\&quot;Sampled non-white pixels:\&quot;, nonwhite)\nprint(\&quot;Sampled unique colors:\&quot;, len(unique))\nprint(\&quot;Solid validity:\&quot;, obj.Shape.ShapeType, obj.Shape.isValid(), len(obj.Shape.Solids))&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 3.6679 seconds
+Output:
+Code executed successfully: Python code executed successfully.
+Output: DisplayMode enumeration after view-provider proxy: [&#x27;Flat Lines&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;, &#x27;Points&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;]
+Hidden mesh objects: []
+Applied DisplayMode: Shaded
+PNG overwritten: /path/to/freecad-codex-dovetail-quick-release.png
+Sampled non-white pixels: 0
+Sampled unique colors: 1
+Solid validity: Solid True 1</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRnQVAABXRUJQVlA4TGcVAAAvZ8kjAX8GKZIkR5Ln2L0kf4DHQV/HSQ4QGklyJEXNveVP7bn4n5TcSJIjSRaF/VH9tVst2F2Xz/8PHJ4/vz99fFE+/h/k8/9RkHOTSwQiQl3dBFI5RQlKpa4TRCRKEEmle4VEhApRwukSIiFcRjccBY8uB8aM2OCqVDjqEUjx2yuYCpc4ECQkgigHggwFaRREkysoiWEMhsEMIuQyDGNg/mrj/OV4BEH+aGBmjN0R/xdzDMZ5PEgwhsqfRSIqldNVEe9//5FzL/H4/mmb27dXi202jIG5zrHhHJqZnRk+X37dP94x15ltmOvMNqfDf25eZocZZhtjMPy/+OzP2/ljJMVt2ziW9t/6en1HxATwyW6hccsULFaKLANTugYVSIxBs5AyURMXFrKuCnHPXSYyt8LjKWzbZsiO4pOsYptr27aNWtu2bdu2rYrtH5Uz6Pq+9/uqF53rrYj+Q2IjSVLk4ci9t371GqBBxUiC2zaCJN3/377rqgLOS3dE/yG5bSRJYrcGgVq+0HPMgMXIthVJkgRNBWaWq61sYplBAmYmFb4QKdOaZWVGRMa/7w3cUzci+m/RtG3RkqR112bUYTv5AS3i3Yig+fdn1of/+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//+I//3v0P//Ef//Ef//Ef//Ef/737H/7jP/7jP/7jP/7jP/7jP/7jroFZkzCWbh/E0hvgle4CsyYBK60AVGklgGo24I+paVv/lJqSA0ZJJGDWJAAlwQBPEg7gJIWAWZMgk9QCLkk1oJLUA2ZNAkkCCYAkoABHs1GsEBE3LBJkQCLBBsyaBIYEHkBIBgIEyUjArEnwR1MBfTQdsEdTArMmAR5NDNgRYmFIeCBHGoo4kgG8kRRg1iRgI0GAGokC0EgYMGsSlJE8YIwkAmFGJvBFSgsvEgtwkWBAy4gGsEh3cUXSgSqSD8yaBFJUBABFhIVRz4NZk2CJSgKSCLEwinsoS0lARISFUeeDWZPgh0oFeoiwMKp+MGsS4BBhYdT/gIYaAMyaBDFEWBjdeDBrklCWkkCFCAujNw9mTYISag8wQoSF0akHsyaBBzUL4CDCwujbg1mT4IIIC6ODD8LMpZdfe42LgVr0+ykXfvvNty+9+NyzT/cq5Spe2bJ5dsIVDR09ecl2eye4/onHhIFUNG7EJhLyy1//QRYgZXaYM1XQH//8J1EFFJ34577ifv8bUYAT/fC9jh9//zt4ghExOUnRy6smUMn8eryuJZKKJDr8KHWiGh7ZOgSBLMDIHAABSTCiJrtiUAYO+bLz81DQyOGInixAoQ4EMothyAN/fOqaZUBA5HCktnAIRjRlJRAMwagvKoEdHzp+DRQCORwpMQCCkSLDHxi1BjzuGCk06HE4oi7LoaAHRq0BDwyJDx7iuGOk3jDH4UjB0Y0/IvrS0u39CEd1Xy06uHE4UnVoAyNq8pmh+70FGxiCQzCUccdI7eGMwxHRIQzMwIiqfGTncSNSBob0EAle3DGiLG/YWdcHwji8issjVtYDCTFwPU9teVDmPwRAGLjePPJDfdWglElri/ssrIvpUk9XzM5TWG4Q+y91AQaudx9duVls3eJVlYQ+pg3SSE01HRZz56kqt0n+p2rKQjE7T1GR7Z6UFIZidp6SItw86agMNZy8thHvnVSUdljMzlNPFJonedWhgulDK43eSVx9KOAEooVO6ySsQLQvje2l1TrJqvCwfNsKIdFrnQQVieYlEhsotk5yykTvUomuKPxPCym0rZvO3qbcOsmoFJ1LKNRbJwm1onEJhX7rJKBYNG5KD/U7p3TVHvatUg+ZqGB0bWoB0DqlKRnF7Dz1H6aoGUWr4kMmKPqwZZOMOxBCVXWjYtWNiipHMTtP/YeVlI6KrfClKmo/LFfSgdE6PUz5qNbqx6PUj35V+x0P0oDDclX+HffSA1RrDbjjbbqAVtWEpTdpA0pVG5Zu04fDOq0Z+H9a0TWqRtyxpBno01pxB1P0PGhfc2hSDVlKL7I1aZ8a7rgluhVqVE/umDT3NtVP58Gbf5gzD0W/QofWlzt6ka069Qcz5g3XTv1Zb+7oRbb21J07psun0blQnRp0Ry+ytWZNWmpGVpratDRVvooOhrrULPQiW2XWpzum+g8fQ19q1R3NyMqydi31IltTathSepGtI7UNzcjWk7XsjmZkLalrd8z9fRXXOhQ6Ut/u6EW2bqx9OPDn3vLZ+lHv7pg1a5yytWPdu+OYn0veb1s36t8dE75nzyrPbLXo08hS9N5KsU8jS9F/Wx1qJqaalf7ZitE7/LZEzIWtEOv6HaplrnfSylA7l2ycl7lpq8Sa/bUllOtb7KmtA/Ud2rUtauXoHYjoQS29g9BrrbXAX+u/tLVcRDJntgbU2SWSmKsGOL+Nu/c+sPu0GCTcykzOc9var4YtadWAU8Kuu7SLpL+h9/QNlrf9nbc1X01bsutA/22Vp3Uw6ohDOop0+9R6PlUt/dZZJB0PfdenLRyfEVvl+dR0x+k/dRFJ70PVaSFuNePHc7qJzMCp7Orf0q233GTC30d3FckshJrTMFR1w73wdtqzu0jmIpRcLUNV9z8AbdY2FURm5FRxuoaqHnoE1vhpubP1m76VVb35NqJNh42uJpKZCfVW41DZO++9C2ZwT0V5Gslo3aZ3qK68/UYBMW7U8C2qimxYn67dK1O8/kjRtvWs6ZMSRDJXodjqH5I8xgefULPX7tsnydw8t2s1HUSqUq4nhZ168gnH/JUokpkLnaaHEEDKDFC7888796wzvjstXRZHFGCr1cIlKbzq6tbtmmsvL5dd+mR5ms8+V55/4flneMnFF10oJZJZDH2mkTAjp2M3sc1qJUzI7YBzrDLdBLwG9ySZvPazhJbpmX3ZY3UUqHI+HTlLTFNBQJkfQ6Edpq8glAb4wC+9nq0tCaI2jFbV+tJekMpqxhB7La9aDKppkk8L2muFdWQTVl/mMm5xKRHubInq0ATsra2KRB3anuHT5FNPlkt5eSlXXFsap+H6aR+vvNqyPUN2dzXJbycfhZ8OT73glZeLiHw1+cVJTdhxn7+Olfbzn+WnP4GlpbETZ2yl5jxPSkL/QZuN0PbT84eAtDSgL4gkbITNe5Dk+ycVLU0ZNxLO+T0iOtx2JqZ8h4Zw0G648g0Swi9HYnv5QEF3nB7wvTLQ4U8mnJ8AEI6zYvkm/OCwowz5Fvp8Fa+DbTkH9hzucYA1GdCDnQ1aRohnaZ5Jn7wCD+ZbdQ7aWVpo14cBCaiDXljnY54uMu0bA3QOF5uHOVhm3Q8HKOAKEc4dK+z73QjiHK5SklLHk8IKOCO5YvbOXwYt4HQ0VkNw79DNHauEaM53rZ3y9xFcODwT/dJ2CjDgNGCG6df2/ItvfjBuqxNhPXc+24MMh98pAE7Ur42BBpwAapmbgg1ID7lQ0SEbzT+UHPr0IlsfcDiMzUCta8MOyMxGtetCD8jLTr2rgw53hGWq4ofpa0d87jAqYyU/TFMxkjgdYrL32sx4lJZiJHE7ZGSx6Affv7qjePC/aPO5OwKyWbXu0NGp+m3Eh+2iuJdL652Tf/qpJy+9vFx7Ne/mldcrnO6lnRhJfA/ZRFlb7v7HmRVd98TPsvfvkefO5zjtJu59OQwjXmoRBfXrGTEh1bnz75FHeejcIG53ZGxAOcMGCkn2/OWm3KaVsIev8Fpms1u6TtK54x9X7s37jDUSI4ktYxmFHL2ftK+/lBjSr9m9b8lLMn4+W8Pr0u5fYr5RfHvITzE9Sss3R6sxktg3DtbzrdFnjCT2jbl7aFpGl/How+WY9h0LlL32uLbxKb7K7Cl9+EZ/MZI4OBZD6C3ufjJV715aj+C3o7UYiUviMe0Xnykm9r20CsPfRlcxkngljqinuPcCQUa59JiW+Riicd/DNSj+N/qJQ76qmc3heJqJkcQ5cTi9xKNXNbPMOx7Tfvj5cOSehyd7pI8YSTwUx9JGjCQ+ikPpIh69qpmZ31ED7ccd3Fleenii/6vYQYwk5g59TfyLE777qmbWvqSoj3/ayyNxeZCU18k/ouq9XtXMzb8FkJRe/rl6jySeD5KV1dQXBvq9VzVz16XH/GQ+hPWac598+kHGq5pt9CaMJIiFR69qxlV33L6pGWQc6r61GMnHSAIkSHvrxxKNEU0JfZr8YcjQMZNnp7/FdumFKrFXQ/9vTB03QsbN//U2iKpW3cbxD/fdYY6sP/1eFHTqTQwfJ/6p4Dc/FgWNcz9ev/TD90q+/x1NVah7MXscf5Kil1dNUKeH8fmlo35VtkQWhqp5FKfH4QBEQZfWxOWXDsWQtElr4vKHux4AIz3Sqrg85oHoEi4rY/JYACZpjjbF3u9YjCdpjNbH/HBz0hVticVjGY724LI57rd0cZJ2aGMcHiuBJa3Q5nggbk76MAIMHmvAJU2QEBNcujhJAyTDCXFxUr2kWCEuSEsQ5JghLk5StmSZ+9JyM5KSJcoPcXNSr4QZPKD0AkGcJ+LiJIVKnCv2uzhJkVLh34dfGLq9n91aoXQYI65EExAU+eLSxUlKkxoDxxcCh2wkJqUuKXJHHAJx1I+gyh9xBrQpKUjq7HEpoI/ckhQjbRaJE6BZqUT6TBLxvGHm8eYXjoDAJpEfaVZSghAYZb9sHrGyHkjPg3yBcErkInjIRmJYtAuGgeML0UMJEXUVIwBxS+Rf2UgMS0QLiF/2y7+ykRiWCBYWk8RZVjYSGha1QuOZyL9KiOgpFQGSYy6lItk9GZbIFCDbRP6VjcSwaBQqA1/SOWQjoYoqEUA5JwKRb57sSsQJmIMvqR2ykRiWCBMui8TJVjYSGiZLyBwSQVc2EqXmqVZ8ELAZKK5sZSORJQss/A4Lh2wk5QmeQeKIKxsJhfaPWpwMMHLcfJtuJ5X52/sJJjg5blPupoyQJROctN/5VjaSumSGlR/q91Qlf77AYIc74rybhMiRI0u2WPkSQGu1KSXJFENF/ot1vs9YYFPN9kwXU+T7uQZzHB13IIRjRZZMstSl/BfXpRaZhAWHlf08kAJtIgOU9fNtC1b5OiB6rqdHlqwy1576Dx+kCNnGBkt3f57eJcg0cwdG91XI74cg2OY9fabhCZEl6wweQIdsJOrlBEC4Q/7voy64ARHu2Cuy5AEL6jMNr8LlBZc/JERHplpugAUovqRpaHuml/Se+oQSvraEVrkDF5Z0yhvMAI2XOAUd7pAlrxDDHerkFWpYUian2D4w9r6lajzDAkvRL78AAcTLPTRwh/BpZtqu/iXVamza9y7DEknyEDAsLUnkSGCYAYucXhw025O8tOQGQqQ2SPC1Jbb/I0VIaIBhaYkOXKIzzIBFRy9yQwd3bP73TS29wYM7tv/rppXeAMPSoqCXKA4wLC2ZHxfNoYSlKHnXnksUBxUg47teXyI8uHDHMncv8dnu/l9aMjEuUR5gWFqyBceX9ALD0pJtOLa0lxiQSXvRH3tG4m+OKuftywxHVBGlk6VL/DfbE1+8pI5iBY4jH+7TDpcUFCa54xI37l7m4rPlyH2Z4YkqKmyBZ6mwosgdF2/O9jIX95c/92WGfVVczfowsWQ3FRi3RmLZaSqsXyOwZA8xSb/Ako2qM4Z9mFg2qdBaNgJLVg+e9AssWaVyY9oILHmseuvaSCwPpuTaNgJL7qjs2PZSYMmtyq5xI7Fcksrr3Hgu1o28wKVfWtXXvA/finsjqvLr3wiKX/q9EwM/TKkBtXBkBDH9HomJI58W1MURTw9q43giNr4UTRNq5EimC3VyPA8rRypI0+9tmPlhJH2onSOQRtTP8S4MvV8YnaijI4tW1NLxLCx9KYde1NWRQjPq6ngSto4IKKdfAO2osR++B2fHb9ePejt+N9jp9xZ/zP3wJV7zd7zC79B7PP4B3E8In2+p+/d7y+pR7++XvNuj7j8+V69fqufrJ+L6qN/rgWT8qNvrNen9qN/r6e38S3X5+U5BABhR/WAATCheJAADKhcNtMArfIAA6OoWEwBb7SKCJWQ1iw2Aq+LBA8AqWIQAUEWLD5YgFStQAKJSBxaAp1LxAtCUKWZowVKlsAFQahx0AJASBSGoT97aXqHCoZDD6kQiqFAUslSZaATlDYgslSUgQWmCkaWqRCSHBQ2WoB5xCeoSj9xRzoDJYSmCExQiPEFBwpI76hg+OaxBjII6xCdL+sUpKGIQZUm8UAUFCFOWtItVDmUPsEC1iAXqRSp3iB5kORQsbIFoIcuSWKELFA+1LCkVvUCtyGVJpQgGUgdeliQKYiBTALOkUBRzKG5QBtrEMhAmnKmu4RnIEs9AlJCmmsQ0UDRQA0WiGsgR2FSNGAAdHrSBFqENlIhuKmTwBjqEN5AhwIEGMU4lDONAgiAH8wtzOr84B7MP6WBykQ6mFux0ZtEO5h3cwbziHUwq5OmcgzyYU8yDGQU9mE/c0+kGfDCbwAdziX06leAHEw39YCLhD2YRAHUWERDmGAbCFGIgTCAM6vGHg3B4cRAOLhTqscUgqHBgCEcWDeGw4qEeVkCEgw4S4ZhCIhxRVNQDik9QxXARDicwwrGEKtU+bIRDCY5wHOFRjyM+wlEGkHAUERIOIUjqEUQx0DeYhOeLk/BkAU1VDSrhuUIlPFWwhOeJl/q04SU8TcCE54iZ+hSxDmYeasITRE3YXeDUvUVO2HfQCfuKnbCj8Kn7DT5hP/ET9hJAYR8xVHcZiMIegihsF0d1s0AKG4eksFEohS2CqW4RTWH98BRWi6ewUkjVdcNUWCWmwgphVR+LorB9wAqPRFa4K7bqXcEV7gxe4a3wCrcirCKWkgSzJnn3P/zHf/zHf/zHf/zHf/z37n/4j//4j//4j//4j//4793/8B//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R//8R///adhAA==" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The enum is now populated and <code>Shaded</code> was accepted. The MCP screenshot display shows the corrected shaded view, but the immediate file pixel check ran before the image write had fully landed, so I’m doing a separate read-back check of the PNG now.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;from PIL import Image\nPNG_PATH = \&quot;/path/to/freeca</span></div><pre class="args">{
+  &quot;code&quot;: &quot;from PIL import Image\nPNG_PATH = \&quot;/path/to/freecad-codex-dovetail-quick-release.png\&quot;\nimg = Image.open(PNG_PATH).convert(\&quot;RGB\&quot;)\nnonwhite = 0\nunique = set()\nfor y in range(0, img.height, 5):\n    for x in range(0, img.width, 5):\n        px = img.getpixel((x, y))\n        unique.add(px)\n        if px != (255, 255, 255):\n            nonwhite += 1\nprint({\&quot;path\&quot;: PNG_PATH, \&quot;size\&quot;: img.size, \&quot;sampled_nonwhite_pixels\&quot;: nonwhite, \&quot;sampled_unique_colors\&quot;: len(unique)})&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 118.5496 seconds
+Output:
+Code executed successfully: Python code executed successfully.
+Output: {&#x27;path&#x27;: &#x27;/path/to/freecad-codex-dovetail-quick-release.png&#x27;, &#x27;size&#x27;: (1400, 1000), &#x27;sampled_nonwhite_pixels&#x27;: 0, &#x27;sampled_unique_colors&#x27;: 1}</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,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" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p><code>saveImage()</code> is leaving the file white even though the active view itself is correctly shaded. I’m switching the overwrite to a Qt viewport grab from the same FreeCAD active view, which captures what the MCP view is showing instead of relying on <code>saveImage()</code>.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import os, time\nimport FreeCAD as App\nimport FreeCADGui as Gui\n\ntry:\n    from PySide6 </span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os, time\nimport FreeCAD as App\nimport FreeCADGui as Gui\n\ntry:\n    from PySide6 import QtWidgets, QtGui, QtCore\n    pyside = \&quot;PySide6\&quot;\nexcept Exception:\n    from PySide2 import QtWidgets, QtGui, QtCore\n    pyside = \&quot;PySide2\&quot;\nfrom PIL import Image\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nPNG_PATH = \&quot;/path/to/freecad-codex-dovetail-quick-release.png\&quot;\ndoc = App.getDocument(DOC_NAME)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\nobj = doc.getObject(\&quot;DovetailQuickRelease\&quot;)\nobj.ViewObject.Visibility = True\nobj.ViewObject.DisplayMode = \&quot;Shaded\&quot;\nobj.ViewObject.ShapeColor = (0.72, 0.74, 0.70, 0.0)\nif doc.getObject(\&quot;Sheet\&quot;):\n    doc.getObject(\&quot;Sheet\&quot;).ViewObject.Visibility = False\nfor candidate in doc.Objects:\n    type_id = getattr(candidate, \&quot;TypeId\&quot;, \&quot;\&quot;)\n    if type_id.startswith(\&quot;Mesh::\&quot;) or \&quot;Mesh\&quot; in type_id:\n        candidate.ViewObject.Visibility = False\n\ndoc.recompute()\nGui.updateGui()\nview = Gui.ActiveDocument.ActiveView\nview.viewIsometric()\nview.fitAll()\nGui.updateGui()\ntime.sleep(0.5)\n\nviewer = view.getViewer()\nmethods = [m for m in dir(viewer) if \&quot;grab\&quot; in m.lower() or \&quot;snap\&quot; in m.lower() or \&quot;image\&quot; in m.lower()]\nprint(\&quot;Qt binding:\&quot;, pyside)\nprint(\&quot;Viewer class:\&quot;, type(viewer).__name__)\nprint(\&quot;Viewer image/grab methods:\&quot;, methods)\n\nsaved = False\n# QWidget.grab() captures the rendered viewport contents.\ntry:\n    pixmap = viewer.grab()\n    if not pixmap.isNull():\n        pixmap = pixmap.scaled(1400, 1000, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)\n        canvas = QtGui.QPixmap(1400, 1000)\n        canvas.fill(QtGui.QColor(\&quot;white\&quot;))\n        painter = QtGui.QPainter(canvas)\n        painter.drawPixmap((1400 - pixmap.width()) // 2, (1000 - pixmap.height()) // 2, pixmap)\n        painter.end()\n        saved = canvas.save(PNG_PATH, \&quot;PNG\&quot;)\n        print(\&quot;viewer.grab save result:\&quot;, saved, \&quot;grab size:\&quot;, pixmap.width(), pixmap.height())\nexcept Exception as e:\n    print(\&quot;viewer.grab failed:\&quot;, repr(e))\n\nif not saved:\n    try:\n        screen = QtWidgets.QApplication.primaryScreen()\n        pixmap = screen.grabWindow(int(viewer.winId()))\n        if not pixmap.isNull():\n            pixmap = pixmap.scaled(1400, 1000, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)\n            canvas = QtGui.QPixmap(1400, 1000)\n            canvas.fill(QtGui.QColor(\&quot;white\&quot;))\n            painter = QtGui.QPainter(canvas)\n            painter.drawPixmap((1400 - pixmap.width()) // 2, (1000 - pixmap.height()) // 2, pixmap)\n            painter.end()\n            saved = canvas.save(PNG_PATH, \&quot;PNG\&quot;)\n            print(\&quot;screen.grabWindow save result:\&quot;, saved, \&quot;grab size:\&quot;, pixmap.width(), pixmap.height())\n    except Exception as e:\n        print(\&quot;screen.grabWindow failed:\&quot;, repr(e))\n\nimg = Image.open(PNG_PATH).convert(\&quot;RGB\&quot;)\nnonwhite = 0\nunique = set()\nfor y in range(0, img.height, 5):\n    for x in range(0, img.width, 5):\n        px = img.getpixel((x, y))\n        unique.add(px)\n        if px != (255, 255, 255):\n            nonwhite += 1\nprint(\&quot;DisplayMode enumeration:\&quot;, list(obj.ViewObject.getEnumerationsOfProperty(\&quot;DisplayMode\&quot;)))\nprint(\&quot;Applied DisplayMode:\&quot;, obj.ViewObject.DisplayMode)\nprint(\&quot;PNG overwritten:\&quot;, PNG_PATH)\nprint(\&quot;Saved:\&quot;, saved)\nprint(\&quot;Sampled non-white pixels:\&quot;, nonwhite)\nprint(\&quot;Sampled unique colors:\&quot;, len(unique))&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 338.0586 seconds
+Output:
+Code executed successfully: Python code executed successfully.
+Output: Qt binding: PySide6
+Viewer class: View3DInventorViewerPy
+Viewer image/grab methods: [&#x27;grabFramebuffer&#x27;]
+viewer.grab failed: AttributeError(&#x27;grab&#x27;)
+screen.grabWindow failed: AttributeError(&#x27;winId&#x27;)
+DisplayMode enumeration: [&#x27;Flat Lines&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;, &#x27;Points&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;]
+Applied DisplayMode: Shaded
+PNG overwritten: /path/to/freecad-codex-dovetail-quick-release.png
+Saved: False
+Sampled non-white pixels: 0
+Sampled unique colors: 1</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,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" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>The viewport object exposes <code>grabFramebuffer()</code>, not QWidget <code>grab()</code>. I’m using that exact viewer method now and writing the framebuffer to the PNG path, then reading the file back for a non-white pixel count.</p></div></div>
+<div class="t"><div class="tline"><span class="tn">execute_code</span><span class="ts">{&quot;code&quot;:&quot;import os, time\nimport FreeCAD as App\nimport FreeCADGui as Gui\nfrom PIL import Image\n\n</span></div><pre class="args">{
+  &quot;code&quot;: &quot;import os, time\nimport FreeCAD as App\nimport FreeCADGui as Gui\nfrom PIL import Image\n\ntry:\n    from PySide6 import QtGui, QtCore\nexcept Exception:\n    from PySide2 import QtGui, QtCore\n\nDOC_NAME = \&quot;Codex_Dovetail_QuickRelease\&quot;\nPNG_PATH = \&quot;/path/to/freecad-codex-dovetail-quick-release.png\&quot;\ndoc = App.getDocument(DOC_NAME)\nGui.ActiveDocument = Gui.getDocument(doc.Name)\nobj = doc.getObject(\&quot;DovetailQuickRelease\&quot;)\nobj.ViewObject.DisplayMode = \&quot;Shaded\&quot;\nobj.ViewObject.Visibility = True\nif doc.getObject(\&quot;Sheet\&quot;):\n    doc.getObject(\&quot;Sheet\&quot;).ViewObject.Visibility = False\nfor candidate in doc.Objects:\n    type_id = getattr(candidate, \&quot;TypeId\&quot;, \&quot;\&quot;)\n    if type_id.startswith(\&quot;Mesh::\&quot;) or \&quot;Mesh\&quot; in type_id:\n        candidate.ViewObject.Visibility = False\n\ndoc.recompute()\nview = Gui.ActiveDocument.ActiveView\nview.viewIsometric()\nview.fitAll()\nGui.updateGui()\ntime.sleep(0.5)\nviewer = view.getViewer()\nfb = viewer.grabFramebuffer()\nprint(\&quot;Framebuffer type:\&quot;, type(fb).__name__)\nprint(\&quot;Framebuffer isNull:\&quot;, fb.isNull() if hasattr(fb, \&quot;isNull\&quot;) else None)\nprint(\&quot;Framebuffer size:\&quot;, fb.width() if hasattr(fb, \&quot;width\&quot;) else None, fb.height() if hasattr(fb, \&quot;height\&quot;) else None)\n\nsaved = False\nif isinstance(fb, QtGui.QImage):\n    scaled = fb.scaled(1400, 1000, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)\n    canvas = QtGui.QImage(1400, 1000, QtGui.QImage.Format_RGB32)\n    canvas.fill(QtGui.QColor(\&quot;white\&quot;))\n    painter = QtGui.QPainter(canvas)\n    painter.drawImage((1400 - scaled.width()) // 2, (1000 - scaled.height()) // 2, scaled)\n    painter.end()\n    saved = canvas.save(PNG_PATH, \&quot;PNG\&quot;)\nelif isinstance(fb, QtGui.QPixmap):\n    scaled = fb.scaled(1400, 1000, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)\n    canvas = QtGui.QPixmap(1400, 1000)\n    canvas.fill(QtGui.QColor(\&quot;white\&quot;))\n    painter = QtGui.QPainter(canvas)\n    painter.drawPixmap((1400 - scaled.width()) // 2, (1000 - scaled.height()) // 2, scaled)\n    painter.end()\n    saved = canvas.save(PNG_PATH, \&quot;PNG\&quot;)\nelse:\n    # Some FreeCAD builds return bytes-like data; fail loudly if so.\n    raise RuntimeError(f\&quot;Unsupported framebuffer result: {type(fb)!r}\&quot;)\n\nimg = Image.open(PNG_PATH).convert(\&quot;RGB\&quot;)\nnonwhite = 0\nunique = set()\nfor y in range(0, img.height, 5):\n    for x in range(0, img.width, 5):\n        px = img.getpixel((x, y))\n        unique.add(px)\n        if px != (255, 255, 255):\n            nonwhite += 1\nprint(\&quot;DisplayMode enumeration:\&quot;, list(obj.ViewObject.getEnumerationsOfProperty(\&quot;DisplayMode\&quot;)))\nprint(\&quot;Applied DisplayMode:\&quot;, obj.ViewObject.DisplayMode)\nprint(\&quot;PNG overwritten:\&quot;, PNG_PATH)\nprint(\&quot;Saved:\&quot;, saved)\nprint(\&quot;Sampled non-white pixels:\&quot;, nonwhite)\nprint(\&quot;Sampled unique colors:\&quot;, len(unique))&quot;,
+  &quot;timeout_ms&quot;: 120000
+}</pre><pre class="out">Wall time: 13.2285 seconds
+Output:
+Code executed successfully: Python code executed successfully.
+Output: Framebuffer type: QImage
+Framebuffer isNull: False
+Framebuffer size: 2408 1168
+DisplayMode enumeration: [&#x27;Flat Lines&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;, &#x27;Points&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;]
+Applied DisplayMode: Shaded
+PNG overwritten: /path/to/freecad-codex-dovetail-quick-release.png
+Saved: True
+Sampled non-white pixels: 38080
+Sampled unique colors: 269</pre><div class="strip"><figure><img loading="lazy" src="data:image/webp;base64,UklGRm4VAABXRUJQVlA4TGIVAAAvZ8kjAX8GKZIkR5Ln2L0kf4DHQV/HSQ4QGklyJEXNveVP7bn4n5TcSJIjSRaF/VH9tVst2F2Xz/8PHJ4/vz99fFE+/h/k8/9RkHOTSwQiQl3dBFI5RQlKpa4TRCRKEEmle4VEhApRwukSIiFcRjccBY8uB8aM2OCqVDjqEUjx2yuYCpc4ECQkgigHggwFaRREkysoiWEMhsEMIuQyDGNg/mrj/OV4BEH+aGBmjN0R/xdzDMZ5PEgwhsqfRSIqldNVEe9//5FzL/H4/mmb27dXi202jIG5zrHhHJqZnRk+X37dP94x15ltmOvMNqfDf25eZocZZhtjMPy/+OzP2/ljJMVt2ziW9t/6en1HxATwyW6hccsULG5kGZjSNahAYgyahZSJmriwkHVViHvuMpG5FR5PYds2Q3YUn2QV21zbtm3U2rZt27ZtVWz/qJxB1/e931e96FxvRfQfEhtJkiIPR+699avXAA0qRhLcthEk6f7/9l1XFXBeuiP6D8ltI0kSuzUI1PKFnmMGLEa2rUiSJGgqMLNcbWUTywwSMDOp8IVImdYsKzMiMv59b+CeuhHRf4umbYuWJK27NqMO28kPaBHvRgTNvz+zPvzHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/zHf/z37n/4j//4j//4j//4j//4793/8B//8R//8R//8R//8R//8R93DcyahLF0+yCW3gCvdBeYNQlYaQWgSisBVLMBf0xN2/qn1JQcMEoiAbMmASgJBniScAAnKQTMmgSZpBZwSaoBlaQeMGsSSBJIACQBBTiajWKFiLhhkSADEgk2YNYkMCTwAEIyECBIRgJmTYI/mgroo+mAPZoSmDUJ8GhiwI4QC0PCAznSUMSRDOCNpACzJgEbCQLUSBSARsKAWZOgjOQBYyQRCCOZwKxJ4EViAS4SDGgZ0QAW6S6uSDpQRfKBWZNAiooAoIiwMOp5MGsSLFFJQBIhFkZxD2UpCYiIsDDqfDBrEvxQqUAPERZG1Q9mTQIcIiyM+h/QUAOAWZMghggLoxsPZk0SylISqBBhYfTmwaxJUELtAUaIsDA69WDWJPCgZgEcRFgYfXswaxJcEGFhdPBBmLn08muvcTFQi34/5cJvv/n2pRefe/bpXqVcxStbNs9OuKKhoycv2W7vBNc/8ZgwkIrGjdhEQn756z/IAqTMDnOmCvrjn/8kqoCiE//cV9zvfyMKcKIfvtfx4+9/B08wIiYnKXp51QQqmV+P17VEUpFEhx+lTlTDI1uHIJAFGJkDICAJRtRkVwzKwCFfdn4eCho5HNGTBSjUgUBmMQwWwYigLIOBIh2pLRyCEU1ZCQRDMOqLSmDHh45fA4VADkdKDIBgpMjwB0atAY87RgoNehyOqMtyKOiBUWvAA0Pig4c47hipN8xxOFJwdOOPiL60dHs/wlHdV4sObhyOVB3awIiafGbofm/BBobgEAxl3DFSezjjcER0CAMzMKIqH9l53IiUgSE9RIIXd4woyxt21vWBMA6v4vKIlfVAQgxcz1NbHpT5DwEQBq43j/xQXzUoZdLa4j4L62K61NMVs/MUlhvE/ktdgIHr3UdXbhZbt3hVJaGPaYM0UlNNh8XcearKbZL/qZqyUMzOU1RkuyclhaGYnaekCDdPOipDDSevbcR7JxWlHRaz89QTheZJXnWoYPrQSqN3ElcfCjiBaKHTOgkrEO1LY3tptU6yKjws37ZCSPRaJ0FFonmJxAaKrZOcMtG7VKIrCv/TQgpt66aztym3TjIqRecSCvXWSUKtaFxCod86CSgWjZvSQ/3OKV21h32r1EMmKhhdm1oAtE5pSkYxO0/9hylqRtGq+JAJij5s2STjDoRQVd2oWHWjospRzM5T/2ElpaNiK3ypitoPy5V0YLROD1M+qrX68Sj1o1/VfseDNOCwXJV/x730ANVaA+54my6gVTVh6U3agFLVhqXb9OGwTmsG/p9WdI2qEXcsaQb6tFbcwRQ9D1oiwnl2Bb3I1qR9arjjluhWqFE9uWPS3OvXqUP1ZWnOPBT9CgVaZ5bSi2zVqT+YMW+4durPenNHL7K1p+7cMV0+jc6F6tSgO3qRrTVr0lIzstLUpqWp8lV0MNSlZqEX2SqzPt0x1X/4GPpSq+5oRlaWtWupF9maUsOW0otsHaltaEa2nqxldzQja0ldu2Pu76u41qHQkfp2Ry+ydWPtw4E/95bP1o96d8esWeOUrR3r3h3H/Fzyftu6Uf/umPA9e1Z5ZqtFn0aWovdWin0aWYr+2+pQMzHVrPTPVoze4bclYi5shVjX71Atc72TVobauWTjvMxNWyXW7K8toVzfYk9tHajv0K5tUStH70BED2rpHYRea60F/lr/pa3lIpI5szWgzi6RxFw1wPlt3L33gd2nxSDhVmZyntvWfjVsSasGnBJ23aVdJP0NvadvsLzt77yt+Wrakl0H+m+rPK2DUUcc0lGk26fW86lq6bfOIul46Ls+beH4jNgqz6emO07/qYtIeh+qTgtxqxk/ntNNZAZOZVf/lm695SYT/j66q0hmIdSchqGqG+6Ft9Oe3UUyF6Hkahmquv8BaLO2qSAyI6eK0zVU9dAjsMZPy52t3/StrOrNtxFtOmx0NZHMTKi3GofK3nnvXTCDeyrK00hG6za9Q3Xl7TcKiHGjhm9RVWTD+nTtXpni9UeKtq1nTZ+UIJK5CsVW/5DkMT74hJq9dt8+SebmuV2r6SBSlXI9KezUk0845q9Ekcxc6DQ9hABSZoDanX/euWed8d1p6bI4ogBbrRYuSeFVV7du11x7ebns0ifL03z2ufL8C88/w0suvuhCKZHMYugzjYQZOR27iW1WK2FCbgecY5XpJuA1uCfJ5LWfJbRMz+zLHqujQJXz6chZYpoKAsr8GArtMH0FoTTAB37p9WxtSRC1YbSq1pf2glRWM4bYa3nVYlBNk3xa0F4rrCObsPoyl3GLS4lwZ0tUhyZgb21VJOrQ9gyfJp96slzKy0u54trSOA3XT/t45dWW7Rmyu6tJfjv5KPx0eOoFr7xcROSryS9OasKO+/x1rLSf/yw//QksLY2dOGMrNed5UhL6D9pshLafnj8EpKUBfUEkYSNs3oMk3z+paGnKuJFwzu8R0eG2MzHlOzSEg3bDlW+QEH45EtvLBwq64/SA75WBDn8y4fwEgHCcFcs34QeHHWXIt9Dnq3gdbMs5sOdwjwOsyYAe7GzQMkI8S/NM+uQVeDDfqnPQztJCuz4MSEAd9MI6H/N0kWnfGKBzuNg8zMEy6344QAFXiHDuWGHf70YQ53CVkpQ6nhRWwBnJFbN3/jJoAaejsRqCe4du7lglRHO+a+2Uv4/gwuGZ6Je2U4ABpwEzTL+2519884NxW50I67nz2R5kOPxOAXCifm0MNOAEUMvcFGxAesiFig7ZaP6h5NCnF9n6gMNhbAZqXRt2QGY2ql0XekBedupdHXS4IyxTFT9MXzvic4dRGSv5YZqKkcTpEJO912bGo7QUI4nbISOLRT/4/tUdxYP/RZvP3RGQzap1h45O1W8jPmwXxb1cWu+c/NNPPXnp5eXaq3k3r7xe4XQv7cRI4nvIJsracvc/zqzouid+lr1/jzx3PsdpN3Hvy2EY8VKLKKhfz4gJqc6df488ykPnBnG7I2MDyhk2UEiy5y835TathD18hdcym93SdZLOHf+4cm/eZ6yRGElsGcso5Oj9pH39pcSQfs3ufUtekvHz2Rpel3b/EvON4ttDforpUVq+OVqNkcS+cbCeb40+YySxb8zdQ9MyuoxHHy7HtO9YoOy1x7WNT/FVZk/pwzf6i5HEwbEYQm9x95OpevfSegS/Ha3FSFwSj2m/+Ewxse+lVRj+NrqKkcQrcUQ9xb0XCDLKpce0zMcQjfserkHxv9FPHPJVzWwOx9NMjCTOicPpJR69qpll3vGY9sPPhyP3PDzZI33ESOKhOJY2YiTxURxKF/HoVc3M/I4aaD/u4M7y0sMT/V/FDmIkMXfoa+JfnPDdVzWz9iVFffzTXh6Jy4OkvE7+EVXv9apmbv4tgKT08s/VeyTxfJCsrKa+MNDvvaqZuy495ifzIazXnPvk0w8yXtVsozdhJEEsPHpVM6664/ZNzSDjUPetxUg+RhIgQdpbP5ZojGhK6NPkD0OGjpk8O/0ttksvVIm9Gvp/Y+q4ETJu/q+3QVS16jaOf7jvDnNk/en3oqBTb2L4OPFPBb/5sShonPvx+qUfvlfy/e9oqkLdi9nj+JMUvbxqgjo9jM8vHfWrsiWyMFTNozg9DgcgCrq0Ji6/dCiGpE1aE5c/3PUAGOmRVsXlMQ9El3BZGZPHAjBJc7Qp9n7HYjxJY7Q+5oebk65oSywey3C0B5fNcb+li5O0Qxvj8FgJLGmFNscDcXPShxFg8FgDLmmChJjg0sVJGiAZToiLk+olxQpxQVqCIMcMcXGSsiXL3JeWm5GULFF+iJuTeiXM4AGlFwjiPBEXJylU4lyx38VJipQK/z78wtDt/ezWCqXDGHElmoCgyBeXLk5SmtQYOL4QOGQjMSl1SZE74hCIo34EVf6IM6BNSUFSZ49LAX3klqQYabNInADNSiXSZ5KI5w0zjze/cAQENon8SLOSEoTAKPtl84iV9UB6HuQLhFMiF8FDNhLDol0wDBxfiB5KiKirGAGIWyL/ykZiWCJaQPyyX/6VjcSwRLCwmCTOsrKR0LCoFRrPRP5VQkRPqQiQHHMpFcnuybBEpgDZJvKvbCSGRaNQGfiSziEbCVVUiQDKORGIfPNkVyJOwBx8Se2QjcSwRJhwWSROtrKR0DBZQuaQCLqykSg1T7Xig4DNQHFlKxuJLFlg4XdYOGQjKU/wDBJHXNlIKLR/1OJkgJHj5tt0O6nM395PMMHJcZtyN2WELJngpP3Ot7KR1CUzrPxQv6cq+fMFBjvcEefdJESOHFmyxcqXAFqrTSlJphgq8l+s833GAptqtme6mCLfzzWY4+i4AyEcK7JkkqUu5b+4LrXIJCw4rOzngRRoExmgrJ9vW7DK1wHRcz09smSVufbUf/ggRcg2Nli6+/P0LkGmmTswuq9Cfj8EwTbv6TMNT4gsWWfwADpkI1EvJwDCHfJ/H3XBDYhwx16RJQ9YUJ9peBUuL7j8ISE6MtVyAyxA8SVNQ9szvaT31CeU8LUltModuLCkU95gBmi8xCnocIcseYUY7lAnr1DDkjI5xfaBsfctVeMZFliKfvkFCCBe7qGBO4RPM9N29S+pVmPTvncZlkiSh4BhaUkiRwLDDFjk9OKg2Z7kpSU3ECK1QYKvLbH9HylCQgMMS0t04BKdYQYsOnqRGzq4Y/O/b2rpDR7csf1fN630BhiWFgW9RHGAYWnJ/LhoDiUsRcm79lyiOKgAGd/1+hLhwYU7lrl7ic929//SkolxifIAw9KSLTi+pBcYlpZsw7GlvcSATNqL/tgzEn9zVDlvX2Y4oooonSxd4r/ZnvjiJXUUK3Ac+XCfdrikoDDJHZe4cfcyF58tR+7LDE9UUWELPEuFFUXuuHhztpe5uL/8uS8z7KviataHiSW7qcC4NRLLTlNh/RqBJXuISfoFlmxUnTHsw8SySYXWshFYsnrwpF9gySqVG9NGYMlj1VvXRmJ5MCXXthFYckdlx7aXAktuVXaNG4nlklRe58ZzsW7kBS790qq+5n34VtwbUZVf/0ZQ/NLvnRj4YUoNqIUjI4jp90hMHPm0oC6OeHpQG8cTsfGlaJpQI0cyXaiT43lYOVJBmn5vw8wPI+lD7RyBNKJ+jndh6P3C6EQdHVm0opaOZ2HpSzn0oq6OFJpRV8eTsHVEQDn9AmhHjf3wPTg7frt+1Nvxu8FOv7f4Y+6HL/Gav+MVfofe4/EP4H5C+HxL3b/fW1aPen+/5N0edf/xuXr9Uj1fPxHXR/1eDyTjR91er0nvR/1eT2/nX6rLz3cKAsCI6gcDYELxIgEYULlooAVe4QMEQFe3mADYahcRLCGrWWwAXBUPHgBWwSIEgCpafLAEqViBAhCVOrAAPJWKF4CmTDFDC5YqhQ2AUuOgA4CUKAhBffLW9goVDoUcVicSQYWikKXKRCMob0BkqSwBCUoTjCxVJSI5LGiwBPWIS1CXeOSOcgZMDksRnKAQ4QkKEpbcUcfwyWENYhTUIT5Z0i9OQRGDKEvihSooQJiypF2scih7gAWqRSxQL1K5Q/Qgy6FgYQtEC1mWxApdoHioZUmp6AVqRS5LKkUwkDrwsiRREAOZApglhaKYQ3GDMtAmloEw4Ux1Dc9AlngGooQ01SSmgaKBGigS1UCOwKZqxADo8KANtAhtoER0UyGDN9AhvIEMAQ40iHEqYRgHEgQ5mF+Y0/nFOZh9SAeTi3QwtWCnM4t2MO/gDuYV72BSIU/nHOTBnGIezCjowXzink434IPZBD6YS+zTqQQ/mGjoBxMJfzCLAKiziIAwxzAQphADYQJhUI8/HITDi4NwcKFQjy0GQYUDQziyaAiHFQ/1sAIiHHSQCMcUEuGIoqIeUHyCKoaLcDiBEY4lVKn2YSMcSnCE4wiPehzxEY4ygISjiJBwCEFSjyCKgb7BJDxfnIQnC2iqalAJzxUq4amCJTxPvNSnDS/haQImPEfM1KeIdTDzUBOeIGrC7gKn7i1ywr6DTthX7IQdhU/db/AJ+4mfsJcACvuIobrLQBT2EERhuziqmwVS2DgkhY1CKWwRTHWLaArrh6ewWjyFlUKqrhumwioxFVYIq/pYFIXtA1Z4JLLCXbFV7wqucGfwCm+FV7gVYRWxlCSYNcm7/+E//uM//uM//uM//uO/d//Df/zHf/zHf/zHf/zHf+/+h//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//4j//47z8NAw==" alt="" onclick="lb(this.src)"></figure></div></div>
+<div class="a"><div class="who">Codex</div><div class="bubble"><p>Fixed the PNG at:</p>
+<p><a href="/path/to/freecad-codex-dovetail-quick-release.png" target="_blank" rel="noopener">freecad-codex-dovetail-quick-release.png</a></p>
+<p>What I did through the FreeCAD MCP path:</p>
+<ul><li>Checked document contents: only <code>Sheet</code> and <code>DovetailQuickRelease</code>; no <code>Mesh::</code> temporary objects existed.</li><li>Printed/probed the <code>DisplayMode</code> enumeration. The original custom view provider had an empty enum, so I attached a minimal view-provider proxy for the existing solid.</li><li>Reprinted enum after that: <code>[&#x27;Flat Lines&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;, &#x27;Points&#x27;, &#x27;Shaded&#x27;, &#x27;Wireframe&#x27;]</code>.</li><li>Set <code>DovetailQuickRelease.ViewObject.DisplayMode = &#x27;Shaded&#x27;</code>.</li><li>Re-shot the isometric view using the FreeCAD viewport framebuffer and overwrote the same PNG path.</li><li>Read the PNG back and verified it is non-empty: <code>38080</code> sampled non-white pixels, <code>269</code> sampled unique colors.</li></ul>
+<p>The new PNG is shaded and does not include the tessellation validation mesh lines.</p></div></div>
+</main>
+<div id="lb" onclick="this.classList.remove('on')"><img alt=""></div>
+<script>
+function lb(src){var d=document.getElementById('lb');d.querySelector('img').src=src;d.classList.add('on');}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')document.getElementById('lb').classList.remove('on');});
+</script>
+</body></html>
