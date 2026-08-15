@@ -121,6 +121,14 @@ layered substrate, pebbles, moss, individual leaves, condensation droplets, and 
   <img src="assets/blender-codex-terrarium.png" alt="Cycles render — miniature glass greenhouse terrarium with plants and condensation" width="520">
 </p>
 
+### Case 3 — ask a GUI harness to install Blender support
+
+The agent is asked to install the `blender` plugin from this repository:
+
+<p align="center">
+  <img src="assets/blender.png" alt="QoderWork after installing the Blender capability: server online, 22 tools listed" width="520">
+</p>
+
 ---
 
 ## Troubleshooting

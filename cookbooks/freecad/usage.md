@@ -122,6 +122,14 @@ valid solid, now 100 × 42 × 22 mm and **36 481.58 mm³**.
   <img src="assets/freecad-codex-dovetail-quick-release.png" alt="Isometric view — parametric dovetail camera quick-release plate" width="520">
 </p>
 
+### Case 3 — ask a GUI harness to install FreeCAD support (QoderWork)
+
+The agent is asked to install the `freecad` plugin from this repository:
+
+<p align="center">
+  <img src="assets/freecad.png" alt="QoderWork after installing the FreeCAD capability: server connected, 14 tools listed" width="520">
+</p>
+
 ---
 
 ## Troubleshooting
