@@ -48,25 +48,8 @@ sudo apt install xvfb
 
 > Skip this on a desktop with a real display.
 
-### Other harnesses
-
-Codex installs the same way (`codex plugin marketplace add …`, then
-`codex plugin add qwen-mm-plugins-freecad@qwen-mm-plugins`). A harness with no plugin marketplace
-needs two things by hand: this MCP server entry, and the Skill copied from
-`src/capabilities/freecad/skill/`.
-
-```json
-{
-  "command": "uvx",
-  "args": ["--from",
-           "qwen-mm-plugins[freecad] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-freecad-v1.0.1",
-           "qwen-mm-plugins-freecad"],
-  "env": {"QWEN_MM_AUTOLAUNCH": "1"}
-}
-```
-
-The `FreeCADMCP` workbench needs no manual copy — it ships inside the package, and the launcher
-installs it into your per-user FreeCAD `Mod/` directory on the first start.
+For Codex and other harnesses, use the [guided installer](../../docs/en/installation.md#guided-installer).
+Harness-specific Skill + MCP registration is covered in [Manual harness setup](../../docs/en/manual_harnesses.md).
 
 ## Environment variables (usually none needed)
 
@@ -89,8 +72,6 @@ installs it into your per-user FreeCAD `Mod/` directory on the first start.
 ---
 
 ## Cases
-
-
 
 ### Case 1 — parametric L-bracket, exported, then re-driven from its parameters (Claude Code)
 
@@ -130,36 +111,24 @@ a single valid solid and report its bounding box and volume, and re-export.
 Work only through the qwen-mm-plugins-freecad MCP tools. Do not use shell commands.
 ```
 
- The part is a `Part::FeaturePython` object whose 13 driving
+The part is a `Part::FeaturePython` object whose 13 driving
 properties are all bound by expression to a `Spreadsheet::Sheet`, which `get_object` reads back from
 the `ExpressionEngine` — so the parametric claim is checkable in the trace. First build: one valid
 solid, 100 × 42 × 18 mm, **37 467.93 mm³**. After editing three cells and recomputing: still one
-valid solid, now 100 × 42 × 22 mm and **36 481.58 mm³**. 
+valid solid, now 100 × 42 × 22 mm and **36 481.58 mm³**.
 ▶ **[View the detailed trace in Codex](case-freecad-codex-dovetail-quick-release.html)**
 
 <p align="center">
   <img src="assets/freecad-codex-dovetail-quick-release.png" alt="Isometric view — parametric dovetail camera quick-release plate" width="520">
 </p>
 
-
-
-### Case 3 — ask a GUI harness to install FreeCAD support (QoderWork)
-
-The agent is asked to install the `freecad` plugin from this repository:
-
-<p align="center">
-  <img src="assets/freecad.png" alt="QoderWork after installing the FreeCAD capability: server connected, 14 tools listed" width="520">
-</p>
-
-
-
 ---
 
 ## Troubleshooting
 
 - **Can't connect / first call is slow**: the first call downloads FreeCAD (~1 GB) in the background
-  and starts it — wait 1–2 min; subsequent queries connect instantly. To start it yourself instead,
-  run `qwen-mm-plugins-freecad --launch-app`.
+  and starts it — wait 1–2 min; subsequent queries connect instantly. For manual or source-checkout
+  launch commands, see the [Skill](../../src/capabilities/freecad/skill/SKILL.md).
 - **Headless machine reports xvfb errors**: `sudo apt install xvfb` (needs root). Not needed with a
   real display.
 - **FEM won't run**: it needs the CalculiX solver: `sudo apt install calculix-ccx`.

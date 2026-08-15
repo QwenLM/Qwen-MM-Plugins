@@ -51,25 +51,8 @@ sudo apt install xvfb
 
 > Skip this on a desktop with a real display.
 
-### Other harnesses
-
-Codex installs the same way (`codex plugin marketplace add …`, then
-`codex plugin add qwen-mm-plugins-blender@qwen-mm-plugins`). A harness with no plugin marketplace
-needs two things by hand: this MCP server entry, and the Skill copied from
-`src/capabilities/blender/skill/`.
-
-```json
-{
-  "command": "uvx",
-  "args": ["--from",
-           "qwen-mm-plugins[blender] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-blender-v1.0.1",
-           "qwen-mm-plugins-blender"],
-  "env": {"QWEN_MM_AUTOLAUNCH": "1"}
-}
-```
-
-The Blender add-on needs no separate install — it ships inside the package, and the launcher hands
-Blender its path (`BLENDER_MCP_ADDON_PATH`) on startup.
+For Codex and other harnesses, use the [guided installer](../../docs/en/installation.md#guided-installer).
+Harness-specific Skill + MCP registration is covered in [Manual harness setup](../../docs/en/manual_harnesses.md).
 
 ## Environment variables (usually none needed)
 
@@ -89,8 +72,6 @@ Blender its path (`BLENDER_MCP_ADDON_PATH`) on startup.
 ---
 
 ## Cases
-
-
 
 ### Case 1 — model a desk lamp from scratch, then render it with Cycles (Claude Code)
 
@@ -140,25 +121,13 @@ layered substrate, pebbles, moss, individual leaves, condensation droplets, and 
   <img src="assets/blender-codex-terrarium.png" alt="Cycles render — miniature glass greenhouse terrarium with plants and condensation" width="520">
 </p>
 
-
-
-### Case 3 — ask a GUI harness to install Blender support
-
-The agent is asked to install the `blender` plugin from this repository:
-
-<p align="center">
-  <img src="assets/blender.png" alt="QoderWork after installing the Blender capability: server online, 22 tools listed" width="520">
-</p>
-
-
-
 ---
 
 ## Troubleshooting
 
 - **Can't connect / first call is slow**: the first call downloads Blender (~300 MB) in the
-  background and starts it — wait 1–2 min; subsequent queries connect instantly. To start it
-  yourself instead, run `qwen-mm-plugins-blender --launch-app`.
+  background and starts it — wait 1–2 min; subsequent queries connect instantly. For manual or
+  source-checkout launch commands, see the [Skill](../../src/capabilities/blender/skill/SKILL.md).
 - **Headless machine reports xvfb errors**: `sudo apt install xvfb` (needs root). Not needed with a
   real display.
 - **PolyHaven / Sketchfab / Hyper3D tools report "disabled"**: those asset / generation services
