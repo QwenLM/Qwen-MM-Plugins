@@ -22,7 +22,8 @@ api_key: your DASHSCOPE_API_KEY
 
 - Use `dry_run=true` to inspect the request payload without making a call
 - Local video files are auto-extracted into frames (controlled by `video_max_frames`, default 128)
-- `vl_high_resolution_images=true` raises the image token limit to 16384 (up to 16M pixels)
+- `vl_high_resolution_images=true` requests an image token limit of 16384 (up to 16M pixels); if
+  the endpoint rejects this optional hint with 400/422, the call retries at its default resolution
 
 ### Model selection
 

@@ -238,9 +238,18 @@ def test_asr_missing_file_guard():
 
 
 def test_vision_chat_dry_run_builds_request_without_network(sample_image):
-    blocks = vision_chat.handle({"images": [sample_image], "text": "hello", "dry_run": True})
+    blocks = vision_chat.handle(
+        {
+            "images": [sample_image],
+            "text": "hello",
+            "dry_run": True,
+            "vl_high_resolution_images": True,
+        }
+    )
     assert len(blocks) == 1 and blocks[0]["type"] == "text"
     payload = json.loads(blocks[0]["text"])
+    assert payload["request"]["extra_body"] == {"vl_high_resolution_images": True}
+    assert "optional_extra_body" not in payload["request"]
     content = payload["request"]["messages"][0]["content"]
     # image part first, text part last; base64 image redacted (not the raw data URL)
     assert content[-1] == {"type": "text", "text": "hello"}
@@ -357,14 +366,44 @@ def test_ocr_returns_model_text(monkeypatch, sample_image):
     assert blocks == [{"type": "text", "text": "EXTRACTED TEXT"}]
 
 
+def test_vision_chat_passes_high_resolution_as_optional_hint(monkeypatch, sample_image):
+    pytest.importorskip("openai")
+    request = {}
+
+    def fake_call(**kwargs):
+        request.update(kwargs)
+        return types.SimpleNamespace(model_dump=lambda: {"choices": []})
+
+    monkeypatch.setattr(oa, "call_openai_chat", fake_call)
+    blocks = vision_chat.handle(
+        {
+            "images": [sample_image],
+            "text": "hello",
+            "vl_high_resolution_images": True,
+        }
+    )
+
+    assert not _is_error(blocks)
+    assert request["optional_extra_body"] == {"vl_high_resolution_images": True}
+    assert "extra_body" not in request
+
+
 def test_grounding_maps_boxes_and_draws(monkeypatch, sample_image):
     pytest.importorskip("openai")
     # sample_image is 96×64; a right-half box in 0-1000 coords → pixels [48,0,96,64]
     model_json = '[{"label": "blue", "bbox_2d": [500, 0, 1000, 1000]}]'
-    monkeypatch.setattr(oa, "call_openai_chat", lambda **kw: _chat_response(model_json))
+    request = {}
+
+    def fake_call(**kwargs):
+        request.update(kwargs)
+        return _chat_response(model_json)
+
+    monkeypatch.setattr(oa, "call_openai_chat", fake_call)
 
     blocks = grounding.handle({"image_path": sample_image, "prompt": "regions", "return_img": True})
     result = json.loads(blocks[0]["text"])
+    assert request["optional_extra_body"] == {"enable_thinking": False}
+    assert "extra_body" not in request
     assert result["image_size"] == {"width": 96, "height": 64}
     assert result["detections"][0]["bbox_pixel"] == [48, 0, 96, 64]
     # return_img=True with a detection → an image block is appended

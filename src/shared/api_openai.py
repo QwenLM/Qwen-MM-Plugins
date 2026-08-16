@@ -57,6 +57,9 @@ def _chat_timeout() -> int:
 
 # HTTP statuses worth retrying for OpenAI-compatible endpoints.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+# Request-validation statuses that may mean a best-effort provider hint is unsupported. They are
+# handled outside the transient retry loop so the request changes before it is sent again.
+_OPTIONAL_FIELD_REJECTION_STATUS = frozenset({400, 422})
 
 
 def resolve_openai_endpoint(arguments: dict[str, Any]) -> tuple[str, str]:
@@ -149,12 +152,9 @@ def call_openai_chat(
     connection, 5xx) and on retryable HTTP status codes, rather than matching
     substrings of the error message.
 
-    ``optional_extra_body`` carries provider hints the call can do without, such as DashScope's
-    ``enable_thinking``. An endpoint that validates request bodies strictly rejects an unknown
-    top-level field with a 400, which would otherwise take the whole tool down on a server the
-    rest of the call works against. Such a 400 drops the hints and retries once; the caller loses
-    the hint's effect, not the result. A server that accepts the field never reaches the retry.
-    Fields the request cannot work without belong in ``extra_body``, which is never dropped.
+    ``optional_extra_body`` carries droppable provider hints. A 400/422 response retries once
+    without them; transient failures retry the unchanged request. The base ``extra_body`` is never
+    dropped and wins on key conflicts.
     """
     import openai
     from openai import OpenAI
@@ -178,12 +178,13 @@ def call_openai_chat(
             isinstance(e, openai.APIStatusError) and getattr(e, "status_code", None) in _RETRYABLE_STATUS
         )
 
+    base_extra_body = kwargs.get("extra_body") or {}
     client = OpenAI(api_key=api_key, base_url=base_url, timeout=_chat_timeout())
 
     def _create(hints: dict[str, Any] | None) -> Any:
         call_kwargs = dict(kwargs)
         if hints:
-            call_kwargs["extra_body"] = {**(call_kwargs.get("extra_body") or {}), **hints}
+            call_kwargs["extra_body"] = {**hints, **base_extra_body}
         return retry_call(
             lambda: client.chat.completions.create(**call_kwargs),
             attempts=max_retries,
@@ -196,11 +197,12 @@ def call_openai_chat(
 
     try:
         return _create(optional_extra_body)
-    except openai.BadRequestError:
-        if not optional_extra_body:
+    except openai.APIStatusError as e:
+        if not optional_extra_body or getattr(e, "status_code", None) not in _OPTIONAL_FIELD_REJECTION_STATUS:
             raise
         log.warning(
-            "endpoint rejected optional request field(s) %s with 400; retrying without them",
+            "endpoint rejected optional request field(s) %s with HTTP %s; retrying without them",
             ", ".join(sorted(optional_extra_body)),
+            e.status_code,
         )
         return _create(None)
