@@ -88,6 +88,16 @@
         "ref": "qwen-mm-plugins-freecad-v1.0.1"
       },
       "description": "FreeCAD parametric CAD: create/edit objects, execute Python, named-view screenshots, parts library, and CalculiX FEM as MCP tools + a skill. Needs a running FreeCAD + addon."
+    },
+    {
+      "name": "qwen-mm-plugins-proxy",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
+        "path": "src/capabilities/proxy",
+        "ref": "qwen-mm-plugins-proxy-v0.1.0"
+      },
+      "description": "Local HTTP protocol proxy that gives text-only models vision by transcribing images via a VLM; standalone HTTP server (not an MCP server)."
     }
   ]
 }

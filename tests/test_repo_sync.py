@@ -40,6 +40,10 @@ def test_build_copies_stay_identical(fname):
 
 _CAPS_DIR = _ROOT / "src" / "capabilities"
 
+# proxy ships a standalone HTTP server (not MCP): it has a Python package + console script but
+# no MCP launch spec, so server-capability reconciliation must not apply to it.
+_NON_MCP_SERVER_CAPS = {"proxy"}
+
 
 def _capabilities() -> list[str]:
     return sorted(p.parent.parent.name for p in _CAPS_DIR.glob("*/.claude-plugin/plugin.json"))
@@ -51,8 +55,9 @@ def _load(cap: str, rel: str) -> dict:
 
 def _server_capabilities() -> list[str]:
     """Caps that ship an MCP server — i.e. carry a .mcp.json launch spec. Skill-only caps
-    (e.g. edu-agent) don't, so the launch-spec reconciliation below doesn't apply to them."""
-    return [c for c in _capabilities() if (_CAPS_DIR / c / ".mcp.json").exists()]
+    (e.g. edu-agent) and non-MCP server caps (e.g. proxy) don't, so the launch-spec
+    reconciliation below doesn't apply to them."""
+    return [c for c in _capabilities() if (_CAPS_DIR / c / ".mcp.json").exists() and c not in _NON_MCP_SERVER_CAPS]
 
 
 @pytest.mark.parametrize("cap", _capabilities())
@@ -83,10 +88,16 @@ def test_manifests_bundle_every_component_the_capability_ships(cap):
         "qoder": _load(cap, ".qoder-plugin/plugin.json"),
     }
 
+    is_non_mcp_server = cap in _NON_MCP_SERVER_CAPS
     for label, manifest in manifests.items():
-        assert manifest.get("skills"), f"{cap}: {label} manifest omitted the capability skill"
+        if is_non_mcp_server:
+            assert manifest.get("skills") == [], (
+                f"{cap}: {label} manifest must declare empty skills for a non-MCP server"
+            )
+        else:
+            assert manifest.get("skills"), f"{cap}: {label} manifest omitted the capability skill"
 
-    has_server = (cap_dir / ".mcp.json").exists()
+    has_server = (cap_dir / ".mcp.json").exists() and not is_non_mcp_server
     if has_server:
         assert manifests["claude"].get("mcpServers"), f"{cap}: Claude manifest omitted its MCP"
         assert manifests["codex"].get("mcpServers") == "./.mcp.json", (
