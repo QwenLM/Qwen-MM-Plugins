@@ -127,6 +127,11 @@ Set configuration through the installer's **Configure** action, environment vari
 system dependencies and reports the DashScope key, but it does not make live requests to every
 configured provider.
 
+Pointing `DASHSCOPE_BASE_URL` at a server other than DashScope is supported. When optional
+DashScope-only request hints are present, a 400/422 response drops those hints and retries the call
+once without them. This applies to `grounding`'s `enable_thinking` optimization and `vision_chat`'s
+opt-in `vl_high_resolution_images`; the latter falls back to the endpoint's default resolution.
+
 ### Optional OSS delivery
 
 OSS requires all of `OSS_AK`, `OSS_SK`, `OSS_ENDPOINT`, and `OSS_BUCKET`, plus the Python `oss2`

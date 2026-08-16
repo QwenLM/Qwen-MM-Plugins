@@ -32,7 +32,10 @@ class VisionChatArgs(BaseModel):
     dry_run: bool = Field(default=False, description="If true, return the request payload without calling the endpoint")
     vl_high_resolution_images: bool = Field(
         default=False,
-        description="Raise image token limit to 16384 (up to 16M pixels). Overrides max_pixels.",
+        description=(
+            "Request an image token limit of 16384 (up to 16M pixels). Overrides max_pixels; "
+            "endpoints that reject this optional hint fall back to their default image resolution."
+        ),
     )
     video_max_frames: int = Field(
         default=128,
@@ -95,11 +98,15 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         if temperature is not None:
             kwargs["temperature"] = temperature
 
-        if vl_high_res:
-            kwargs["extra_body"] = {"vl_high_resolution_images": True}
+        optional_extra_body = {"vl_high_resolution_images": True} if vl_high_res else None
 
         if dry_run:
-            payload: dict[str, Any] = {"base_url": base_url, "request": kwargs}
+            # Preview the first wire request, where the shared client merges optional hints into
+            # extra_body. Keep the internal optional_extra_body control out of the payload.
+            preview_request = dict(kwargs)
+            if optional_extra_body:
+                preview_request["extra_body"] = optional_extra_body
+            payload: dict[str, Any] = {"base_url": base_url, "request": preview_request}
             from shared import oss
 
             local_videos = [v for v in videos if not v.startswith(("http://", "https://", "data:"))]
@@ -124,7 +131,12 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         if importlib.util.find_spec("openai") is None:
             return text_error("missing dependency. Install with: pip install openai")
 
-        response = call_openai_chat(base_url=base_url, api_key=api_key, **kwargs)
+        response = call_openai_chat(
+            base_url=base_url,
+            api_key=api_key,
+            optional_extra_body=optional_extra_body,
+            **kwargs,
+        )
         result = response.model_dump()
         return [{"type": "text", "text": json.dumps(result, indent=2, ensure_ascii=False)}]
 

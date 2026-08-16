@@ -150,8 +150,10 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             model=model,
             messages=messages,
             max_tokens=2048,
-            # Grounding is a perception task, no need to think
-            extra_body={"enable_thinking": False},
+            # Grounding is a perception task, no need to think. The field is DashScope's, and
+            # detection works without it, so it is passed as a droppable hint: an endpoint that
+            # rejects it still grounds, it just thinks first.
+            optional_extra_body={"enable_thinking": False},
         )
         raw_text = response.choices[0].message.content or ""
         detections = parse_grounding(raw_text, orig_w, orig_h)
