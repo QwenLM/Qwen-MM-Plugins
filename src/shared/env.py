@@ -144,6 +144,20 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "DashScope compat URL",
         "override the DashScope OpenAI-compatible base URL",
     ),
+    (
+        "QWEN_MM_API_VL_MODEL",
+        False,
+        "Media APIs & endpoints",
+        "qwen3.7-plus",
+        "default VL model for vision_chat, OCR, and grounding",
+    ),
+    (
+        "QWEN_MM_API_OMNI_MODEL",
+        False,
+        "Media APIs & endpoints",
+        "qwen3.5-omni-plus",
+        "default Omni model for audio/video understanding tools",
+    ),
     ("SAM3_SERVER_URL", False, "Media APIs & endpoints", "", "segmentation SAM3 server URL"),
     ("ASR_SERVER_URLS", False, "Media APIs & endpoints", "", "self-hosted ASR fallback URLs (comma-separated)"),
     # Search providers

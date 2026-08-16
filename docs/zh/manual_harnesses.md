@@ -49,6 +49,100 @@ claude mcp add qwen-mm-plugins-<cap> -- \
 
 配置文件可以是 `~/.config/opencode/opencode.json` 或项目级 `opencode.json`。
 
+## DeepSeek Harness（developer preview）
+
+已使用 `@deepseek-ai/dsh` 0.1.0-rc.6 验证。DSH 从 `$DSH_HOME/skills`（通常为
+`~/.dsh/skills`）加载 Skill，并通过内置 `@deepseek-ai/dsh-mcp-client` 连接 stdio MCP server；
+目前没有自动注册命令，需要手动配置。
+
+安装并首次启动 DSH，让它创建 `web` profile：
+
+```bash
+npm install --global @deepseek-ai/dsh@0.1.0-rc.6
+dsh --profile web
+```
+
+DSH 会过滤传给 MCP 子进程的凭据类环境变量，因此先把服务配置写入共享文件：
+
+```bash
+bash install.sh configure
+```
+
+从 MCP 命令对应的 tag checkout 复制 Skill：
+
+```bash
+dsh_home=${DSH_HOME:-"$HOME/.dsh"}
+mkdir -p "$dsh_home/skills"
+cp -R /path/to/tagged-checkout/src/capabilities/<cap>/skill \
+  "$dsh_home/skills/qwen-mm-plugins-<cap>"
+```
+
+将 MCP 行添加到 `$DSH_HOME/profiles/web/cordis.patch.yml`（通常为
+`~/.dsh/profiles/web/cordis.patch.yml`）。如果文件内容为 `[]`，直接替换；否则合并到已有数组：
+
+```yaml
+- insert:
+    - id: mcp-qwen-mm-plugins-<cap>
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: qwen-mm-plugins-<cap>
+        transport: stdio
+        command: uvx
+        args:
+          - '--from'
+          - 'qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>'
+          - 'qwen-mm-plugins-<cap>'
+        cwd: !!js process.cwd()
+```
+
+每个 capability 添加一个子项。保存后重启 DSH，并新建会话：
+
+```bash
+dsh --profile web
+```
+
+**兼容性：** DSH 0.1.0-rc.6 可传递 MCP 文本和结构化结果，但会把 image、audio 和 resource
+block 替换为 `content discarded`。`vision_chat`、OCR、ASR 和搜索等文本结果可用；依赖 MCP
+返回媒体内容的流程尚不完整。参见上游
+[`dsh-mcp-client` 限制](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/mcp/mcp-client/README.md#known-limitations-and-deferred-work)。
+
+## Hermes Agent
+
+已使用 Hermes Agent v0.19.0 验证。Hermes 必须安装 MCP 支持（`hermes-agent[mcp]` 或
+`hermes-agent[all]`）。请从 MCP 命令所用的同一不可变 tag 复制完整 Skill 目录。这里不要使用
+基于 URL 的 Skill installer：Hermes v0.19 可能漏掉引用目录中的运行时文件。
+
+```bash
+hermes_home=${HERMES_HOME:-"$HOME/.hermes"}
+mkdir -p "$hermes_home/skills"
+skill_target="$hermes_home/skills/qwen-mm-plugins-<cap>"
+[ ! -e "$skill_target" ] || \
+  mv "$skill_target" "$hermes_home/qwen-mm-plugins-<cap>.bak.$(date +%Y%m%d%H%M%S)"
+cp -R /path/to/tagged-checkout/src/capabilities/<cap>/skill \
+  "$skill_target"
+```
+
+注册并验证 MCP server（`edu-agent` 是纯 Skill）：
+
+```bash
+uvx_bin=$(command -v uvx)
+hermes mcp add qwen-mm-plugins-<cap> \
+  --command "$uvx_bin" \
+  --connect-timeout 180 \
+  --args --from \
+  "qwen-mm-plugins[<cap>] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-<cap>-v<version>" \
+  qwen-mm-plugins-<cap>
+hermes mcp test qwen-mm-plugins-<cap>
+```
+
+请确认测试输出中包含 `Connected` 且工具数大于 0；Hermes v0.19 报告连接失败后仍可能
+以状态码 0 退出。
+
+**兼容性：** 在 provider 输入边界上，Hermes 与 DSH 类似，但机制不同。DSH 会丢弃 MCP 媒体
+block；Hermes 会在本地缓存返回的图片，仅向 provider 发送 `MEDIA:<本地路径>` 文本。文本和
+结构化结果仍可正常使用，但 provider 收不到图片像素。对于 `read_video`，时间戳和帧顺序会保留，
+但原始多帧视觉上下文会丢失；逐帧重新读取缓存图片也无法恢复原来的交错序列。
+
 ## pi
 
 pi 原生支持 Skill；MCP 工具需要社区 adapter：

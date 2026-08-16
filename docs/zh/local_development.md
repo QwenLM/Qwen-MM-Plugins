@@ -9,9 +9,9 @@
 只安装当前任务需要的依赖：
 
 ```bash
-scripts/dev-install.sh          # framework 与基础依赖
-scripts/dev-install.sh core     # core 与完整可视化依赖
-scripts/dev-install.sh all      # 所有能力
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[core]'  # 所有能力使用 '.[all]'
 ```
 
 直接从源码启动 server：
@@ -47,8 +47,5 @@ bash install.sh local
 提交代码或退出 local 模式前恢复正式来源：
 
 ```bash
-scripts/dev-plugin.sh all --revert
+bash install.sh local --restore
 ```
-
-`scripts/dev-plugin.sh <cap>` 是只做来源重写的底层工具。需要自行运行 harness marketplace 命令时，
-可查看它的 `--help`。

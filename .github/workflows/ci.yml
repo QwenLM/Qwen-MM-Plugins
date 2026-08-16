@@ -52,7 +52,7 @@ jobs:
       - name: Check Bash syntax
         shell: bash
         run: |
-          bash -n install.sh scripts/dev-install.sh scripts/dev-plugin.sh
+          bash -n install.sh
           bash -n src/capabilities/video-memory/skill/script/build_memory/build_memory.sh
           bash -n src/capabilities/video-edit/skill/scripts/*.sh
 

@@ -38,7 +38,8 @@ Prefer these over manual ffmpeg/ffprobe scripting. Check the `qwen-mm-plugins-ap
 
 ## Tips
 
-**Vision chat**: pass `images`/`videos` + `text` prompt. Default model `qwen3.7-plus`. Use `dry_run=true` to inspect payloads. Details in `references/vision_chat.md`.
+**Vision chat**: pass `images`/`videos` + `text` prompt. Model precedence is explicit `model` →
+`QWEN_MM_API_VL_MODEL` → `qwen3.7-plus`. Use `dry_run=true` to inspect payloads.
 
 **Grounding**: returns normalized boxes (0–1000). Set `return_img=true` to get the annotated image back, or draw them yourself with core's `draw_bbox`. Needs `DASHSCOPE_API_KEY`.
 
@@ -46,7 +47,7 @@ Prefer these over manual ffmpeg/ffprobe scripting. Check the `qwen-mm-plugins-ap
 
 **Segmentation**: needs a SAM3 server (`SAM3_SERVER_URL`). To stand one up, run `references/launch_sam3_server.py` (multi-GPU HTTP server; see its header for prerequisites).
 
-**Omni tools**: every tool takes a local audio/video `file_path` (or an http/OSS URL) and supports `dry_run=true`. The AV tools (`caption`/`grounding`/`counting`) accept `fps` and `max_pixels` to trade temporal/spatial detail against token cost — raise `fps` only for fast/frequent events; keep `max_pixels` at the default (≈448²) unless fine detail matters. The ASR family sends only the (extracted) audio track, so it is cheaper on video input. Timestamps are seconds from the start. Pass `language` (e.g. `zh`, `en`) as a hint when known. Default model `qwen3.5-omni-plus`; override per call with `model`.
+**Omni tools**: every tool takes a local audio/video `file_path` (or an http/OSS URL) and supports `dry_run=true`. The AV tools (`caption`/`grounding`/`counting`) accept `fps` and `max_pixels` to trade temporal/spatial detail against token cost — raise `fps` only for fast/frequent events; keep `max_pixels` at the default (≈448²) unless fine detail matters. The ASR family sends only the (extracted) audio track, so it is cheaper on video input. Timestamps are seconds from the start. Pass `language` (e.g. `zh`, `en`) as a hint when known. Model precedence is explicit `model` → `QWEN_MM_API_OMNI_MODEL` → `qwen3.5-omni-plus`.
 
 **Video delivery (VL & Omni)**: a local video is uploaded and sampled server-side (lifting the inline frame cap) when OSS is configured (`OSS_AK`/`OSS_SK`/`OSS_ENDPOINT`/`OSS_BUCKET` + the `oss` extra); otherwise it is sampled into inline frames. Server-side sampling has a per-model video-duration limit (e.g. qwen3.7-plus 2 h, Qwen3.5-Omni 1 h), so a local file longer than that skips the upload and degrades to local frame sampling (VL: frames; Omni: frames + audio) — sparse for very long clips, but it still returns a result.
 

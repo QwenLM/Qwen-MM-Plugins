@@ -20,6 +20,16 @@ log = logging.getLogger(__name__)
 DEFAULT_MODEL = "qwen3.7-plus"
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF = 1.0
+
+
+def resolve_vl_model(model: str | None = None) -> str:
+    """Resolve the VL model at call time.
+
+    Precedence: explicit argument → QWEN_MM_API_VL_MODEL → DEFAULT_MODEL.
+    """
+    return model or get_env("QWEN_MM_API_VL_MODEL") or DEFAULT_MODEL
+
+
 # Request timeout (seconds) for a chat call — generous for long vision prompts, but bounded so a
 # hung connection can't pin a tool call for an hour. Overridable via QWEN_MM_CHAT_TIMEOUT.
 DEFAULT_CHAT_TIMEOUT = 600

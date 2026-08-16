@@ -18,6 +18,11 @@
 安装器支持 Claude Code、Codex、Qoder、OpenClaw、Qwen Code 和 Gemini CLI。它调用各 harness
 的原生安装机制，并将共享配置保存在 `~/.qwen-mm-plugins/config`。
 
+DeepSeek Harness 不会出现在 harness 选择列表中。它的 `dsh plugin` 命令只管理 profile 的
+JavaScript 包，不能注册 MCP server 或安装 Skill；请改用
+[DeepSeek Harness 手动配置](manual_harnesses.md)。安装器的
+**Configure** 和 **Verify** 不依赖 harness 专属注册命令，因此仍可使用。
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash
 ```
@@ -68,15 +73,15 @@ local 模式会把所选插件的 manifest 和 MCP 包来源指向当前 checkou
 开发期间，受 Git 管理的 manifest 会保留绝对本地路径。退出 local 模式时恢复正式来源：
 
 ```bash
-scripts/dev-plugin.sh all --revert
+bash install.sh local --restore
 ```
 
 直接运行源码和定向调试方式见[本地开发](local_development.md)。
 
 ## 手动安装 Skill + MCP
 
-opencode、pi、QwenPaw 或其他没有兼容 marketplace 的 harness 使用此方式。对于包含 MCP 的能力，
-以下三处名称必须一致：
+DeepSeek Harness、Hermes Agent、opencode、pi、QwenPaw 或其他没有兼容 marketplace 的
+harness 使用此方式。对于包含 MCP 的能力，以下三处名称必须一致：
 
 - Skill：`src/capabilities/<cap>/skill`
 - 包 extra：`qwen-mm-plugins[<cap>]`

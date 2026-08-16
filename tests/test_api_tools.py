@@ -52,6 +52,12 @@ def _is_error(blocks) -> bool:
     return bool(blocks) and blocks[0].get("type") == "text" and blocks[0]["text"].startswith("Error:")
 
 
+@pytest.mark.parametrize("module", [vision_chat, ocr, grounding])
+def test_vl_model_schema_documents_env_override(module):
+    description = module.TOOL["args"].model_fields["model"].description
+    assert "QWEN_MM_API_VL_MODEL" in description
+
+
 def _chat_response(content: str):
     """Mimic the OpenAI SDK response shape the handlers read: resp.choices[0].message.content."""
     message = types.SimpleNamespace(content=content)
@@ -256,6 +262,14 @@ def test_vision_chat_dry_run_builds_request_without_network(sample_image):
     img_part = content[0]
     assert img_part["type"] == "image_url"
     assert img_part["image_url"]["url"].startswith("<base64 image")
+
+
+def test_vision_chat_model_precedence(monkeypatch):
+    monkeypatch.setenv("QWEN_MM_API_VL_MODEL", "env-vl")
+    env_payload = json.loads(vision_chat.handle({"dry_run": True})[0]["text"])
+    explicit_payload = json.loads(vision_chat.handle({"model": "explicit-vl", "dry_run": True})[0]["text"])
+    assert env_payload["request"]["model"] == "env-vl"
+    assert explicit_payload["request"]["model"] == "explicit-vl"
 
 
 def test_encode_video_source_uploads_to_oss_when_configured(monkeypatch):
