@@ -35,7 +35,7 @@ def test_pyrender_worker_does_not_inherit_mcp_stdio(monkeypatch, tmp_path):
         assert set(kwargs) == {"stdin", "stdout", "stderr", "close_fds", "creationflags"}
         assert kwargs["stdin"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.STDOUT
-        assert kwargs["close_fds"] is (os.name != "nt")
+        assert kwargs["close_fds"] is True
         assert kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
         kwargs["stdout"].write("worker diagnostic")
         Image.new("RGB", (2, 2)).save(os.path.join(command[-2], "view_0.png"))

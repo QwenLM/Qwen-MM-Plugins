@@ -33,6 +33,8 @@ from typing import Annotated
 import anyio
 from pydantic.json_schema import GenerateJsonSchema
 
+_WINDOWS = sys.platform == "win32"
+
 __all__ = [
     "build_registry",
     "serve",
@@ -181,7 +183,14 @@ def _to_content_block(block: dict):
 
 
 async def _run_handle(handle, arguments: dict):
-    raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
+    # AnyIO's custom worker-thread implementation can deadlock in Windows
+    # CreateProcess when a handler launches a child from an stdio MCP server.
+    # asyncio.to_thread keeps the handler off the event loop while using the
+    # standard executor path that Windows subprocess creation expects.
+    if _WINDOWS:
+        raw = await asyncio.to_thread(handle, arguments)
+    else:
+        raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
     return [_to_content_block(b) for b in raw]
 
 
