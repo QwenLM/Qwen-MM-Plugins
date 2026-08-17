@@ -24,16 +24,23 @@ def test_pyrender_worker_does_not_inherit_mcp_stdio(monkeypatch, tmp_path):
 
     from qwen_mm_plugins_core.renderers import model3d
 
-    def fake_run(command, **kwargs):
+    class FakeProcess:
+        pid = 123
+
+        def wait(self, timeout=None):
+            assert timeout == 120
+            return 0
+
+    def fake_popen(command, **kwargs):
         assert kwargs["stdin"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.STDOUT
         assert kwargs["close_fds"] is True
         assert kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
         kwargs["stdout"].write("worker diagnostic")
         Image.new("RGB", (2, 2)).save(os.path.join(command[-2], "view_0.png"))
-        return subprocess.CompletedProcess(command, 0)
+        return FakeProcess()
 
-    monkeypatch.setattr(model3d.subprocess, "run", fake_run)
+    monkeypatch.setattr(model3d.subprocess, "Popen", fake_popen)
     images = model3d._render_pyrender_subprocess(str(tmp_path / "sample.stl"), 1)
     assert len(images) == 1
     assert images[0].size == (2, 2)

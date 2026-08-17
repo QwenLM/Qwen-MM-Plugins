@@ -50,7 +50,7 @@ def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
         # an stdio MCP server, even after the renderer process has exited. A regular file
         # preserves diagnostics without requiring communicate() to observe pipe EOF.
         with open(worker_log_path, "w+", encoding="utf-8", errors="replace") as worker_log:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 [
                     sys.executable,
                     worker,
@@ -65,12 +65,19 @@ def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
                 close_fds=True,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            log.info("model3d: pyrender worker started (pid=%s)", process.pid)
+            try:
+                returncode = process.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                raise
             worker_log.seek(0)
             worker_output = worker_log.read()
 
-        if result.returncode != 0:
+        if returncode != 0:
             error_tail = worker_output[-500:]
-            raise RuntimeError(f"pyrender subprocess exited with code {result.returncode}: {error_tail}")
+            raise RuntimeError(f"pyrender subprocess exited with code {returncode}: {error_tail}")
 
         images = []
         for index in range(len(VIEWS[:max_pages])):
