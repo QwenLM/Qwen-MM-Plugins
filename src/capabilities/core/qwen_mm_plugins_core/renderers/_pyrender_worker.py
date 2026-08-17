@@ -1,4 +1,4 @@
-"""Run the pyrender backend in an isolated Python process."""
+"""Run native 3D rendering in an isolated Python process."""
 
 from __future__ import annotations
 

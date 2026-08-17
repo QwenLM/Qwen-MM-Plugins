@@ -52,7 +52,7 @@ def _render_pyrender_subprocess(path: str, max_pages: int, budget: str | None = 
         command.append(budget)
 
     worker_env = os.environ.copy()
-    worker_env.setdefault("MPLBACKEND", "Agg")
+    worker_env["MPLBACKEND"] = "Agg"
 
     try:
         result = subprocess.run(
@@ -67,7 +67,7 @@ def _render_pyrender_subprocess(path: str, max_pages: int, budget: str | None = 
 
         if result.returncode != 0:
             error_tail = (result.stderr or result.stdout or "")[-500:]
-            raise RuntimeError(f"pyrender subprocess exited with code {result.returncode}: {error_tail}")
+            raise RuntimeError(f"3D render subprocess exited with code {result.returncode}: {error_tail}")
 
         if budget is not None:
             with open(os.path.join(tmp_dir, "result.json"), encoding="utf-8") as result_file:

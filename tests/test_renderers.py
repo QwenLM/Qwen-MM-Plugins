@@ -5,6 +5,7 @@ Parametrized pytest; a case whose optional dependency or asset is missing is ski
 
 import base64
 import io
+import json
 import os
 import shutil
 import sys
@@ -35,6 +36,25 @@ def test_windows_3d_uses_isolated_worker(monkeypatch):
     )
 
     assert model3d.render("sample.stl", max_pages=1, budget="small") == expected
+
+
+def test_windows_worker_returns_serialized_blocks_without_parent_image_import(monkeypatch):
+    from qwen_mm_plugins_core.renderers import model3d
+
+    expected = [{"type": "image", "data": "encoded", "mimeType": "image/jpeg"}]
+
+    def fake_run(command, **kwargs):
+        assert command[-2:] == ["1", "small"]
+        assert kwargs["stdin"] is model3d.subprocess.DEVNULL
+        assert kwargs["close_fds"] is True
+        assert kwargs["env"]["MPLBACKEND"] == "Agg"
+        with open(os.path.join(command[3], "result.json"), "w", encoding="utf-8") as result_file:
+            json.dump(expected, result_file)
+        return type("Result", (), {"returncode": 0, "stderr": "", "stdout": ""})()
+
+    monkeypatch.setattr(model3d.subprocess, "run", fake_run)
+
+    assert model3d._render_pyrender_subprocess("sample.stl", 1, "small") == expected
 
 
 def _has_dep(key: str) -> bool:
