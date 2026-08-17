@@ -24,6 +24,12 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
+      - name: Run the pyrender worker directly (control)
+        timeout-minutes: 2
+        run: |
+          New-Item -ItemType Directory -Force "${{ runner.temp }}\direct-worker"
+          uv run --python 3.12 --extra core python src/capabilities/core/qwen_mm_plugins_core/renderers/_pyrender_worker.py tests/assets/sample.stl "${{ runner.temp }}\direct-worker" 1
+
       - name: Run the Windows 3D stdio regression
         run: >-
           uv run --no-project
