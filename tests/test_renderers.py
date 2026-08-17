@@ -7,6 +7,7 @@ import base64
 import io
 import os
 import shutil
+import subprocess
 import sys
 
 import pytest
@@ -15,6 +16,25 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from qwen_mm_plugins_core.visualizers.visualize import handle  # noqa: E402  (import after sys.path setup)
+
+
+def test_pyrender_worker_does_not_inherit_mcp_stdio(monkeypatch, tmp_path):
+    """The isolated worker must never inherit the MCP server's stdio pipes."""
+    from PIL import Image
+
+    from qwen_mm_plugins_core.renderers import model3d
+
+    def fake_run(command, **kwargs):
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["capture_output"] is True
+        assert kwargs["close_fds"] is True
+        Image.new("RGB", (2, 2)).save(os.path.join(command[-2], "view_0.png"))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(model3d.subprocess, "run", fake_run)
+    images = model3d._render_pyrender_subprocess(str(tmp_path / "sample.stl"), 1)
+    assert len(images) == 1
+    assert images[0].size == (2, 2)
 
 
 def _has_dep(key: str) -> bool:

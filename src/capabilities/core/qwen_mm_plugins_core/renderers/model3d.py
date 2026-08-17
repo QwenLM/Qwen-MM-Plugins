@@ -52,9 +52,15 @@ def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
                 tmp_dir,
                 str(max_pages),
             ],
+            # The MCP server itself uses stdin/stdout pipes. Inheriting its stdin can
+            # deadlock a child launched from AnyIO's worker thread on Windows, before
+            # the renderer process becomes observable. Give the worker fully isolated
+            # standard handles; stdout/stderr are already isolated by capture_output.
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=120,
+            close_fds=True,
         )
 
         if result.returncode != 0:
