@@ -5,10 +5,10 @@ Parametrized pytest; a case whose optional dependency or asset is missing is ski
 
 import base64
 import io
-import json
 import os
 import shutil
 import sys
+import types
 
 import pytest
 
@@ -18,43 +18,64 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from qwen_mm_plugins_core.visualizers.visualize import handle  # noqa: E402  (import after sys.path setup)
 
 
-def test_windows_3d_uses_isolated_worker(monkeypatch):
+def test_windows_3d_uses_generic_isolated_worker(monkeypatch):
     from qwen_mm_plugins_core.renderers import model3d
+    from shared import isolated_worker
 
     expected = [{"type": "image", "data": "encoded", "mimeType": "image/png"}]
+    captured = {}
+
+    def fake_run_isolated(module, function, arguments, **options):
+        captured.update(module=module, function=function, arguments=arguments, options=options)
+        return expected
+
     monkeypatch.setattr(model3d, "_WINDOWS", True)
-    monkeypatch.setattr(model3d, "_render_pyrender_subprocess", lambda path, max_pages, budget: expected)
+    monkeypatch.setattr(isolated_worker, "run_isolated", fake_run_isolated)
     monkeypatch.setattr(
         model3d,
-        "render_blender",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Windows must not launch Blender")),
-    )
-    monkeypatch.setattr(
-        model3d,
-        "_load_scene",
-        lambda *args: (_ for _ in ()).throw(AssertionError("Windows parent must not load native render dependencies")),
+        "_render_backends",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Windows parent must not load render backends")),
     )
 
     assert model3d.render("sample.stl", max_pages=1, budget="small") == expected
+    assert captured["module"] == model3d.__name__
+    assert captured["function"] == "render_isolated"
+    assert captured["arguments"] == {
+        "path": "sample.stl",
+        "options": {"max_pages": 1, "budget": "small"},
+    }
+    assert captured["options"]["env_overrides"] == {"MPLBACKEND": "Agg"}
 
 
-def test_windows_worker_returns_serialized_blocks_without_parent_image_import(monkeypatch):
+def test_isolated_3d_worker_preserves_backend_fallback_order(monkeypatch):
     from qwen_mm_plugins_core.renderers import model3d
 
-    expected = [{"type": "image", "data": "encoded", "mimeType": "image/jpeg"}]
+    calls = []
+    meshes = [object()]
+    expected = [{"type": "image", "data": "matplotlib", "mimeType": "image/png"}]
+    monkeypatch.setitem(sys.modules, "trimesh", types.ModuleType("trimesh"))
+    monkeypatch.setattr(
+        model3d,
+        "render_blender",
+        lambda *args, **kwargs: (calls.append("blender"), (_ for _ in ()).throw(RuntimeError("no blender")))[1],
+    )
+    monkeypatch.setattr(model3d, "_load_scene", lambda path: (calls.append("load"), (meshes, 3, 1))[1])
+    monkeypatch.setattr(model3d, "_has_real_materials", lambda value: False)
+    monkeypatch.setattr(
+        model3d,
+        "_render_pyrender",
+        lambda *args: (calls.append("pyrender"), (_ for _ in ()).throw(RuntimeError("no GL")))[1],
+    )
+    monkeypatch.setattr(
+        model3d,
+        "_render_matplotlib",
+        lambda *args: (calls.append("matplotlib"), [object()])[1],
+    )
+    monkeypatch.setattr(model3d, "_images_to_content", lambda *args: expected)
 
-    def fake_run(command, **kwargs):
-        assert command[-2:] == ["1", "small"]
-        assert kwargs["stdin"] is model3d.subprocess.DEVNULL
-        assert kwargs["close_fds"] is True
-        assert kwargs["env"]["MPLBACKEND"] == "Agg"
-        with open(os.path.join(command[3], "result.json"), "w", encoding="utf-8") as result_file:
-            json.dump(expected, result_file)
-        return type("Result", (), {"returncode": 0, "stderr": "", "stdout": ""})()
-
-    monkeypatch.setattr(model3d.subprocess, "run", fake_run)
-
-    assert model3d._render_pyrender_subprocess("sample.stl", 1, "small") == expected
+    result = model3d.render_isolated({"path": "sample.stl", "options": {"max_pages": 1}})
+    assert result == expected
+    assert calls == ["blender", "load", "pyrender", "matplotlib"]
 
 
 def _has_dep(key: str) -> bool:
