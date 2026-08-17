@@ -123,6 +123,9 @@ DSH 在图片进入会话前按模型 `inputModalities` 拒绝（`MODEL_DOES_NOT
 - **TRAE / Kimi Code 等 harness hooks**：接入方式各异（各 harness 的 hook 规范不同），按用户实际使用排期。
 - **服务端部署**：当前只做本地 127.0.0.1 代理；如需服务端形态（多用户共享），需补 TLS、鉴权、进程守护。
 - **未知模型启发式学习**：未知模型默认拦截会引入额外 VLM 成本，可加"按供应商/名称启发式自动学习"（如首次成功后记住能力）。
+- **VLM 多图分批 / 并行（BATCH_SIZE=5）**：Phase 1 多图串行逐张调 VLM（当前轮全量 + 黄金窗口 X 封顶）；Phase 2 按主 spec §5.4 的 BATCH_SIZE 分批，批内并行调 VLM（受全局信号量限流），降低多图请求延迟；单批失败隔离、各自重试（重试退避 Phase 1 已落地）。
+- **上游转发重试**：当前 server._forward 单次 httpx 转发，上游 5xx / 网络错误 / 超时直接透传；Phase 2 对可重试错误（HTTP 5xx / 网络 / 超时）做有限重试 + 退避，重试耗尽仍按上游状态返回并保持 fail-open（绝不 400 死锁）；4xx（AUTH / 模型不存在）不重试。
+- **请求级总超时**：当前转发 300s / VLM 120s 各自独立，客户端可能先断开（已见 ConnectionAbortedError）；Phase 2 加请求级总预算超时，超时按 fail-open 处理，避免悬挂连接占用线程。
 
 ---
 

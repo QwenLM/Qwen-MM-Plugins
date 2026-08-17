@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import random
 import threading
+import time
 from dataclasses import dataclass, field
 
 from .cache import DescriptionCache, image_key
 from .capability import CapabilityTable
 from .config import ProxyConfig
-from .ir import ContentBlock, ImageBlock, IRRequest, Message, extract_data_urls
+from .ir import _DATA_URL_RE, ContentBlock, ImageBlock, IRRequest, Message, extract_data_urls
+from .vlm import VLMError, _is_retryable
 
 ANALYZE_DEPTH_LIMIT = 50
 GOLDEN_WINDOW_DEPTH = 10
 CONTEXT_SAFETY_MARGIN = 0.9
 AVG_DESC_BUDGET = 100  # tokens
+
+# spec §5.4 VLM 重试退避：首次 + VLM_MAX_ATTEMPTS-1 次重试（对齐 BATCH_MAX_ATTEMPTS=2），
+# 指数退避 VLM_BACKOFF_BASE·2^(attempt) 秒 + 随机抖动，见 _backoff。
+VLM_MAX_ATTEMPTS = 3
+VLM_BACKOFF_BASE = 3.0
+VLM_BACKOFF_JITTER = 1.0
 
 
 @dataclass
@@ -86,9 +95,10 @@ class Pipeline:
             else:
                 deep_targets.extend(targets)
 
-        # 当前轮不限量：全部同步描述并注入
+        # 当前轮不限量：全部同步描述并注入；有用户问题则用 Tier2 聚焦（spec §5.4）
+        question = self._current_question(ir)
         for target in current_targets:
-            outcome = self._handle_one(target, result, current_turn=True)
+            outcome = self._handle_one(target, result, question)
             if outcome == "stripped":
                 result.stripped += 1
 
@@ -96,10 +106,10 @@ class Pipeline:
         quota = max(int(budget), 1)
         for target in golden_targets:
             if self.cache.get(target.key, None) is not None:
-                self._handle_one(target, result, current_turn=False)
+                self._handle_one(target, result)
             elif quota > 0:
                 quota -= 1
-                outcome = self._handle_one(target, result, current_turn=False)
+                outcome = self._handle_one(target, result)
                 if outcome == "stripped":
                     result.stripped += 1
             else:
@@ -109,24 +119,50 @@ class Pipeline:
         # 深层历史：只注入缓存命中；未命中直接剥离（Phase 2 后台缓存二阶段）
         for target in deep_targets:
             if self.cache.get(target.key, None) is not None:
-                self._handle_one(target, result, current_turn=False)
+                self._handle_one(target, result)
             else:
                 self._strip_target(target, "深层历史未缓存，图片未处理")
                 result.stripped += 1
 
+        self._maybe_inject_followup(ir, len(golden_targets) + len(deep_targets), len(current_targets) > 0)
         return result
 
-    def _handle_one(self, target: _ImageTarget, result: ProcessResult, current_turn: bool) -> str:
+    def _maybe_inject_followup(self, ir: IRRequest, history_image_count: int, current_had_image: bool) -> None:
+        """spec §5.8 追问检测：当前轮 user 是纯文本（无图）且窗口内历史有图时，
+        向当前轮注入「描述未覆盖请重发图+问题，禁止编造」提示。
+
+        history_image_count / current_had_image 须在图片处理前统计并传入（处理后图块已被
+        替换成描述，无法再数）；process() 里用 len(golden_targets)+len(deep_targets) 和
+        bool(current_targets)。
+        """
+        if history_image_count == 0:
+            return
+        current = self._current_turn(ir)
+        if current is None or current.role != "user":
+            return
+        if current_had_image:
+            return  # 当前轮原本有图，非纯文本追问
+        if not self._current_question(ir):
+            return  # 无文字，不算追问
+        note = (
+            f"[系统：用户之前发送了 {history_image_count} 张图片，描述已在上文注入。"
+            "请优先从这些描述回答；若追问的细节在描述中未覆盖，"
+            "必须如实告知用户「需要重新查看原始图片，请重新发送图片并附上问题」，"
+            "不要猜测或编造图片中未描述的细节。]"
+        )
+        current.content.insert(0, ContentBlock(type="text", text=note))
+
+    def _handle_one(self, target: _ImageTarget, result: ProcessResult, question: str | None = None) -> str:
+        # spec §5.4：当前轮带用户问题时用 Tier2 聚焦（URL+问题缓存键），否则 Tier1。
         key = target.key
-        cached = self.cache.get(key, None)
+        cached = self.cache.get(key, question)
         if cached is not None:
             self._inject(target, cached, result)
             return "injected"
         try:
-            with self.semaphore:
-                desc = self.vlm.describe(target.image, tier=1)
-                result.vlm_calls += 1
-            self.cache.put(key, None, desc)
+            tier = 2 if question else 1
+            desc = self._describe_with_retry(target.image, question, tier, result)
+            self.cache.put(key, question, desc)
         except Exception as exc:  # noqa: BLE001 - fail-open on ANY VLM failure
             self._strip_target(target, self._fail_open_text(exc))
             result.fail_open = getattr(exc, "reason", "VLM_FAILED")
@@ -134,10 +170,34 @@ class Pipeline:
         self._inject(target, desc, result)
         return "injected"
 
+    def _describe_with_retry(self, image, question: str | None, tier: int, result: ProcessResult) -> str:
+        """VLM 调用 + spec §5.4 重试退避：可重试错误按指数退避重试，
+        耗尽或不可重试错误抛给外层 fail-open。"""
+        last: VLMError | None = None
+        for attempt in range(VLM_MAX_ATTEMPTS):
+            try:
+                with self.semaphore:
+                    desc = self.vlm.describe(image, question=question, tier=tier)
+                    result.vlm_calls += 1
+                return desc
+            except VLMError as exc:
+                last = exc
+                if attempt == VLM_MAX_ATTEMPTS - 1 or not _is_retryable(exc):
+                    raise
+                time.sleep(self._backoff(attempt))
+            except Exception:
+                raise  # 非 VLMError 不重试，交给 fail-open
+        raise last  # pragma: no cover - 循环内必然 return 或 raise
+
+    @staticmethod
+    def _backoff(attempt: int) -> float:
+        """指数退避 VLM_BACKOFF_BASE·2^(attempt) 秒 + [0, VLM_BACKOFF_JITTER) 抖动（spec §5.4）。"""
+        return VLM_BACKOFF_BASE * (2**attempt) + random.uniform(0, VLM_BACKOFF_JITTER)
+
     @staticmethod
     def _fail_open_text(exc: Exception) -> str:
         reason = getattr(exc, "reason", type(exc).__name__)
-        return f"[图片已省略] 看不到图：视觉模型调用失败（{reason}），请更换多模态模型或检查 VLM 配置，不要编造内容。"
+        return f"看不到图：视觉模型调用失败（{reason}），请更换多模态模型或检查 VLM 配置，不要编造内容。"
 
     @staticmethod
     def _inject(target: _ImageTarget, desc: str, result: ProcessResult) -> None:
@@ -166,7 +226,7 @@ class Pipeline:
 
     def _collect_images(self, ir: IRRequest) -> list[tuple[Message, list[_ImageTarget]]]:
         """最近 ANALYZE_DEPTH_LIMIT 条 user/tool 消息，从新到旧逐条抽取图片目标。"""
-        msgs = [m for m in ir.messages if m.role in ("user", "tool")][-ANALYZE_DEPTH_LIMIT:]
+        msgs = [m for m in ir.messages if m.role in ("user", "tool", "assistant")][-ANALYZE_DEPTH_LIMIT:]
         return [(msg, self._collect_message_targets(msg)) for msg in reversed(msgs)]
 
     @staticmethod
@@ -177,20 +237,31 @@ class Pipeline:
         return None
 
     @staticmethod
+    def _current_question(ir: IRRequest, limit: int = 200) -> str | None:
+        """当前轮用户消息的纯文本（截断）作为 Tier2 聚焦问题；无文本返回 None。"""
+        msg = Pipeline._current_turn(ir)
+        if msg is None or msg.role != "user":
+            return None
+        text = "".join(b.text or "" for b in msg.content if b.type == "text").strip()
+        if not text:
+            return None
+        return text[:limit] if len(text) > limit else text
+
+    @staticmethod
     def _collect_message_targets(msg: Message) -> list[_ImageTarget]:
         """抽取单条消息的图片目标：结构化块（含嵌套 tool_result）与文本内嵌 data URL。"""
         block_targets: list[_ImageTarget] = []
-        block_by_url: dict[str, tuple[int, ...]] = {}
+        target_by_url: dict[str, _ImageTarget] = {}
         embedded: list[tuple[tuple[int, ...], str]] = []
 
         def walk(blocks: list[ContentBlock], prefix: tuple[int, ...]) -> None:
             for i, block in enumerate(blocks):
                 path = prefix + (i,)
                 if block.type == "image" and block.image:
-                    url = block.image.url or ""
-                    block_targets.append(_ImageTarget(msg=msg, image=block.image, path=path))
-                    if url:
-                        block_by_url.setdefault(url, path)
+                    target = _ImageTarget(msg=msg, image=block.image, path=path)
+                    block_targets.append(target)
+                    if block.image.url:
+                        target_by_url.setdefault(block.image.url, target)
                 elif block.type == "text" and block.text:
                     for url in extract_data_urls(block.text):
                         embedded.append((path, url))
@@ -202,12 +273,9 @@ class Pipeline:
         # IR 解析器会把文本内嵌 data URL 同时拆成 image 块；同一 URL 两种形态只算一张图，
         # 描述注入到图片块，文本里的 URL 仅替换为短标记，避免重复注入。
         for path, url in embedded:
-            block_path = block_by_url.get(url)
-            if block_path is not None:
-                for target in block_targets:
-                    if target.path == block_path:
-                        target.cleanup.append((path, url))
-                        break
+            existing = target_by_url.get(url)
+            if existing is not None:
+                existing.cleanup.append((path, url))
             else:
                 block_targets.append(_ImageTarget(msg=msg, image=ImageBlock(url=url), path=path, data_url=url))
 
@@ -230,10 +298,18 @@ class Pipeline:
     def _budget(ir: IRRequest, cfg: ProxyConfig) -> float:
         context = 128_000  # 默认窗口；可配 relay 时按模型取
         text_tokens = sum(
-            len(text.encode("utf-8")) // 2 for msg in ir.messages for text in Pipeline._iter_text(msg.content)
+            len(Pipeline._text_without_data_urls(text).encode("utf-8")) // 2
+            for msg in ir.messages
+            for text in Pipeline._iter_text(msg.content)
         )
         available = context * CONTEXT_SAFETY_MARGIN - text_tokens
         return available / AVG_DESC_BUDGET
+
+    @staticmethod
+    def _text_without_data_urls(text: str) -> str:
+        """剔除字符串内嵌 data URL（base64 会被替换成 [图片描述]，不应计入文本预算；
+        否则 T3/T4 的工具返回图会把预算算爆成 CONTEXT_FULL）。"""
+        return _DATA_URL_RE.sub("", text)
 
     @staticmethod
     def _iter_text(blocks: list[ContentBlock]):

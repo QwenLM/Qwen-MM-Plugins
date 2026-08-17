@@ -140,6 +140,8 @@ IR 定义：
 
 **base64 data URL 本质是纯文本**：纯文本模型不会对它报错，而是把它当乱码字符逐 token 读取、撑爆上下文。所以它不是「会不会被模型读到」的问题，而是「必须主动从字符串里抽出来」的问题。图片抽取层（§5.3）因此必须同时处理结构化块与字符串内嵌两种形态，用 `extract_data_urls` 等价逻辑扫描 `data:image/{subtype};base64,{payload}`（payload 由 `[A-Za-z0-9+/=]` 组成）。
 
+**修订 · 实现（Phase 1）**：`_text_with_images` 在 IR 解析时即把字符串内嵌 data URL **提前剥离**——text block 中替换为 `[图片]` 短占位，base64 只进 `image` 块，文本层永不出现 base64、不占上下文预算（省 token）；**普通网址（https/http）、文件路径、非 image data URL 不匹配、原样保留，不被误剥**。assistant 消息的图片块同样纳入图片抽取（`pipeline._collect_images` 覆盖 `user / tool / assistant`，防御模型主动调工具返回图）。
+
 ### 4.3 转换矩阵
 
 请求转换：入站 3 × 上游 3 全部支持。相同协议直接透传结构；不同协议按 IR 重建。
@@ -209,7 +211,7 @@ Phase 1 形态边界：只处理协议内结构化图片块与字符串内嵌 da
 
 - 当前轮：有用户文字问题时用 Tier2（`URL+问题` 缓存键 + 聚焦 prompt）；无问题退回 Tier1（全面描述）。
 - 历史轮：只用 Tier1。
-- 批量：`BATCH_SIZE=5`，单批失败隔离、各自重试；`BATCH_MAX_ATTEMPTS=2`（每批共 3 次尝试），指数退避 `3·2^(n-1)` 加抖动。
+- 批量：`BATCH_SIZE=5`，单批失败隔离、各自重试；`BATCH_MAX_ATTEMPTS=2`（每批共 3 次尝试），指数退避 `3·2^(n-1)` 加抖动。**（Phase 1 已实现：VLM 失败重试 3 次 + 指数退避 + 抖动——`pipeline._describe_with_retry` / `vlm._is_retryable`；AUTH/PARSE 不重试。BATCH_SIZE 分批并行留 Phase 2，见 phase-2 §8。）**
 - 后端：默认 DashScope Qwen（`qwen3.5-omni-plus` / `qwen-vl-max`），可配任意 OpenAI-compatible 或 Anthropic 端点。
 - **格式独立于主模型**：VLM 后端单独配 `format ∈ {anthropic, responses, chat}`（默认 `chat`）。主模型与 VLM 常非同一厂商、协议不同，故默认不自动跟随主 relay；枚举与主入口一致，可选 `auto` 跟随匹配到的主 relay 协议（仅同厂商时方便）。
 - **VLM 端协议面收敛为 OpenAI 兼容为主、Anthropic 原生可选**（DSH 修订，参考 `dsh-vision-recognizer`）：VLM 端点绝大多数是 OpenAI 兼容，第一版只实现 `/chat/completions`（chat）作为完整路径，`format=anthropic` 只做原生 Messages 直发，`responses` 留二版——降低 VLM 端协议实现面，把精力留给主链路协议归一化。
@@ -240,10 +242,13 @@ Phase 1 形态边界：只处理协议内结构化图片块与字符串内嵌 da
 - `available = context_window × 0.9 − 纯文本估算`；`X = available / AVG_DESC_BUDGET`（`AVG_DESC_BUDGET=100` token ≈ 200 字）决定可注入描述数量。
 - 当前轮不限量；黄金窗口受 X 封顶；预算不足优先最近消息；深层历史只注入缓存命中项，未命中的交给 Phase 2 后台。
 - `available ≤ 1` 视为上下文已满：剥离全部图片 + 注入「上下文已满」提示，返回。
+- **字符串 data URL 不计入纯文本预算**：`_text_with_images` 在 IR 解析时即把字符串内嵌 data URL 替换为 `[图片]` 占位（base64 只进 image 块），预算估算前文本已不含 base64（`_text_without_data_urls` 兜底防御）；否则 T3/T4 的大体积工具返回图会被 `bytes/2` 算爆预算 → 误判 `CONTEXT_FULL` 剥图、不调 VLM。
 
 ### 5.8 追问检测
 
 当前轮为纯文本、窗口内历史有图时，注入“描述未覆盖细节请重发图+问题，禁止编造”的提示。
+
+**已实现（Phase 1）**：`pipeline._maybe_inject_followup` 在图片处理后注入（历史图数与当前轮“原本是否有图”在处理前统计传入，避免处理后图块被替换无法判断），文案对齐 Codex++ `inject_followup_note`。
 
 ## 6. 模型能力判定与 relay 配置
 
@@ -310,6 +315,19 @@ auto_local_ollama = true       # DSH 修订：启动时探测 http://localhost:1
 ```
 
 按请求 model + 入站协议匹配 relay；匹配不到用默认 relay。第一版不做轮转。VLM 后端与主 relay 解耦，可指向不同厂商、不同协议。
+
+**修订 · relay 协议强校验**：`protocol` 必填且只能是 `anthropic | responses | chat` 之一；配置非法（缺失 / 枚举外 / 类型错误）时 `check` 显式报错（`config error: relay ... protocol must be one of ...`），不再静默回退默认配置（实现：`config.py` 的 `PROTOCOLS` / `ConfigError` / `_parse_relays` / `load_config`）。
+
+**修订 · base_url 拼接规则（对齐 Codex++ build_versioned_url）**：relay 的 `base_url` 语义是「上游 API 的完整根地址」。目标路径：anthropic → `/messages`、responses → `/responses`、chat → `/chat/completions`。**anthropic 协议固定补 /v1**（Anthropic 端点规范为 `/v1/messages`，无论 base 是否带版本段，配合 `/v1/v1` 去重）——用户填直连根即可（如 `.../api/coding` → `.../api/coding/v1/messages`）；chat / responses 用 Codex++ build_versioned_url 启发式。规则（base_url → 目标 URL）：
+
+1. base 已以 path 结尾 → 原样返回；
+2. base 以 `#` 结尾 → 跳过版本段，直接 base + path；
+3. base 最后段形如 `v<数字>`（v1 / v3 / v1beta）→ 直接 base + path；
+4. base 非纯 origin（scheme://host 之后还有路径）→ 直接 base + path；
+5. base 纯 origin（scheme://host，无路径）→ base + /v1 + path；
+6. 最后 `/v1/v1` 去重。
+
+例：`https://api.deepseek.com`（chat）→ `/v1/chat/completions`；`https://ark.cn-beijing.volces.com/api/coding/v3`（chat / responses）→ `/v3/chat/completions`、`/v3/responses`；anthropic 填直连根 `https://ark.cn-beijing.volces.com/api/coding` → 自动拼 `/api/coding/v1/messages`（无需手动加 /v1）。实现：`server.py` 的 `_upstream_url`。
 
 **DSH 修订 · 免费/本地 VLM 通道**（启示 6，参考 `dsh-vision-recognizer` / `dsh-vision-proxy` 的 `autoLocalOllama`）：`auto_local_ollama=true` 时，启动探测本地 Ollama，命中则把本地视觉模型插到 VLM fallback 链最前——无 key 用户零配置即可识图、图片不出本机；未命中或无本地模型时静默跳过，回退到配置的云端端点。
 
@@ -383,6 +401,7 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 - `stop` / `status` / `logs`：停止、健康检查、查看结构化日志。
 - `test-image <path> [--question <q>]`：验证 VLM 后端连通与描述质量；无 `--question` 走 Tier1 全面描述，带 `--question` 走 Tier2 聚焦描述，两条结果并排返回，直接对比。
 - `check`：`--check-system` 依赖自检（端口占用、VLM key、relay 配置）+ **路由态识别**：读 harness 当前 base_url 归属、探测 cc-switch / codex++ 监听端口与运行进程、检测「双重剥图」竞态，冲突时告警并给顺序建议。
+- **生命周期命令惰性加载配置（修订）**：`start` / `check` / `test-image` 才加载 `proxy.json`，relay 配置非法时打印 `config error: ...`（带 `relays[i] (name)` 定位）并 exit 2；`stop` / `status` / `logs` **不加载配置**（只读 PID / 日志），损坏的 `proxy.json` 不会锁死这几个生命周期命令（相对旧「静默回退默认配置」的操作修正）。
 
 ### 8.4 日志与观测
 

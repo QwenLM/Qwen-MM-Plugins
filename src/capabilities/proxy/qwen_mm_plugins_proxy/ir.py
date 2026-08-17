@@ -84,22 +84,36 @@ def _image_block(source: dict) -> ContentBlock:
     return ContentBlock(type="image", image=ImageBlock(url=source.get("url")))
 
 
+def _text_with_images(text: str) -> list[ContentBlock]:
+    """A text block followed by one image block per embedded data URL (spec §4.2.1).
+
+    data URL 在文本层提前剥离为 [图片] 占位：base64 只进 image block，不占文本预算、
+    不碰主模型文本；普通网址/文件路径/非 image data URL 不匹配、原样保留。
+    """
+    urls = extract_data_urls(text)
+    if not urls:
+        return [ContentBlock(type="text", text=text)]
+    cleaned = text
+    for url in urls:
+        cleaned = cleaned.replace(url, "[图片]", 1)
+    blocks = [ContentBlock(type="text", text=cleaned)]
+    blocks.extend(ContentBlock(type="image", image=ImageBlock(url=url)) for url in urls)
+    return blocks
+
+
 def _content_blocks(blocks: list) -> list[ContentBlock]:
     out: list[ContentBlock] = []
     for b in blocks:
         kind = b.get("type")
         if kind in (None, "text", "input_text", "output_text"):
             out.append(ContentBlock(type="text", text=b.get("text", "")))
-        elif kind in ("image", "input_image"):
+        elif kind in ("image", "input_image", "image_url"):
             if "source" in b:
                 out.append(_image_block(b["source"]))
             else:
-                image_url = b.get("image_url", {})
-                url = image_url.get("url") if isinstance(image_url, dict) else image_url
+                raw = b.get("image_url", {})
+                url = raw.get("url") if isinstance(raw, dict) else raw
                 out.append(ContentBlock(type="image", image=ImageBlock(url=url)))
-        elif kind in ("image_url",):
-            url = b["image_url"].get("url") if isinstance(b.get("image_url"), dict) else b.get("image_url")
-            out.append(ContentBlock(type="image", image=ImageBlock(url=url)))
         elif kind == "tool_use":
             out.append(
                 ContentBlock(
@@ -109,10 +123,7 @@ def _content_blocks(blocks: list) -> list[ContentBlock]:
         elif kind == "tool_result":
             content = b.get("content")
             if isinstance(content, str):
-                text = content
-                out.append(ContentBlock(type="text", text=text))
-                for url in extract_data_urls(text):
-                    out.append(ContentBlock(type="image", image=ImageBlock(url=url)))
+                out.extend(_text_with_images(content))
             else:
                 out.append(
                     ContentBlock(
@@ -131,15 +142,11 @@ def _content_blocks(blocks: list) -> list[ContentBlock]:
                 )
             )
         elif kind == "function_call_output":
-            text = str(b.get("output") or "")
-            content = [ContentBlock(type="text", text=text)]
-            for url in extract_data_urls(text):
-                content.append(ContentBlock(type="image", image=ImageBlock(url=url)))
             out.append(
                 ContentBlock(
                     type="tool_result",
                     tool_use_id=b.get("call_id"),
-                    tool_result_content=content,
+                    tool_result_content=_text_with_images(str(b.get("output") or "")),
                 )
             )
         else:
@@ -149,11 +156,7 @@ def _content_blocks(blocks: list) -> list[ContentBlock]:
 
 def _message(role: str, content) -> Message:
     if isinstance(content, str):
-        text = content
-        blocks = [ContentBlock(type="text", text=text)]
-        for url in extract_data_urls(text):
-            blocks.append(ContentBlock(type="image", image=ImageBlock(url=url)))
-        return Message(role=role, content=blocks)
+        return Message(role=role, content=_text_with_images(content))
     return Message(role=role, content=_content_blocks(content))
 
 
@@ -447,34 +450,29 @@ def _serialize_chat_messages(messages: list[Message]) -> list[dict]:
     return out
 
 
-def serialize_anthropic(ir: IRRequest) -> dict:
-    out = {"model": ir.model, "messages": _serialize_anthropic_messages(ir.messages)}
+def _attach_proto_fields(out: dict, ir: IRRequest, system_key: str, max_tokens_key: str) -> dict:
+    """Append protocol-mapped optional request fields shared by all three serializers."""
     if ir.system is not None:
-        out["system"] = ir.system
+        out[system_key] = ir.system
     if ir.tools is not None:
         out["tools"] = ir.tools
     if ir.max_tokens is not None:
-        out["max_tokens"] = ir.max_tokens
+        out[max_tokens_key] = ir.max_tokens
     if ir.temperature is not None:
         out["temperature"] = ir.temperature
     if ir.stream:
         out["stream"] = True
     return out
+
+
+def serialize_anthropic(ir: IRRequest) -> dict:
+    out = {"model": ir.model, "messages": _serialize_anthropic_messages(ir.messages)}
+    return _attach_proto_fields(out, ir, "system", "max_tokens")
 
 
 def serialize_responses(ir: IRRequest) -> dict:
     out = {"model": ir.model, "input": _serialize_responses_items(ir.messages)}
-    if ir.system is not None:
-        out["instructions"] = ir.system
-    if ir.tools is not None:
-        out["tools"] = ir.tools
-    if ir.max_tokens is not None:
-        out["max_output_tokens"] = ir.max_tokens
-    if ir.temperature is not None:
-        out["temperature"] = ir.temperature
-    if ir.stream:
-        out["stream"] = True
-    return out
+    return _attach_proto_fields(out, ir, "instructions", "max_output_tokens")
 
 
 def serialize_chat(ir: IRRequest) -> dict:
@@ -482,12 +480,4 @@ def serialize_chat(ir: IRRequest) -> dict:
     if ir.system is not None:
         messages.insert(0, {"role": "system", "content": ir.system})
     out = {"model": ir.model, "messages": messages}
-    if ir.tools is not None:
-        out["tools"] = ir.tools
-    if ir.max_tokens is not None:
-        out["max_tokens"] = ir.max_tokens
-    if ir.temperature is not None:
-        out["temperature"] = ir.temperature
-    if ir.stream:
-        out["stream"] = True
-    return out
+    return _attach_proto_fields(out, ir, "system", "max_tokens")

@@ -14,6 +14,13 @@ from shared.env import get_env
 
 VLM_FORMATS = ("chat", "anthropic")
 
+# relay 上游转发协议枚举：配置 proxy.json 时 protocol 字段只能是这三个之一（强校验）。
+PROTOCOLS = ("anthropic", "responses", "chat")
+
+
+class ConfigError(Exception):
+    """proxy.json 配置非法（显式错误，不静默回退默认配置）。"""
+
 
 @dataclass
 class VLMConfig:
@@ -36,6 +43,12 @@ class RelayConfig:
     models: list[str] = field(default_factory=list)
     capability: str | None = None  # 显式覆盖能力判定
 
+    def __post_init__(self) -> None:
+        if self.protocol not in PROTOCOLS:
+            raise ConfigError(
+                f"relay {self.name!r}: protocol must be one of {', '.join(PROTOCOLS)}, got {self.protocol!r}"
+            )
+
 
 @dataclass
 class ProxyConfig:
@@ -54,7 +67,7 @@ class ProxyConfig:
             bind_host=server.get("bind_host", "127.0.0.1"),
             bind_port=int(server.get("bind_port", 8787)),
             ui_port=int(server.get("ui_port", 8788)),
-            relays=[RelayConfig(**r) for r in data.get("relays", [])],
+            relays=_parse_relays(data.get("relays", [])),
             vlm=VLMConfig(**{k: v for k, v in vlm.items() if k in VLMConfig.__dataclass_fields__}),
             model_capabilities=data.get("model_capabilities", {}),
         )
@@ -66,6 +79,24 @@ class ProxyConfig:
             "vlm": self.vlm.__dict__,
             "model_capabilities": self.model_capabilities,
         }
+
+
+def _parse_relays(raw: object) -> list[RelayConfig]:
+    """逐条解析 relays；任一配置非法时抛带定位信息的 ConfigError（而非静默回退）。"""
+    if not isinstance(raw, list):
+        raise ConfigError(f"relays: expected a list, got {type(raw).__name__}")
+    relays: list[RelayConfig] = []
+    for i, r in enumerate(raw):
+        if not isinstance(r, dict):
+            raise ConfigError(f"relays[{i}]: expected an object, got {type(r).__name__}")
+        name = r.get("name", "<unnamed>")
+        try:
+            relays.append(RelayConfig(**r))
+        except ConfigError as exc:
+            raise ConfigError(f"relays[{i}]: {exc}") from exc
+        except TypeError as exc:
+            raise ConfigError(f"relays[{i}] ({name}): {exc}") from exc
+    return relays
 
 
 def default_config() -> ProxyConfig:
@@ -95,7 +126,18 @@ def load_config(path: str | None = None) -> ProxyConfig:
         path = os.path.join(config_dir(), "proxy.json")
     try:
         with open(path, encoding="utf-8") as f:
-            cfg = ProxyConfig.from_dict(json.load(f))
-    except (OSError, ValueError):
-        cfg = default_config()
+            raw = json.load(f)
+    except FileNotFoundError:
+        # 首次运行无配置文件：回退默认（合法），由 check 提示未配置。
+        return default_config()
+    except (OSError, ValueError) as exc:
+        raise ConfigError(f"cannot read proxy.json: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ConfigError(f"proxy.json: expected a JSON object at top level, got {type(raw).__name__}")
+    try:
+        cfg = ProxyConfig.from_dict(raw)
+    except ConfigError:
+        raise
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ConfigError(f"invalid proxy.json: {exc}") from exc
     return _apply_env(cfg)
