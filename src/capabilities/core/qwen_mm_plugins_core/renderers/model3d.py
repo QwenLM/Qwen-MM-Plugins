@@ -404,6 +404,18 @@ def render(path: str, **opts: Any) -> list:
     max_pages = opts.get("max_pages", DEFAULT_MAX_PAGES)
     budget = opts.get("budget", "large")
 
+    if _WINDOWS:
+        # Windows can block when an stdio MCP handler thread launches a child
+        # process (Blender/pyrender), and OpenGL context creation is likewise not
+        # reliable from that thread. The Agg backend is process- and display-free.
+        try:
+            import trimesh  # noqa: F401
+        except ImportError:
+            raise RuntimeError('Missing dependency — install with: pip install "qwen-mm-plugins[viz]"')
+        meshes, total_verts, total_faces = _load_scene(path)
+        images = _render_matplotlib(meshes, path, total_verts, total_faces, max_pages)
+        return _images_to_content(images, path, budget)
+
     try:
         images = render_blender(path, **opts)
         return _images_to_content(images, path, budget)
@@ -415,30 +427,11 @@ def render(path: str, **opts: Any) -> list:
     except ImportError:
         raise RuntimeError('Missing dependency — install with: pip install "qwen-mm-plugins[viz]"')
 
-    if _WINDOWS:
-        # Starting a child process from the handler thread can block inside
-        # CreateProcess when the Windows server itself is attached to MCP stdio
-        # pipes. Render in-process on Windows; the subprocess isolation remains
-        # in place on platforms where it is reliable.
-        try:
-            meshes, total_verts, total_faces = _load_scene(path)
-            images = _render_pyrender(
-                meshes,
-                path,
-                _has_real_materials(meshes),
-                total_verts,
-                total_faces,
-                max_pages,
-            )
-            return _images_to_content(images, path, budget)
-        except Exception as e:
-            log.info("model3d: pyrender backend failed (%s); falling back to matplotlib", e)
-    else:
-        try:
-            images = _render_pyrender_subprocess(path, max_pages)
-            return _images_to_content(images, path, budget)
-        except Exception as e:
-            log.info("model3d: pyrender subprocess failed (%s); falling back to matplotlib", e)
+    try:
+        images = _render_pyrender_subprocess(path, max_pages)
+        return _images_to_content(images, path, budget)
+    except Exception as e:
+        log.info("model3d: pyrender subprocess failed (%s); falling back to matplotlib", e)
 
     meshes, total_verts, total_faces = _load_scene(path)
     images = _render_matplotlib(meshes, path, total_verts, total_faces, max_pages)
