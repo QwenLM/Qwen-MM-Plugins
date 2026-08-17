@@ -20,6 +20,7 @@ from qwen_mm_plugins_core.renderers import DEFAULT_MAX_PAGES
 log = logging.getLogger(__name__)
 
 _egl_configured = False
+_WINDOWS = sys.platform == "win32"
 
 VIEWS = [
     ("Perspective", 30, 45),
@@ -42,41 +43,24 @@ def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
 
     tmp_dir = tempfile.mkdtemp(prefix="pyrender_render_")
     worker = os.path.join(os.path.dirname(__file__), "_pyrender_worker.py")
-    worker_log_path = os.path.join(tmp_dir, "worker.log")
 
     try:
-        # Do not use PIPE/capture_output here. On Windows, waiting for those pipe handles
-        # can deadlock when this subprocess is launched from AnyIO's worker thread inside
-        # an stdio MCP server, even after the renderer process has exited. A regular file
-        # preserves diagnostics without requiring communicate() to observe pipe EOF.
-        with open(worker_log_path, "w+", encoding="utf-8", errors="replace") as worker_log:
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    worker,
-                    os.path.abspath(path),
-                    tmp_dir,
-                    str(max_pages),
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=worker_log,
-                stderr=subprocess.STDOUT,
-                close_fds=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            log.info("model3d: pyrender worker started (pid=%s)", process.pid)
-            try:
-                returncode = process.wait(timeout=120)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-                raise
-            worker_log.seek(0)
-            worker_output = worker_log.read()
+        result = subprocess.run(
+            [
+                sys.executable,
+                worker,
+                os.path.abspath(path),
+                tmp_dir,
+                str(max_pages),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
 
-        if returncode != 0:
-            error_tail = worker_output[-500:]
-            raise RuntimeError(f"pyrender subprocess exited with code {returncode}: {error_tail}")
+        if result.returncode != 0:
+            error_tail = (result.stderr or result.stdout or "")[-500:]
+            raise RuntimeError(f"pyrender subprocess exited with code {result.returncode}: {error_tail}")
 
         images = []
         for index in range(len(VIEWS[:max_pages])):
@@ -431,11 +415,30 @@ def render(path: str, **opts: Any) -> list:
     except ImportError:
         raise RuntimeError('Missing dependency — install with: pip install "qwen-mm-plugins[viz]"')
 
-    try:
-        images = _render_pyrender_subprocess(path, max_pages)
-        return _images_to_content(images, path, budget)
-    except Exception as e:
-        log.info("model3d: pyrender subprocess failed (%s); falling back to matplotlib", e)
+    if _WINDOWS:
+        # Starting a child process from the handler thread can block inside
+        # CreateProcess when the Windows server itself is attached to MCP stdio
+        # pipes. Render in-process on Windows; the subprocess isolation remains
+        # in place on platforms where it is reliable.
+        try:
+            meshes, total_verts, total_faces = _load_scene(path)
+            images = _render_pyrender(
+                meshes,
+                path,
+                _has_real_materials(meshes),
+                total_verts,
+                total_faces,
+                max_pages,
+            )
+            return _images_to_content(images, path, budget)
+        except Exception as e:
+            log.info("model3d: pyrender backend failed (%s); falling back to matplotlib", e)
+    else:
+        try:
+            images = _render_pyrender_subprocess(path, max_pages)
+            return _images_to_content(images, path, budget)
+        except Exception as e:
+            log.info("model3d: pyrender subprocess failed (%s); falling back to matplotlib", e)
 
     meshes, total_verts, total_faces = _load_scene(path)
     images = _render_matplotlib(meshes, path, total_verts, total_faces, max_pages)

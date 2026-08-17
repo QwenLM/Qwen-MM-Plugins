@@ -7,8 +7,8 @@ import base64
 import io
 import os
 import shutil
-import subprocess
 import sys
+import types
 
 import pytest
 
@@ -18,33 +18,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from qwen_mm_plugins_core.visualizers.visualize import handle  # noqa: E402  (import after sys.path setup)
 
 
-def test_pyrender_worker_does_not_inherit_mcp_stdio(monkeypatch, tmp_path):
-    """The isolated worker must never inherit the MCP server's stdio pipes."""
-    from PIL import Image
-
+def test_windows_pyrender_stays_in_handler_process(monkeypatch):
     from qwen_mm_plugins_core.renderers import model3d
 
-    class FakeProcess:
-        pid = 123
+    expected = object()
+    monkeypatch.setitem(sys.modules, "trimesh", types.ModuleType("trimesh"))
+    monkeypatch.setattr(model3d, "_WINDOWS", True)
+    monkeypatch.setattr(model3d, "render_blender", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError()))
+    monkeypatch.setattr(model3d, "_load_scene", lambda path: ([object()], 3, 1))
+    monkeypatch.setattr(model3d, "_has_real_materials", lambda meshes: False)
+    monkeypatch.setattr(model3d, "_render_pyrender", lambda *args: [expected])
+    monkeypatch.setattr(
+        model3d,
+        "_render_pyrender_subprocess",
+        lambda *args: (_ for _ in ()).throw(AssertionError("Windows must not spawn the worker")),
+    )
+    monkeypatch.setattr(model3d, "_images_to_content", lambda images, path, budget: images)
 
-        def wait(self, timeout=None):
-            assert timeout == 120
-            return 0
-
-    def fake_popen(command, **kwargs):
-        assert set(kwargs) == {"stdin", "stdout", "stderr", "close_fds", "creationflags"}
-        assert kwargs["stdin"] is subprocess.DEVNULL
-        assert kwargs["stderr"] is subprocess.STDOUT
-        assert kwargs["close_fds"] is True
-        assert kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        kwargs["stdout"].write("worker diagnostic")
-        Image.new("RGB", (2, 2)).save(os.path.join(command[-2], "view_0.png"))
-        return FakeProcess()
-
-    monkeypatch.setattr(model3d.subprocess, "Popen", fake_popen)
-    images = model3d._render_pyrender_subprocess(str(tmp_path / "sample.stl"), 1)
-    assert len(images) == 1
-    assert images[0].size == (2, 2)
+    assert model3d.render("sample.stl", max_pages=1) == [expected]
 
 
 def _has_dep(key: str) -> bool:

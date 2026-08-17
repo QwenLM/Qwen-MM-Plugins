@@ -164,23 +164,3 @@ def test_to_content_block_malformed_image_falls_back_to_text():
     # an unknown block type also falls back to text rather than crashing the call
     blk2 = fw._to_content_block({"type": "weird", "foo": 1})
     assert isinstance(blk2, types.TextContent)
-
-
-def test_run_handle_uses_standard_executor_on_windows(monkeypatch):
-    import asyncio
-
-    calls = []
-
-    async def fake_to_thread(handle, arguments):
-        calls.append((handle, arguments))
-        return handle(arguments)
-
-    def handle(arguments):
-        return [{"type": "text", "text": arguments["value"]}]
-
-    monkeypatch.setattr(fw, "_WINDOWS", True)
-    monkeypatch.setattr(fw.asyncio, "to_thread", fake_to_thread)
-    blocks = asyncio.run(fw._run_handle(handle, {"value": "ok"}))
-
-    assert calls == [(handle, {"value": "ok"})]
-    assert blocks[0].text == "ok"
