@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Literal, Optional
 
@@ -17,6 +18,7 @@ from qwen_mm_plugins_core.renderers import (
 from shared.content import require_file, text_error
 
 _SORTED_EXTS = sorted(SUPPORTED_EXTENSIONS)
+log = logging.getLogger(__name__)
 
 
 class VisualizeArgs(BaseModel):
@@ -59,6 +61,7 @@ def RUN_INLINE(arguments: dict[str, Any]) -> bool:
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     file_path = arguments.get("file_path", "")
+    log.info("visualize: handling %s", file_path)
 
     # URLs go to the web renderer.
     if file_path.startswith(("http://", "https://")):
