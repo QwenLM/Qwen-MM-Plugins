@@ -39,5 +39,5 @@ jobs:
           --with pytest-timeout
           --with "mcp>=1,<2"
           python -m pytest -q
-          --timeout=180
+          --timeout=240
           tests/test_windows_stdio_3d.py

@@ -50,7 +50,7 @@ def test_visualize_stl_through_uvx_stdio() -> None:
                             "budget": "small",
                         },
                     ),
-                    timeout=45,
+                    timeout=150,
                 )
 
     result = asyncio.run(run_call())

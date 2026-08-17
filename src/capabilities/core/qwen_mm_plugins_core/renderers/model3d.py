@@ -412,8 +412,11 @@ def render(path: str, **opts: Any) -> list:
             import trimesh  # noqa: F401
         except ImportError:
             raise RuntimeError('Missing dependency — install with: pip install "qwen-mm-plugins[viz]"')
+        log.info("model3d: using process-free matplotlib backend on Windows")
         meshes, total_verts, total_faces = _load_scene(path)
+        log.info("model3d: loaded Windows scene (%s vertices, %s faces)", total_verts, total_faces)
         images = _render_matplotlib(meshes, path, total_verts, total_faces, max_pages)
+        log.info("model3d: completed Windows matplotlib render")
         return _images_to_content(images, path, budget)
 
     try:
