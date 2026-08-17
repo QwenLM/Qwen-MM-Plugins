@@ -50,13 +50,6 @@ TOOL: dict[str, Any] = {
 }
 
 
-def RUN_INLINE(arguments: dict[str, Any]) -> bool:
-    """Keep Windows 3D subprocess creation on the MCP event-loop thread."""
-    ext = os.path.splitext(arguments.get("file_path", ""))[1].lower()
-    renderer = get_renderer(ext)
-    return renderer is not None and renderer.__module__.endswith(".renderers.model3d")
-
-
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     file_path = arguments.get("file_path", "")
 

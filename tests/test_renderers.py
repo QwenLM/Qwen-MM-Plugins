@@ -14,14 +14,7 @@ import pytest
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from qwen_mm_plugins_core.visualizers.visualize import RUN_INLINE, handle  # noqa: E402
-
-
-def test_visualize_inline_policy_selects_only_3d_renderers():
-    assert RUN_INLINE({"file_path": "sample.stl"})
-    assert RUN_INLINE({"file_path": "sample.glb"})
-    assert not RUN_INLINE({"file_path": "sample.pdf"})
-    assert not RUN_INLINE({"file_path": "sample.csv"})
+from qwen_mm_plugins_core.visualizers.visualize import handle  # noqa: E402  (import after sys.path setup)
 
 
 def test_windows_3d_uses_isolated_worker(monkeypatch):

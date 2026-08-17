@@ -418,9 +418,9 @@ def render(path: str, **opts: Any) -> list:
     budget = opts.get("budget", "large")
 
     if _WINDOWS:
-        # Loading NumPy/OpenGL after the Windows asyncio stdio loop has started
-        # can deadlock. Keep every native rendering dependency in the worker;
-        # the parent only launches it and reads its serialized content blocks.
+        # Loading NumPy/OpenGL inside a Windows stdio MCP request can deadlock.
+        # Keep every native rendering dependency in the worker; the parent only
+        # launches it and reads its serialized content blocks.
         return _render_pyrender_subprocess(path, max_pages, budget)
 
     try:
