@@ -61,8 +61,11 @@ def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
                 stdin=subprocess.DEVNULL,
                 stdout=worker_log,
                 stderr=subprocess.STDOUT,
-                timeout=120,
-                close_fds=True,
+                # close_fds=True makes Windows build a STARTUPINFOEX handle list for
+                # redirected streams. CreateProcess can deadlock in that path when the
+                # caller is AnyIO's worker thread in an stdio server. Every child stdio
+                # handle is explicit here, so use the simpler Windows creation path.
+                close_fds=os.name != "nt",
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             log.info("model3d: pyrender worker started (pid=%s)", process.pid)
