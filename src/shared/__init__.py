@@ -10,6 +10,7 @@ tools, no console entry). Submodules:
   - shared.video         ffmpeg frame extraction + timestamp parsing (get_video_info, extract_frames_by_seeking, parse_time)
   - shared.cache         derived-artifact cache dir + content-keyed paths (cache_dir, cached_path)
   - shared.syscmd        locate external CLIs with PATH recovery (which_tool, find_tool)
+  - shared.isolated_worker JSON-file RPC for native/crash-prone callables (run_isolated)
   - shared.api_openai    OpenAI-compatible chat client (call_openai_chat, resolve_openai_endpoint)
   - shared.api_dashscope DashScope native-REST async generation-task helpers (submit/poll/save_url)
   - shared.retry         one retry/backoff loop shared by the API clients (retry_call)

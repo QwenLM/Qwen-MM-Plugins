@@ -97,5 +97,12 @@ claude plugin install qwen-mm-plugins-<你的能力>@qwen-mm-plugins
 - `shared.video` —— 抽帧/视频信息 + 时间戳解析（`get_video_info`、`extract_frames_by_seeking`、`compute_dynamic_fps`、`parse_time`）
 - `shared.cache` —— 派生产物缓存（`cache_dir`、`cached_path`）
 - `shared.syscmd` —— 定位外部 CLI(含 PATH 恢复)（`which_tool`、`find_tool`）
+- `shared.isolated_worker` —— 当原生库初始化、进程级全局状态或硬超时可能拖垮 MCP
+  服务时，在干净解释器中运行 JSON 可序列化 callable（`run_isolated`）
 - `shared.api_openai` —— OpenAI 兼容 chat 客户端（`call_openai_chat`、`resolve_openai_endpoint`）
 - `shared.api_dashscope` —— DashScope 原生 REST 异步生成任务（`submit_dashscope_async`、`poll_dashscope_task`、`save_url_to_dir`、`retry_call`）
+
+仅当调用可能死锁或导致解释器崩溃、持有非线程安全的进程级全局状态，或必须在硬超时后终止时，
+才使用隔离 worker。普通阻塞 I/O 应继续走 handler 线程；已经隔离在外部 CLI 中的工作也不需要再套
+一层 Python worker。worker 的参数和结果必须可 JSON 序列化。该隔离保护 MCP 进程及其 stdio
+传输，但它不是安全沙箱，也不提供 CPU、内存或权限边界。

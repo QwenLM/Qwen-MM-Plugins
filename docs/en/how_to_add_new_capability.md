@@ -99,5 +99,14 @@ There is already a shared library `src/shared/`:
 - `shared.video` — frame extraction / video info + timestamp parsing (`get_video_info`, `extract_frames_by_seeking`, `compute_dynamic_fps`, `parse_time`)
 - `shared.cache` — derived-artifact caching (`cache_dir`, `cached_path`)
 - `shared.syscmd` — locating external CLIs, incl. PATH restoration (`which_tool`, `find_tool`)
+- `shared.isolated_worker` — run a JSON-serializable callable in a clean interpreter when native
+  initialization, process-global state, or a hard timeout could destabilize the MCP server
+  (`run_isolated`)
 - `shared.api_openai` — OpenAI-compatible chat client (`call_openai_chat`, `resolve_openai_endpoint`)
 - `shared.api_dashscope` — DashScope native-REST async generation tasks (`submit_dashscope_async`, `poll_dashscope_task`, `save_url_to_dir`, `retry_call`)
+
+Use an isolated worker only when a call can deadlock or crash the interpreter, owns non-thread-safe
+process-global state, or must be terminated on a hard timeout. Blocking I/O belongs on the normal
+handler thread, and an already-isolated external CLI does not need another Python worker. Worker
+arguments and results must be JSON-serializable. Isolation protects the MCP process and its stdio
+transport; it is not a security sandbox or a CPU/memory permission boundary.

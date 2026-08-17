@@ -1,10 +1,10 @@
 {
-  "distribution_version": "1.0.4",
+  "distribution_version": "1.0.5",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
   "plugins": {
     "api": "1.0.3",
     "blender": "1.0.1",
-    "core": "1.0.2",
+    "core": "1.0.3",
     "edu-agent": "1.0.1",
     "freecad": "1.0.1",
     "search": "1.0.3",
