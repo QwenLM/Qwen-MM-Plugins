@@ -37,23 +37,30 @@ def _ensure_egl():
         _egl_configured = True
 
 
-def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
-    """Render with pyrender in a fresh interpreter and load its output images."""
-    from PIL import Image
-
+def _render_pyrender_subprocess(path: str, max_pages: int, budget: str | None = None) -> list:
+    """Render in a fresh interpreter, optionally returning serialized content blocks."""
     tmp_dir = tempfile.mkdtemp(prefix="pyrender_render_")
     worker = os.path.join(os.path.dirname(__file__), "_pyrender_worker.py")
+    command = [
+        sys.executable,
+        worker,
+        os.path.abspath(path),
+        tmp_dir,
+        str(max_pages),
+    ]
+    if budget is not None:
+        command.append(budget)
+
+    worker_env = os.environ.copy()
+    worker_env.setdefault("MPLBACKEND", "Agg")
 
     try:
         result = subprocess.run(
-            [
-                sys.executable,
-                worker,
-                os.path.abspath(path),
-                tmp_dir,
-                str(max_pages),
-            ],
+            command,
             capture_output=True,
+            close_fds=True,
+            env=worker_env,
+            stdin=subprocess.DEVNULL,
             text=True,
             timeout=120,
         )
@@ -61,6 +68,12 @@ def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
         if result.returncode != 0:
             error_tail = (result.stderr or result.stdout or "")[-500:]
             raise RuntimeError(f"pyrender subprocess exited with code {result.returncode}: {error_tail}")
+
+        if budget is not None:
+            with open(os.path.join(tmp_dir, "result.json"), encoding="utf-8") as result_file:
+                return json.load(result_file)
+
+        from PIL import Image
 
         images = []
         for index in range(len(VIEWS[:max_pages])):
@@ -405,20 +418,10 @@ def render(path: str, **opts: Any) -> list:
     budget = opts.get("budget", "large")
 
     if _WINDOWS:
-        # A Windows stdio MCP process can block while creating the Blender or
-        # pyrender child, and OpenGL context creation is not reliable in its
-        # handler context. Agg is process-, display-, and OpenGL-independent.
-        log.info("model3d: importing trimesh for Windows fallback")
-        try:
-            import trimesh  # noqa: F401
-        except ImportError:
-            raise RuntimeError('Missing dependency — install with: pip install "qwen-mm-plugins[viz]"')
-        log.info("model3d: using process-free matplotlib backend on Windows")
-        meshes, total_verts, total_faces = _load_scene(path)
-        log.info("model3d: loaded Windows scene (%s vertices, %s faces)", total_verts, total_faces)
-        images = _render_matplotlib(meshes, path, total_verts, total_faces, max_pages)
-        log.info("model3d: completed Windows matplotlib render")
-        return _images_to_content(images, path, budget)
+        # Loading NumPy/OpenGL after the Windows asyncio stdio loop has started
+        # can deadlock. Keep every native rendering dependency in the worker;
+        # the parent only launches it and reads its serialized content blocks.
+        return _render_pyrender_subprocess(path, max_pages, budget)
 
     try:
         images = render_blender(path, **opts)

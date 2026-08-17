@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -21,28 +22,38 @@ def main() -> int:
     from qwen_mm_plugins_core.renderers import model3d
 
     if len(sys.argv) < 3:
-        print("Usage: _pyrender_worker <model> <outdir> [max_views]", file=sys.stderr)
+        print("Usage: _pyrender_worker <model> <outdir> [max_views] [budget]", file=sys.stderr)
         return 1
 
     path = sys.argv[1]
     output_dir = sys.argv[2]
     max_pages = int(sys.argv[3]) if len(sys.argv) > 3 else len(model3d.VIEWS)
+    budget = sys.argv[4] if len(sys.argv) > 4 else None
 
     try:
         os.makedirs(output_dir, exist_ok=True)
         meshes, total_verts, total_faces = model3d._load_scene(path)
-        images = model3d._render_pyrender(
-            meshes,
-            path,
-            model3d._has_real_materials(meshes),
-            total_verts,
-            total_faces,
-            max_pages,
-        )
+        try:
+            images = model3d._render_pyrender(
+                meshes,
+                path,
+                model3d._has_real_materials(meshes),
+                total_verts,
+                total_faces,
+                max_pages,
+            )
+        except Exception as exc:
+            print(f"pyrender failed ({exc}); falling back to matplotlib", file=sys.stderr)
+            images = model3d._render_matplotlib(meshes, path, total_verts, total_faces, max_pages)
 
         for index, image in enumerate(images):
             output_path = os.path.join(output_dir, f"view_{index}.png")
             image.save(output_path)
+
+        if budget is not None:
+            content = model3d._images_to_content(images, path, budget)
+            with open(os.path.join(output_dir, "result.json"), "w", encoding="utf-8") as result_file:
+                json.dump(content, result_file)
 
         return 0
     except Exception as exc:

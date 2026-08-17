@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 from typing import Any, Literal, Optional
 
@@ -18,7 +17,6 @@ from qwen_mm_plugins_core.renderers import (
 from shared.content import require_file, text_error
 
 _SORTED_EXTS = sorted(SUPPORTED_EXTENSIONS)
-log = logging.getLogger(__name__)
 
 
 class VisualizeArgs(BaseModel):
@@ -61,7 +59,6 @@ def RUN_INLINE(arguments: dict[str, Any]) -> bool:
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     file_path = arguments.get("file_path", "")
-    log.info("visualize: handling %s", file_path)
 
     # URLs go to the web renderer.
     if file_path.startswith(("http://", "https://")):
@@ -74,10 +71,8 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             budget=arguments.get("budget", "large"),
         )
 
-    log.info("visualize: checking local file")
     if err := require_file(file_path):
         return err
-    log.info("visualize: local file exists")
 
     ext = os.path.splitext(file_path)[1].lower()
     if not ext:
@@ -106,11 +101,9 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
-    log.info("visualize: resolving renderer for %s", ext)
     renderer = get_renderer(ext)
     if renderer is None:
         return text_error(f"no renderer available for '{ext}'")
-    log.info("visualize: invoking %s", renderer.__module__)
 
     try:
         result = renderer(

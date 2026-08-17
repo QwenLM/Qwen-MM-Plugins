@@ -194,20 +194,8 @@ async def _run_handle(handle, arguments: dict, run_inline=None):
     # Windows can block in CreateProcess when a handler launches a child from a
     # worker thread while the server itself is attached to MCP stdio pipes. Tool
     # modules may opt specific calls into the event-loop thread with RUN_INLINE.
-    if _WINDOWS and run_inline is not None:
-        logging.info("mcp_framework: evaluating Windows inline policy for %s", handle.__module__)
-        selected = run_inline(arguments)
-        logging.info("mcp_framework: Windows inline policy selected=%s", selected)
-        if selected:
-            import faulthandler
-
-            faulthandler.dump_traceback_later(20)
-            try:
-                raw = handle(arguments)
-            finally:
-                faulthandler.cancel_dump_traceback_later()
-        else:
-            raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
+    if _WINDOWS and run_inline is not None and run_inline(arguments):
+        raw = handle(arguments)
     else:
         raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
     return [_to_content_block(b) for b in raw]
