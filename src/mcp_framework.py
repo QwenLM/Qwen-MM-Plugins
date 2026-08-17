@@ -198,7 +198,16 @@ async def _run_handle(handle, arguments: dict, run_inline=None):
         logging.info("mcp_framework: evaluating Windows inline policy for %s", handle.__module__)
         selected = run_inline(arguments)
         logging.info("mcp_framework: Windows inline policy selected=%s", selected)
-        raw = handle(arguments) if selected else await anyio.to_thread.run_sync(lambda: handle(arguments))
+        if selected:
+            import faulthandler
+
+            faulthandler.dump_traceback_later(20)
+            try:
+                raw = handle(arguments)
+            finally:
+                faulthandler.cancel_dump_traceback_later()
+        else:
+            raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
     else:
         raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
     return [_to_content_block(b) for b in raw]

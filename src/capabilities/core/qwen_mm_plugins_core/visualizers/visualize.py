@@ -74,8 +74,10 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             budget=arguments.get("budget", "large"),
         )
 
+    log.info("visualize: checking local file")
     if err := require_file(file_path):
         return err
+    log.info("visualize: local file exists")
 
     ext = os.path.splitext(file_path)[1].lower()
     if not ext:
@@ -104,9 +106,11 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
+    log.info("visualize: resolving renderer for %s", ext)
     renderer = get_renderer(ext)
     if renderer is None:
         return text_error(f"no renderer available for '{ext}'")
+    log.info("visualize: invoking %s", renderer.__module__)
 
     try:
         result = renderer(

@@ -408,6 +408,7 @@ def render(path: str, **opts: Any) -> list:
         # A Windows stdio MCP process can block while creating the Blender or
         # pyrender child, and OpenGL context creation is not reliable in its
         # handler context. Agg is process-, display-, and OpenGL-independent.
+        log.info("model3d: importing trimesh for Windows fallback")
         try:
             import trimesh  # noqa: F401
         except ImportError:
