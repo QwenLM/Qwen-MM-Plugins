@@ -48,11 +48,11 @@ is_skill_only() { case "$CAP_SKILL_ONLY" in *" $1 "*) return 0 ;; *) return 1 ;;
 #   MARKETPLACE harnesses install a bundled skill+MCP plugin via their own `plugin install` verb.
 #   CONFIG harnesses have no plugin marketplace, so we register the MCP server (+ skill) via each
 #   harness's native verb (see install_for). Harnesses that need a hand-edited config + a checkout-copied
-#   skill (DeepSeek Harness, opencode, QwenPaw, pi) stay docs-only (see docs/en/manual_harnesses.md),
-#   not this menu.
+# Harnesses using a native UI or direct Skill/MCP registration stay docs-only (see
+# docs/en/manual_harnesses.md), not this menu.
 # Menus, status, and detection iterate ALL_HARNESSES; install_for/_detect_mask/do_uninstall case per one.
-MP_HARNESSES="claude codex qoder openclaw"          # native plugin marketplace (skill+MCP bundled)
-CFG_HARNESSES="qwen-code gemini"                    # native-verb (extensions install / mcp add + skills install)
+MP_HARNESSES="claude codebuddy codex qoder openclaw" # native plugin marketplace (skill+MCP bundled)
+CFG_HARNESSES="qwen-code gemini"                     # native-verb installs
 ALL_HARNESSES="$MP_HARNESSES $CFG_HARNESSES"
 
 # ── config-field catalog — the ONE place user-settable config vars are declared; do_configure
@@ -166,8 +166,14 @@ trap '_restore_tty; exit 130' INT
 trap '_restore_tty; exit 143' TERM
 
 have()  { command -v "$1" >/dev/null 2>&1; }
-# Friendly harness name → its CLI binary. Only qoder differs (the executable is `qodercli`).
-harness_bin() { case "$1" in qoder) printf 'qodercli' ;; qwen-code) printf 'qwen' ;; *) printf '%s' "$1" ;; esac; }
+# Friendly harness name → its CLI binary.
+harness_bin() {
+  case "$1" in
+    qoder) printf 'qodercli' ;;
+    qwen-code) printf 'qwen' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
 require_harness() {
   local h=$1 bin; bin=$(harness_bin "$h")
   have "$bin" && return 0
@@ -551,6 +557,21 @@ claude_marketplace_root_from_list() {
   '
 }
 
+codebuddy_marketplace_root_from_list() {
+  local name=$1
+  awk -v wanted="$name" '
+    $0 ~ "\"name\"[[:space:]]*:[[:space:]]*\"" wanted "\"" { found=1; next }
+    found && /"type"[[:space:]]*:/ {
+      if ($0 !~ /"directory"/) { print "remote"; exit }
+      local_source=1
+      next
+    }
+    found && local_source && /"description"[[:space:]]*:/ {
+      sub(/^.*Marketplace from /, ""); sub(/".*$/, ""); print; exit
+    }
+  '
+}
+
 qoder_marketplace_root_from_list() {
   local name=$1
   awk -v wanted="$name" '
@@ -580,7 +601,7 @@ codex_marketplace_source_from_json() {
 }
 
 # configured_marketplace_source <harness> → local root, "remote", or empty when unknown/missing.
-# Used only as a safety check before a stable update: Claude/Codex/Qoder can all retain the local
+# Used only as a safety check before a stable update: Claude/CodeBuddy/Codex/Qoder can retain a local
 # marketplace configured by `install.sh local`, in which case their native update verb keeps using
 # working-tree code rather than the published tags shown in this installer's release index.
 configured_marketplace_source() {
@@ -590,6 +611,9 @@ configured_marketplace_source() {
     claude)
       out=$("$bin" plugin marketplace list 2>/dev/null) || true
       printf '%s\n' "$out" | claude_marketplace_root_from_list "$MARKETPLACE" ;;
+    codebuddy)
+      out=$("$bin" plugin marketplace list 2>/dev/null) || true
+      printf '%s\n' "$out" | codebuddy_marketplace_root_from_list "$MARKETPLACE" ;;
     codex)
       out=$("$bin" plugin marketplace list --json 2>/dev/null) || true
       printf '%s\n' "$out" | codex_marketplace_source_from_json "$MARKETPLACE" ;;
@@ -717,10 +741,35 @@ install_gemini_skill() {  # install_gemini_skill <gemini-bin> <cap>
   return "$rc"
 }
 
+# CodeBuddy can report success after a failed plugin operation. Verify its inventory instead.
+codebuddy_plugins_state() {  # codebuddy_plugins_state <bin> <present|absent> <plugin...>
+  local bin=$1 wanted=$2 out p found failed=0; shift 2
+  out=$("$bin" plugin list 2>/dev/null) || true
+  for p in "$@"; do
+    found=0; printf '%s\n' "$out" | grep -qF -- "${p}@${MARKETPLACE}" && found=1
+    if [ "$wanted" = present ] && [ "$found" = 0 ]; then
+      warn "CodeBuddy did not install ${p}@${MARKETPLACE}"
+      failed=1
+    elif [ "$wanted" = absent ] && [ "$found" = 1 ]; then
+      warn "CodeBuddy still lists ${p}@${MARKETPLACE} after uninstall"
+      failed=1
+    fi
+  done
+  [ "$failed" -eq 0 ]
+}
+
 install_for() {  # install_for <harness> <plugin...>
   local h=$1; shift
   local bin; bin=$(harness_bin "$h")
   local cap failed=0 prompt="Run the $h install commands now (otherwise just print them)?"
+  case "$h" in
+    codebuddy)
+      [ -z "$REPO_REF" ] || {
+        err "the tested $h client cannot install Git marketplace #ref URLs reliably"
+        warn "check out $REPO_REF in a dedicated clone and run 'bash install.sh local' instead"
+        return 1
+      } ;;
+  esac
   is_local_repo "$REPO_URL" && prompt="Install the selected plugins from this checkout into $h now?"
   QMP_DRY=0; confirm "$prompt" y || QMP_DRY=1
   if is_local_repo "$REPO_URL" && [ "$QMP_DRY" = 0 ] && [ "$h" != gemini ]; then
@@ -744,6 +793,28 @@ install_for() {  # install_for <harness> <plugin...>
           run_cmd "$bin" plugin marketplace update "$MARKETPLACE" || return
       fi
       for p in "$@"; do run_cmd "$bin" plugin install "${p}@${MARKETPLACE}" || failed=1; done ;;
+    codebuddy)
+      # `marketplace add` is idempotent but does not switch an existing marketplace between a Git
+      # source and a checkout. Inspect the current source and remove it before such a switch.
+      local current_source desired_source
+      current_source=$(configured_marketplace_source "$h")
+      if is_local_repo "$REPO_URL"; then
+        desired_source=$(cd "${REPO_URL#file://}" 2>/dev/null && pwd -P) || return
+        if [ -n "$current_source" ] && [ "$current_source" != "$desired_source" ]; then
+          warn "switching $MARKETPLACE from $current_source to this checkout"
+          run_cmd "$bin" plugin marketplace remove "$MARKETPLACE" || return
+        fi
+        run_cmd "$bin" plugin marketplace add "$desired_source" || return
+      else
+        if [ -n "$current_source" ] && [ "$current_source" != remote ]; then
+          warn "switching $MARKETPLACE from $current_source to the release catalog"
+          run_cmd "$bin" plugin marketplace remove "$MARKETPLACE" || return
+        fi
+        run_cmd "$bin" plugin marketplace add "${REPO_URL#git+}" || return
+        run_cmd "$bin" plugin marketplace update "$MARKETPLACE" || return
+      fi
+      for p in "$@"; do run_cmd "$bin" plugin install "${p}@${MARKETPLACE}" || failed=1; done
+      if [ "$QMP_DRY" = 0 ]; then codebuddy_plugins_state "$bin" present "$@" || failed=1; fi ;;
     codex)
       # add is idempotent, but on an ALREADY-added marketplace it does NOT refresh the git snapshot,
       # so newly-published capabilities would be missing and their `plugin add` would fail. `upgrade`
@@ -825,7 +896,7 @@ update_for() {
     return 1
   }
   case "$h" in
-    claude|codex|qoder)
+    claude|codebuddy|codex|qoder)
       source=$(configured_marketplace_source "$h")
       if [ -n "$source" ] && [ "$source" != remote ] && is_local_repo "$source"; then
         err "$h currently uses the local marketplace at $source"
@@ -838,6 +909,10 @@ update_for() {
     claude)
       run_cmd "$bin" plugin marketplace update "$MARKETPLACE" || return
       for p in "$@"; do run_cmd "$bin" plugin update "${p}@${MARKETPLACE}" || failed=1; done ;;
+    codebuddy)
+      run_cmd "$bin" plugin marketplace update "$MARKETPLACE" || return
+      for p in "$@"; do run_cmd "$bin" plugin update "${p}@${MARKETPLACE}" || failed=1; done
+      if [ "$QMP_DRY" = 0 ]; then codebuddy_plugins_state "$bin" present "$@" || failed=1; fi ;;
     codex)
       run_cmd "$bin" plugin marketplace upgrade "$MARKETPLACE" || return
       for p in "$@"; do run_cmd "$bin" plugin add "${p}@${MARKETPLACE}" || failed=1; done ;;
@@ -896,6 +971,7 @@ update_for() {
 post_update_hint() {
   case "$1" in
     claude)    warn "already-open Claude Code session: run /reload-plugins (or restart it)" ;;
+    codebuddy) warn "already-open CodeBuddy session: run /reload-plugins (or restart it)" ;;
     codex)     warn "already-open Codex task: start a new task (or restart Codex) to load the updated plugin" ;;
     qoder)     warn "already-open Qoder session: run /plugins reload (or restart it)" ;;
     openclaw)  warn "OpenClaw normally restarts a managed Gateway; otherwise run: openclaw gateway restart" ;;
@@ -907,7 +983,7 @@ post_update_hint() {
 # _detect_mask <harness> → echoes a 0/1 mask (installed?), one char per MP_ITEMS entry.
 # ONE `list` call per harness (the node CLIs are slow to spawn, so we avoid one call per capability),
 # matched against the captured output. Verified per harness on this repo:
-#   - claude / qodercli `list` show installed plugins as "<name>@<marketplace>"
+#   - claude / codebuddy / qodercli `list` show installed plugins as "<name>@<marketplace>"
 #   - codex `plugin list` lists EVERY marketplace plugin with a status column → installed iff the row isn't "not installed"
 #   - openclaw `plugins list` shows installed marketplace plugins by BARE name under a "global:" source root
 # Output is captured before matching so codex's non-zero exit (101) can't trip pipefail; any
@@ -931,10 +1007,10 @@ _detect_mask_cfg() {
 }
 _detect_mask() {
   local h=$1 bin out i id; bin=$(harness_bin "$h")
-  have "$bin" || { printf '%0*d' "${#MP_ITEMS[@]}" 0; return; }
   case "$h" in qwen-code|gemini) _detect_mask_cfg "$h"; return ;; esac
+  have "$bin" || { printf '%0*d' "${#MP_ITEMS[@]}" 0; return; }
   case "$h" in
-    claude|codex) out=$("$bin" plugin  list 2>/dev/null) || true ;;
+    claude|codebuddy|codex) out=$("$bin" plugin list 2>/dev/null) || true ;;
     qoder|openclaw) out=$("$bin" plugins list 2>/dev/null) || true ;;
     *) printf '%0*d' "${#MP_ITEMS[@]}" 0; return ;;
   esac
@@ -1411,7 +1487,11 @@ show_manual() {  # show_manual <install|update|uninstall> [plugin...]
     hr "Manual uninstall / other harness"
     cat <<EOF
 
-  Marketplace installs — use that harness's native verb, e.g.:
+  Desktop-app UI installs:
+    WorkBuddy — open Plugins, select the installed plugin, then choose Manage → Uninstall.
+    QoderWork / QwenWork — remove both the Skill and MCP/Connector entries in the app.
+
+  CLI marketplace installs — use that harness's native verb, e.g.:
     claude   plugin  uninstall qwen-mm-plugins-core@qwen-mm-plugins
     qodercli plugins uninstall qwen-mm-plugins-core@qwen-mm-plugins
 
@@ -1423,6 +1503,10 @@ EOF
     hr "Manual update / other harness"
     browse_repo=${REPO_URL#git+}; browse_repo=${browse_repo%.git}
     cat <<EOF
+
+  Desktop-app UI installs:
+    WorkBuddy — open Plugins and update the installed plugin there.
+    QoderWork / QwenWork — ask a new task to update both Skill and MCP to the current release.
 
   A manual skill copy/symlink and a separately configured MCP server have no shared install
   receipt. This installer cannot safely infer their current versions or edit unknown harness paths.
@@ -1452,14 +1536,21 @@ EOF
     hr "Manual install / other harness"
     cat <<EOF
 
-  A) Plugin marketplace (any Claude-compatible harness — swap the verb per harness):
+  A) Desktop-app UI:
+     WorkBuddy — open Plugins, click +, and add this marketplace address:
+       https://github.com/QwenLM/Qwen-MM-Plugins.git
+     Install the desired qwen-mm-plugins-* entries from that page.
+     QoderWork / QwenWork — start a task, provide the repository URL above, and ask it to install
+     the desired complete Skill + MCP bundle and verify its tools.
+
+  B) CLI plugin marketplace (swap the verb for a compatible harness):
     <harness> plugin marketplace add $(marketplace_source)
     <harness> plugin install       qwen-mm-plugins-core@qwen-mm-plugins
 
      OpenClaw exception: its remote-marketplace policy rejects git-subdir entries. This installer
      maintains $OPENCLAW_MARKETPLACE_DIR and passes that local checkout to OpenClaw instead.
 
-  B) Claude Code — skill + MCP server separately:
+  C) Claude Code — skill + MCP server separately:
     # 1) MCP server (uvx installs deps on first run)
     claude mcp add qwen-mm-plugins-core -- \\
       uvx --from "$(cap_spec core)" qwen-mm-plugins-core
@@ -1468,7 +1559,7 @@ EOF
     ln -s /path/to/Qwen-MM-Plugins/src/capabilities/core/skill \\
       ~/.claude/skills/qwen-mm-plugins-core
 
-  C) Config-file harnesses (DeepSeek Harness · opencode · pi · QwenPaw) — register the MCP server +
+  D) Config-file harnesses (DeepSeek Harness · opencode · pi · QwenPaw) — register the MCP server +
      skill in the harness's own config; exact blocks are in docs/en/manual_harnesses.md. DSH has no
      native Skill/MCP install verb and uses its profile Cordis patch. pi in brief:
     cp -r /path/to/Qwen-MM-Plugins/src/capabilities/core/skill ~/.pi/agent/skills/qwen-mm-plugins-core
@@ -1652,6 +1743,8 @@ do_uninstall() {
     plugin_rc=0
     case "$h" in
       claude)   run_cmd "$bin" plugin  uninstall "qwen-mm-plugins-${p}@${MARKETPLACE}" || plugin_rc=1 ;;
+      codebuddy) run_cmd "$bin" plugin uninstall "qwen-mm-plugins-${p}@${MARKETPLACE}" || plugin_rc=1
+                 if [ "$QMP_DRY" = 0 ]; then codebuddy_plugins_state "$bin" absent "qwen-mm-plugins-${p}" || plugin_rc=1; fi ;;
       codex)    run_cmd "$bin" plugin  remove    "qwen-mm-plugins-${p}@${MARKETPLACE}" || plugin_rc=1 ;;
       qoder)    run_cmd "$bin" plugins uninstall "qwen-mm-plugins-${p}@${MARKETPLACE}" || plugin_rc=1 ;;
       openclaw) run_cmd "$bin" plugins uninstall "qwen-mm-plugins-${p}" --force || plugin_rc=1 ;;  # --force: openclaw prompts otherwise
@@ -1664,8 +1757,8 @@ do_uninstall() {
     esac
     if [ "$plugin_rc" = 0 ]; then removed="$removed $p"; else failed=1; fi
   done
-  # claude tracks the marketplace separately; drop it only when nothing is left installed
-  if [ "$h" = claude ] && [ "$remains" = 0 ] && [ "$failed" = 0 ]; then
+  # Claude and CodeBuddy track the marketplace separately; drop it when nothing remains.
+  if { [ "$h" = claude ] || [ "$h" = codebuddy ]; } && [ "$remains" = 0 ] && [ "$failed" = 0 ]; then
     run_cmd "$bin" plugin marketplace remove "$MARKETPLACE" || failed=1
   fi
 
