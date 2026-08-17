@@ -20,6 +20,7 @@ from qwen_mm_plugins_core.renderers import DEFAULT_MAX_PAGES
 log = logging.getLogger(__name__)
 
 _egl_configured = False
+_WINDOWS = sys.platform == "win32"
 
 VIEWS = [
     ("Perspective", 30, 45),
@@ -402,6 +403,18 @@ def _render_matplotlib(meshes, path, total_verts, total_faces, max_pages):
 def render(path: str, **opts: Any) -> list:
     max_pages = opts.get("max_pages", DEFAULT_MAX_PAGES)
     budget = opts.get("budget", "large")
+
+    if _WINDOWS:
+        # A Windows stdio MCP process can block while creating the Blender or
+        # pyrender child, and OpenGL context creation is not reliable in its
+        # handler context. Agg is process-, display-, and OpenGL-independent.
+        try:
+            import trimesh  # noqa: F401
+        except ImportError:
+            raise RuntimeError('Missing dependency — install with: pip install "qwen-mm-plugins[viz]"')
+        meshes, total_verts, total_faces = _load_scene(path)
+        images = _render_matplotlib(meshes, path, total_verts, total_faces, max_pages)
+        return _images_to_content(images, path, budget)
 
     try:
         images = render_blender(path, **opts)

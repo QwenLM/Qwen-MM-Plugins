@@ -8,6 +8,7 @@ import io
 import os
 import shutil
 import sys
+import types
 
 import pytest
 
@@ -22,6 +23,34 @@ def test_visualize_inline_policy_selects_only_3d_renderers():
     assert RUN_INLINE({"file_path": "sample.glb"})
     assert not RUN_INLINE({"file_path": "sample.pdf"})
     assert not RUN_INLINE({"file_path": "sample.csv"})
+
+
+def test_windows_3d_uses_process_free_matplotlib_fallback(monkeypatch):
+    from qwen_mm_plugins_core.renderers import model3d
+
+    expected = object()
+    monkeypatch.setitem(sys.modules, "trimesh", types.ModuleType("trimesh"))
+    monkeypatch.setattr(model3d, "_WINDOWS", True)
+    monkeypatch.setattr(model3d, "_load_scene", lambda path: ([object()], 3, 1))
+    monkeypatch.setattr(model3d, "_render_matplotlib", lambda *args: [expected])
+    monkeypatch.setattr(model3d, "_images_to_content", lambda images, path, budget: images)
+    monkeypatch.setattr(
+        model3d,
+        "render_blender",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Windows must not launch Blender")),
+    )
+    monkeypatch.setattr(
+        model3d,
+        "_render_pyrender_subprocess",
+        lambda *args: (_ for _ in ()).throw(AssertionError("Windows must not spawn the worker")),
+    )
+    monkeypatch.setattr(
+        model3d,
+        "_render_pyrender",
+        lambda *args: (_ for _ in ()).throw(AssertionError("Windows must not create an OpenGL context")),
+    )
+
+    assert model3d.render("sample.stl", max_pages=1) == [expected]
 
 
 def _has_dep(key: str) -> bool:
