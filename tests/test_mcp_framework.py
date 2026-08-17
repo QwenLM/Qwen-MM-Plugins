@@ -164,3 +164,19 @@ def test_to_content_block_malformed_image_falls_back_to_text():
     # an unknown block type also falls back to text rather than crashing the call
     blk2 = fw._to_content_block({"type": "weird", "foo": 1})
     assert isinstance(blk2, types.TextContent)
+
+
+def test_run_handle_can_keep_selected_windows_calls_inline(monkeypatch):
+    import asyncio
+
+    def fail_if_threaded(*args, **kwargs):
+        raise AssertionError("selected call must stay on the event-loop thread")
+
+    def handle(arguments):
+        return [{"type": "text", "text": arguments["value"]}]
+
+    monkeypatch.setattr(fw, "_WINDOWS", True)
+    monkeypatch.setattr(fw.anyio.to_thread, "run_sync", fail_if_threaded)
+    blocks = asyncio.run(fw._run_handle(handle, {"value": "ok"}, lambda arguments: True))
+
+    assert blocks[0].text == "ok"

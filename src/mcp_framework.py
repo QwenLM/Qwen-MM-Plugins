@@ -33,6 +33,8 @@ from typing import Annotated
 import anyio
 from pydantic.json_schema import GenerateJsonSchema
 
+_WINDOWS = sys.platform == "win32"
+
 __all__ = [
     "build_registry",
     "serve",
@@ -104,14 +106,15 @@ def _inline_defs(schema: dict) -> dict:
 class ToolSpec:
     """One discovered tool: its advertised schema, Pydantic args model, and handler."""
 
-    __slots__ = ("name", "description", "input_schema", "args_model", "handle")
+    __slots__ = ("name", "description", "input_schema", "args_model", "handle", "run_inline")
 
-    def __init__(self, name, description, input_schema, args_model, handle):
+    def __init__(self, name, description, input_schema, args_model, handle, run_inline=None):
         self.name = name
         self.description = description
         self.input_schema = input_schema
         self.args_model = args_model
         self.handle = handle
+        self.run_inline = run_inline
 
     @property
     def meta(self) -> dict:
@@ -156,7 +159,14 @@ def build_registry(import_name: str, tool_packages: list[str]):
 def _spec_from_module(mod) -> ToolSpec:
     t = mod.TOOL
     model = t["args"]
-    return ToolSpec(t["name"], t.get("description", ""), tool_schema(model), model, mod.handle)
+    return ToolSpec(
+        t["name"],
+        t.get("description", ""),
+        tool_schema(model),
+        model,
+        mod.handle,
+        getattr(mod, "RUN_INLINE", None),
+    )
 
 
 # Runtime: bridge specs onto FastMCP and run over stdio.
@@ -180,8 +190,14 @@ def _to_content_block(block: dict):
     return types.TextContent(type="text", text=json.dumps(block, ensure_ascii=False))
 
 
-async def _run_handle(handle, arguments: dict):
-    raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
+async def _run_handle(handle, arguments: dict, run_inline=None):
+    # Windows can block in CreateProcess when a handler launches a child from a
+    # worker thread while the server itself is attached to MCP stdio pipes. Tool
+    # modules may opt specific calls into the event-loop thread with RUN_INLINE.
+    if _WINDOWS and run_inline is not None and run_inline(arguments):
+        raw = handle(arguments)
+    else:
+        raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
     return [_to_content_block(b) for b in raw]
 
 
@@ -191,6 +207,7 @@ def _make_wrapper(spec: ToolSpec):
     to a plain dict, runs the handle off the event loop, and converts the result."""
     handle = spec.handle
     model = spec.args_model
+    run_inline = spec.run_inline
     params = [
         inspect.Parameter(
             name,
@@ -203,7 +220,7 @@ def _make_wrapper(spec: ToolSpec):
 
     async def wrapper(**kwargs):
         # validated model -> plain dict for the handle(dict) API
-        return await _run_handle(handle, model(**kwargs).model_dump(exclude_none=True))
+        return await _run_handle(handle, model(**kwargs).model_dump(exclude_none=True), run_inline)
 
     wrapper.__signature__ = inspect.Signature(params)
     wrapper.__name__ = spec.name
