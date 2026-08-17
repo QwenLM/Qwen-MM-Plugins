@@ -42,29 +42,34 @@ def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
 
     tmp_dir = tempfile.mkdtemp(prefix="pyrender_render_")
     worker = os.path.join(os.path.dirname(__file__), "_pyrender_worker.py")
+    worker_log_path = os.path.join(tmp_dir, "worker.log")
 
     try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                worker,
-                os.path.abspath(path),
-                tmp_dir,
-                str(max_pages),
-            ],
-            # The MCP server itself uses stdin/stdout pipes. Inheriting its stdin can
-            # deadlock a child launched from AnyIO's worker thread on Windows, before
-            # the renderer process becomes observable. Give the worker fully isolated
-            # standard handles; stdout/stderr are already isolated by capture_output.
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            close_fds=True,
-        )
+        # Do not use PIPE/capture_output here. On Windows, waiting for those pipe handles
+        # can deadlock when this subprocess is launched from AnyIO's worker thread inside
+        # an stdio MCP server, even after the renderer process has exited. A regular file
+        # preserves diagnostics without requiring communicate() to observe pipe EOF.
+        with open(worker_log_path, "w+", encoding="utf-8", errors="replace") as worker_log:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    worker,
+                    os.path.abspath(path),
+                    tmp_dir,
+                    str(max_pages),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=worker_log,
+                stderr=subprocess.STDOUT,
+                timeout=120,
+                close_fds=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            worker_log.seek(0)
+            worker_output = worker_log.read()
 
         if result.returncode != 0:
-            error_tail = (result.stderr or result.stdout or "")[-500:]
+            error_tail = worker_output[-500:]
             raise RuntimeError(f"pyrender subprocess exited with code {result.returncode}: {error_tail}")
 
         images = []

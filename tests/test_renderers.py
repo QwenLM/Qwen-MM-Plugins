@@ -26,10 +26,12 @@ def test_pyrender_worker_does_not_inherit_mcp_stdio(monkeypatch, tmp_path):
 
     def fake_run(command, **kwargs):
         assert kwargs["stdin"] is subprocess.DEVNULL
-        assert kwargs["capture_output"] is True
+        assert kwargs["stderr"] is subprocess.STDOUT
         assert kwargs["close_fds"] is True
+        assert kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        kwargs["stdout"].write("worker diagnostic")
         Image.new("RGB", (2, 2)).save(os.path.join(command[-2], "view_0.png"))
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(model3d.subprocess, "run", fake_run)
     images = model3d._render_pyrender_subprocess(str(tmp_path / "sample.stl"), 1)
