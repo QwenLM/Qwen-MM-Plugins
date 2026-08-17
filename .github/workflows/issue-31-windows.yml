@@ -1,0 +1,36 @@
+name: Issue 31 Windows stdio reproduction
+
+on:
+  push:
+    branches: [codex/issue-31-windows-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-3d-stdio:
+    name: Windows 3D stdio via uvx
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.10.9"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Run the Windows 3D stdio regression
+        run: >-
+          uv run --no-project
+          --python 3.12
+          --with pytest
+          --with pytest-timeout
+          --with "mcp>=1,<2"
+          python -m pytest -q
+          --timeout=180
+          tests/test_windows_stdio_3d.py
