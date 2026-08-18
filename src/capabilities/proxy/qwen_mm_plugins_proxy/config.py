@@ -21,6 +21,30 @@ PROTOCOLS = ("anthropic", "responses", "chat")
 # 不参与 URL 拼接——URL 始终由 base_url 决定（回环=经工具两层、远端=直连一层）。
 VIA_TOOLS = {"cc-switch": 15721, "codex-plus": 57321}
 
+# start/stop 自动接线覆盖的 harness（第一跳 base_url→本代理）。
+HARNESSES = ("claude", "codex", "qwen-code")
+
+
+@dataclass
+class RoutingConfig:
+    """自动接线与路由的开关/状态。"""
+
+    auto_wire: bool = True  # start 自动改三处 harness base_url→本代理、stop 自动还原
+    harnesses: list[str] = field(default_factory=lambda: list(HARNESSES))  # 可排除任一
+    relay_templates: dict[str, dict] = field(default_factory=dict)  # name -> {protocol,base_url,via?,models[]}
+    capability_confirmed: bool = False  # 首次是否已显式确认过各模型看图能力
+    unknown_default: str = "text_only"  # 未归类模型默认：text_only(安全) | vision
+    activated_relays: list[str] = field(default_factory=list)  # start 激活、stop 还原的 relay name 记录
+
+    def __post_init__(self) -> None:
+        bad = [h for h in self.harnesses if h not in HARNESSES]
+        if bad:
+            raise ConfigError(
+                f"routing.harnesses: unknown harness {','.join(map(repr, bad))}; must be in {list(HARNESSES)}"
+            )
+        if self.unknown_default not in ("text_only", "vision"):
+            raise ConfigError(f"routing.unknown_default must be 'text_only' or 'vision', got {self.unknown_default!r}")
+
 
 class ConfigError(Exception):
     """proxy.json 配置非法（显式错误，不静默回退默认配置）。"""
@@ -67,11 +91,13 @@ class ProxyConfig:
     relays: list[RelayConfig] = field(default_factory=list)
     vlm: VLMConfig = field(default_factory=VLMConfig)
     model_capabilities: dict[str, str] = field(default_factory=dict)
+    routing: RoutingConfig = field(default_factory=RoutingConfig)
 
     @classmethod
     def from_dict(cls, data: dict) -> "ProxyConfig":
         server = data.get("server", {})
         vlm = data.get("vlm", {})
+        routing = data.get("routing", {})
         return cls(
             bind_host=server.get("bind_host", "127.0.0.1"),
             bind_port=int(server.get("bind_port", 8787)),
@@ -79,6 +105,7 @@ class ProxyConfig:
             relays=_parse_relays(data.get("relays", [])),
             vlm=VLMConfig(**{k: v for k, v in vlm.items() if k in VLMConfig.__dataclass_fields__}),
             model_capabilities=data.get("model_capabilities", {}),
+            routing=RoutingConfig(**{k: v for k, v in routing.items() if k in RoutingConfig.__dataclass_fields__}),
         )
 
     def to_dict(self) -> dict:
@@ -87,6 +114,7 @@ class ProxyConfig:
             "relays": [r.__dict__ for r in self.relays],
             "vlm": self.vlm.__dict__,
             "model_capabilities": self.model_capabilities,
+            "routing": self.routing.__dict__,
         }
 
 
@@ -130,6 +158,22 @@ def _apply_env(cfg: ProxyConfig) -> ProxyConfig:
         if v in VLM_FORMATS:
             cfg.vlm.format = v
     return cfg
+
+
+def save_config(cfg: ProxyConfig, path: str | None = None) -> str:
+    """把 cfg 原子写回 proxy.json（0600）。onboarding/生命周期写入用它持久化。"""
+    if path is None:
+        from shared.env import config_dir
+
+        path = os.path.join(config_dir(), "proxy.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cfg.to_dict(), f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+    return path
 
 
 def load_config(path: str | None = None) -> ProxyConfig:

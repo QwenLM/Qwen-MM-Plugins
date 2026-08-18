@@ -520,6 +520,16 @@ qwen-mm-plugins-proxy check  # 看 relay 拓扑提示 + VLM/端口是否就绪
 #### 结束与回滚
 三套都跑通后，`bash install.sh uninstall` 恢复三处原始 base_url（备份为 *.qwen-mm-proxy.bak）；或手动把 harness base_url 改回原值，并移除 proxy.json 里本次临时加的 relay。
 
+#### 5.13.2 自动接线/回滚 与 首次模型能力确认
+
+从本版起，`start`/`stop` 自带自动接线：(1) `start` 自动把三处 harness 的 base_url 指到本代理（先备份 `*.qwen-mm-proxy.bak`，幂等），并按 `routing.auto_wire` 激活 proxy.json 预置的 `relay_templates`；(2) `stop` 自动从备份还原 harness base_url 并移除本次激活的 relay。全程只动 `~/.qwen-mm-plugins/proxy.json` + 三处 base_url，**不写 CC Switch / Codex++ 自身配置**。
+
+**首次启用路由必须显式确认模型看图能力**（有感、弹到脸上）：`start` 在未确认（`routing.capability_confirmed=false`）时进入交互引导，逐条列出扫描到的模型名（来源：relay_templates.models + 已有 model_capabilities + 三个 harness/工具的配置文件），↑/↓ 选、空格切换「支持图片」、回车完成；**未标的默认纯文本（text_only，最安全）**。确认后写入 `model_capabilities` + 置位，后续 start/stop 全自动。非交互终端不静默通过（会提示用 `qwen-mm-plugins-proxy models-scan` 复核）。
+
+**协议识别自动**：`detect_protocol(path, body)` 按路径（`/v1/messages`=anthropic、`/v1/responses`=responses、`/v1/chat/completions`=chat）再按 body 结构兜底，用户不需要声明协议。
+
+**CC Switch / Codex++ 切换配置的约定**：工具切 provider 会重写 harness 的 base_url（远离 8787），且不触发我们的 start/stop。此时需重跑 `qwen-mm-plugins-proxy start`（幂等，把 base_url 指回 8787），或用 `check` 看偏离告警。
+
 ---
 
 ## 6. 备注 / 已知记录

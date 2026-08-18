@@ -27,6 +27,9 @@ _PARSERS = {"anthropic": parse_anthropic, "responses": parse_responses, "chat": 
 _SERIALIZERS = {"anthropic": serialize_anthropic, "responses": serialize_responses, "chat": serialize_chat}
 _PROTO_BY_PATH = {"/v1/messages": "anthropic", "/v1/responses": "responses", "/v1/chat/completions": "chat"}
 
+# 入站协议 → harness（用于按 harness 区分模型能力判定）
+_HARNESS_BY_PROTO = {"anthropic": "claude", "responses": "codex", "chat": "qwen-code"}
+
 
 def _select_relay(cfg: ProxyConfig, inbound_proto: str, model: str = "") -> RelayConfig:
     """按 spec §6.3 选 relay：先 (model, protocol) 匹配，再仅 protocol，最后默认 relay。"""
@@ -135,7 +138,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         started = time.time()
         try:
             ir = _PARSERS[proto](body)
-            result = self._pipeline.process(ir, self._cfg)
+            result = self._pipeline.process(ir, self._cfg, _HARNESS_BY_PROTO.get(proto))
             relay = _select_relay(self._cfg, proto, ir.model)
             out_body = _SERIALIZERS[proto](result.ir)
             status, text = _forward(relay, out_body, ir.stream)

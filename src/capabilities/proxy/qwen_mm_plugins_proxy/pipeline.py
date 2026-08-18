@@ -71,8 +71,8 @@ class Pipeline:
         self.semaphore = semaphore or threading.Semaphore(5)
         self.table = CapabilityTable()
 
-    def process(self, ir: IRRequest, cfg: ProxyConfig) -> ProcessResult:
-        if self.table.judge(ir.model, cfg) == "vision":
+    def process(self, ir: IRRequest, cfg: ProxyConfig, harness: str | None = None) -> ProcessResult:
+        if self.table.judge(ir.model, cfg, harness) == "vision":
             return ProcessResult(ir=ir)  # vision model: zero overhead passthrough
         result = ProcessResult(ir=ir)
         budget = self._budget(ir, cfg)

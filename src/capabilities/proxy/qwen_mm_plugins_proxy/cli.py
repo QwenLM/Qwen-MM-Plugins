@@ -25,6 +25,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ti.add_argument("path")
     ti.add_argument("--question", default=None)
     sub.add_parser("check")
+    sub.add_parser("models-scan")  # 非交互打印模型能力草稿
+    sub.add_parser("models")  # 显式交互入口：重新确认/编辑 model_capabilities
     return parser.parse_args(argv)
 
 
@@ -46,6 +48,23 @@ def cmd_start(cfg) -> int:
     if os.path.exists(_pid_path()):
         print(f"already running (pid {open(_pid_path()).read().strip()})")
         return 1
+    if cfg.routing.auto_wire:
+        # 首次启用：显式交互确认各模型看图能力(默认纯文本最安全)；未确认则不接线、不起服。
+        from .onboarding import run_onboarding
+
+        if not run_onboarding(cfg):
+            print("未完成模型看图能力确认，未启动代理。", file=sys.stderr)
+            print(
+                "请用交互终端重跑 qwen-mm-plugins-proxy start，或 qwen-mm-plugins-proxy models-scan 复核。",
+                file=sys.stderr,
+            )
+            return 1
+        from .wiring import relays_activate, wiring_backup_and_rewrite
+
+        for msg in relays_activate(cfg):
+            print(f"  [relay] {msg}")
+        for msg in wiring_backup_and_rewrite(cfg):
+            print(f"  [wire] {msg}")
     _write_pid()
     from .server import run_server
 
@@ -83,6 +102,19 @@ def cmd_stop() -> int:
     except OSError:
         pass
     print(f"stopped {pid}")
+    # 接线回滚（配置损坏则跳过，保证 stop 不锁死）
+    try:
+        from .config import load_config
+        from .wiring import relays_restore, wiring_restore
+
+        c = load_config()
+        if c.routing.auto_wire:
+            for msg in wiring_restore(c):
+                print(f"  [restore] {msg}")
+            for msg in relays_restore(c):
+                print(f"  [restore] {msg}")
+    except Exception:  # noqa: BLE001 - 回滚尽力而为
+        pass
     return 0
 
 
@@ -182,6 +214,23 @@ def cmd_test_image(args, cfg) -> int:
     return 0
 
 
+def cmd_models(cfg) -> int:
+    from .onboarding import edit_all
+
+    if edit_all(cfg):
+        print("模型能力配置已更新。")
+        return 0
+    print("已取消，未改动。", file=sys.stderr)
+    return 1
+
+
+def cmd_models_scan(cfg) -> int:
+    from .onboarding import models_scan_report
+
+    models_scan_report(cfg)
+    return 0
+
+
 def cmd_check(cfg) -> int:
     problems = []
     for port in (cfg.bind_port, cfg.ui_port):
@@ -207,6 +256,21 @@ def cmd_check(cfg) -> int:
         print(f"  {relay.name}: {relay.protocol} → {topo}  ({relay.base_url})")
         if via and port is not None and VIA_TOOLS[via] != port:
             problems.append(f"relay {relay.name!r}: via={via} 期望端口 {VIA_TOOLS[via]}，实际 base_url 端口 {port}")
+    # 三处 harness 第一跳接线状态
+    try:
+        from .wiring import wiring_report
+
+        for row in wiring_report(cfg):
+            state = "OK" if row["wired"] else ("偏离(" + (row["base_url"] or "无") + ")")
+            hint = "" if row["wired"] else " → 请重跑 qwen-mm-plugins-proxy start 重新接线"
+            print(f"  {row['harness']}: base_url={row['base_url'] or '(无)'} [{state}]{hint}")
+            if not row["wired"] and row["base_url"] and row.get("has_backup"):
+                problems.append(f"harness {row['harness']} base_url 未指向本代理（工具可能切换了配置，请重跑 start）")
+    except Exception:  # noqa: BLE001 - 接线报错是尽力而为
+        pass
+    if cfg.routing.auto_wire and not cfg.routing.capability_confirmed:
+        print("  ⚠ model 看图能力尚未确认——首次启用需走交互引导（qwen-mm-plugins-proxy start 或 models-scan）")
+        problems.append("model_capabilities 未确认")
     for p in problems:
         print(f"\u26a0 {p}")
     if not problems:
@@ -244,6 +308,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_start(cfg)
     if args.command == "test-image":
         return cmd_test_image(args, cfg)
+    if args.command == "models":
+        return cmd_models(cfg)
+    if args.command == "models-scan":
+        return cmd_models_scan(cfg)
     if args.command == "check":
         return cmd_check(cfg)
     return 1

@@ -22,24 +22,31 @@ BUILTIN_CAPABILITIES: dict[str, str] = {
 
 class CapabilityTable:
     def __init__(self) -> None:
-        self._cache: dict[str, str] = {}
+        self._cache: dict[tuple, str] = {}
 
-    def judge(self, model: str, cfg: ProxyConfig) -> str:
-        if model in self._cache:
-            return self._cache[model]
-        capability = self._resolve(model, cfg)
-        self._cache[model] = capability
+    def judge(self, model: str, cfg: ProxyConfig, harness: str | None = None) -> str:
+        key = (harness, model)
+        if key in self._cache:
+            return self._cache[key]
+        capability = self._resolve(model, cfg, harness)
+        self._cache[key] = capability
         return capability
 
     @staticmethod
-    def _resolve(model: str, cfg: ProxyConfig) -> str:
-        # 1. 用户显式配置（精确模型名、前缀、通配符，顺序匹配命中即止）
-        for pattern, cap in cfg.model_capabilities.items():
-            if fnmatch.fnmatch(model, pattern):
+    def _resolve(model: str, cfg: ProxyConfig, harness: str | None = None) -> str:
+        caps = cfg.model_capabilities
+        # 1a. 按 harness 分组嵌套：先本组，再 global（旧扁平迁移后的兜底组）
+        if harness and isinstance(caps.get(harness), dict) and model in caps[harness]:
+            return caps[harness][model]
+        if isinstance(caps.get("global"), dict) and model in caps["global"]:
+            return caps["global"][model]
+        # 1b. 旧扁平 map{model: cap}（未迁移前的兼容），顺序匹配命中即止
+        for pattern, cap in caps.items():
+            if isinstance(cap, str) and fnmatch.fnmatch(model, pattern):
                 return cap
         # 2. 内置名单
         for pattern, cap in BUILTIN_CAPABILITIES.items():
             if fnmatch.fnmatch(model, pattern):
                 return cap
-        # 3. 未知 -> 默认拦截（text_only，走一次 VLM）
-        return "text_only"
+        # 3. 未知 -> 默认（text_only 安全；可配 routing.unknown_default=vision）
+        return cfg.routing.unknown_default
