@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import types
@@ -23,6 +24,13 @@ SKILL_MD = os.path.join(CAP_DIR, "skill", "SKILL.md")
 EXPECTED_NAME = "qwen-mm-plugins-edu-agent"
 SKILL_ROOT = Path(CAP_DIR) / "skill"
 POSTCHECK = SKILL_ROOT / "scripts/postcheck.py"
+FILE_URI_SCRIPTS = [
+    "check_scene_fit.py",
+    "check_render_overlap.py",
+    "check_smooth_curve_render.py",
+    "check_circuit_closed.py",
+    "check_curves_rendered.py",
+]
 
 MANIFESTS = [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".qoder-plugin/plugin.json"]
 
@@ -85,6 +93,34 @@ def test_manifest_skills_path_resolves(rel):
         target = os.path.normpath(os.path.join(CAP_DIR, entry))
         assert os.path.isdir(target), f"{rel} skills path {entry!r} must exist"
         assert os.path.isfile(os.path.join(target, "SKILL.md"))
+
+
+@pytest.mark.parametrize("script_name", FILE_URI_SCRIPTS)
+def test_browser_checks_use_node_file_url_conversion(script_name):
+    source = (SKILL_ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+    assert "pathToFileURL" in source
+    assert "page.goto('file://'" not in source
+
+
+@pytest.mark.parametrize("script_name", FILE_URI_SCRIPTS)
+def test_browser_check_node_driver_syntax(script_name, tmp_path):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is unavailable")
+
+    scripts_dir = str(SKILL_ROOT / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    script_path = SKILL_ROOT / "scripts" / script_name
+    spec = importlib.util.spec_from_file_location(f"edu_uri_test_{script_path.stem}", script_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    driver_path = tmp_path / f"{script_path.stem}.js"
+    driver_path.write_text(module.NODE_DRIVER, encoding="utf-8")
+    result = subprocess.run([node, "--check", str(driver_path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
 def test_postcheck_fails_when_rendered_video_is_missing(tmp_path):

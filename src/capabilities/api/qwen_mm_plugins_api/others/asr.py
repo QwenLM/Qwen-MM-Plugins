@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from shared.content import text_error
 from shared.env import get_env
+from shared.paths import path_to_file_uri
 from shared.syscmd import find_tool
 
 log = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ def _transcribe_dashscope(
 
     call_kwargs: dict[str, Any] = {
         "model": model,
-        "messages": [{"role": "user", "content": [{"audio": f"file://{audio_path}"}]}],
+        "messages": [{"role": "user", "content": [{"audio": path_to_file_uri(audio_path)}]}],
         "result_format": "message",
         "api_key": api_key,
     }

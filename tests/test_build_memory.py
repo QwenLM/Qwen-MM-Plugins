@@ -324,6 +324,32 @@ def test_parse_time_range_variants(build_graph):
     assert build_graph._parse_time_range([None, 3]) == [0, 3.0]
 
 
+def test_build_asr_dashscope_uses_platform_file_uri(build_graph, tmp_path, monkeypatch):
+    source = tmp_path / "音频 # 100%.wav"
+    source.write_bytes(b"audio")
+    captured = {}
+
+    def fake_call(**kwargs):
+        captured.update(kwargs)
+        return type(
+            "Response",
+            (),
+            {
+                "status_code": 200,
+                "output": {"choices": [{"message": {"content": [{"text": "transcript"}]}}]},
+            },
+        )()
+
+    dashscope = type("DashScope", (), {"MultiModalConversation": type("Conversation", (), {"call": fake_call})})
+    monkeypatch.setitem(sys.modules, "dashscope", dashscope)
+
+    assert build_graph._transcribe_chunk_dashscope(str(source), "qwen3-asr-flash", "key") == ["transcript"]
+    audio = captured["messages"][0]["content"][0]["audio"]
+    assert audio == source.resolve().as_uri()
+    assert " " not in audio
+    assert "#" not in audio
+
+
 def _make_macros(build_graph, n):
     return [
         build_graph.MacroEvent(macro_id=f"macro_{i:04d}", label=f"L{i}", time_range=[i * 10.0, (i + 1) * 10.0])

@@ -7,14 +7,25 @@ merged into the last full page.
 from __future__ import annotations
 
 import io
-import os
+from pathlib import Path
 from typing import Any
+
+from shared.paths import path_to_file_uri
 
 # Trailing strip shorter than this fraction of viewport merges into previous page.
 _MERGE_THRESHOLD = 0.4
+_ISOLATED_TIMEOUT = 150
 
 
-def render(path: str, **opts: Any) -> list:
+def _source_url_and_label(path: str) -> tuple[str, str]:
+    if path.startswith(("http://", "https://")):
+        return path, path
+
+    local_path = Path(path).expanduser().resolve()
+    return path_to_file_uri(local_path), local_path.name
+
+
+def _render_in_process(path: str, opts: dict[str, Any]) -> list:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -29,34 +40,30 @@ def render(path: str, **opts: Any) -> list:
     viewport = {"small": (800, 600), "normal": (1280, 960), "large": (1920, 1080)}
     vw, vh = viewport.get(budget, (1280, 960))
 
-    if path.startswith(("http://", "https://")):
-        url = path
-        label = path
-    else:
-        url = f"file://{os.path.abspath(path)}"
-        label = os.path.basename(path)
+    url, label = _source_url_and_label(path)
 
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch(headless=True, channel="chrome")
         except Exception:
             browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(viewport={"width": vw, "height": vh})
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(2000)
 
-        page = browser.new_page(viewport={"width": vw, "height": vh})
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(2000)
+            # Scroll to trigger lazy-loaded content.
+            page_height = page.evaluate("document.body.scrollHeight") or vh
+            steps = min(int(page_height / vh) + 1, max_pages + 5)
+            for i in range(1, steps):
+                page.evaluate(f"window.scrollTo(0, {i * vh})")
+                page.wait_for_timeout(800)
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(1000)
 
-        # Scroll to trigger lazy-loaded content.
-        page_height = page.evaluate("document.body.scrollHeight") or vh
-        steps = min(int(page_height / vh) + 1, max_pages + 5)
-        for i in range(1, steps):
-            page.evaluate(f"window.scrollTo(0, {i * vh})")
-            page.wait_for_timeout(800)
-        page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(1000)
-
-        screenshot_bytes = page.screenshot(full_page=True, type="png")
-        browser.close()
+            screenshot_bytes = page.screenshot(full_page=True, type="png")
+        finally:
+            browser.close()
 
     img = Image.open(io.BytesIO(screenshot_bytes))
 
@@ -94,3 +101,25 @@ def render(path: str, **opts: Any) -> list:
     content.append({"type": "text", "text": "[Web End]"})
 
     return content
+
+
+def render_isolated(arguments: dict[str, Any]) -> list:
+    """Worker entry point for Playwright and its browser process tree."""
+    path = arguments.get("path")
+    opts = arguments.get("options", {})
+    if not isinstance(path, str) or not path:
+        raise ValueError("isolated web render requires a non-empty path or URL")
+    if not isinstance(opts, dict):
+        raise ValueError("isolated web render options must be an object")
+    return _render_in_process(path, opts)
+
+
+def render(path: str, **opts: Any) -> list:
+    from shared.isolated_worker import run_isolated
+
+    return run_isolated(
+        __name__,
+        "render_isolated",
+        {"path": path, "options": opts},
+        timeout=_ISOLATED_TIMEOUT,
+    )

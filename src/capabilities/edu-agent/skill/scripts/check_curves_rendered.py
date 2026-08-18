@@ -84,6 +84,7 @@ MAX_STROKES = 48           # per-scene cap (cost bound)
 NODE_DRIVER = r"""
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 let puppeteer;
 try { puppeteer = require('puppeteer-core'); }
 catch (e) { console.log(JSON.stringify({__skip__: "puppeteer-core not resolvable: " + e.message})); process.exit(0); }
@@ -108,7 +109,7 @@ function unwrapFragment(html) {
 // so the reference render is always correct regardless of the ./gsap mirror.
 function fontFace() {
   if (!fontsDir) return '';
-  const u = n => 'file://' + fontsDir + '/' + n;
+  const u = n => pathToFileURL(path.join(fontsDir, n)).href;
   return '<style>' +
     '@font-face{font-family:"Noto Sans SC";src:url("' + u('NotoSansSC-Bold.woff2') + '") format("woff2");font-weight:400 700;font-display:block;}' +
     '@font-face{font-family:"Noto Sans SC";src:url("' + u('NotoSansSC-ExtraBold.woff2') + '") format("woff2");font-weight:800;font-display:block;}' +
@@ -119,8 +120,8 @@ function fontFace() {
 }
 function headLibs() {
   let s = '<style>html,body{margin:0;padding:0;background:#fff;}</style>' + fontFace();
-  if (gsapPath)  s += '<script src="file://' + gsapPath + '"></script>';
-  if (katexPath) s += '<script src="file://' + katexPath + '"></script>';
+  if (gsapPath)  s += '<script src="' + pathToFileURL(gsapPath).href + '"></script>';
+  if (katexPath) s += '<script src="' + pathToFileURL(katexPath).href + '"></script>';
   return s;
 }
 
@@ -146,7 +147,7 @@ function headLibs() {
     const clipDur = (timing[f] && timing[f][1]) ? timing[f][1] : null;
     let rec = { file: f, ok: true, strokes: [] };
     try {
-      await page.goto('file://' + tmpPath, { waitUntil: 'load', timeout: 20000 });
+      await page.goto(pathToFileURL(tmpPath).href, { waitUntil: 'load', timeout: 20000 });
       await page.evaluate(async () => { try { await document.fonts.ready; } catch(e){} });
       await new Promise(res => setTimeout(res, 300));
       rec = await page.evaluate((P, clipDur) => {

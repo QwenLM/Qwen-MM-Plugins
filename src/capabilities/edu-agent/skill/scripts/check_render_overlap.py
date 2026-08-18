@@ -45,6 +45,7 @@ BG_FRAC = 0.60       # a rect covering > this fraction of the root is a backgrou
 NODE_DRIVER = r"""
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 let puppeteer;
 try { puppeteer = require('puppeteer-core'); }
 catch (e) { console.log(JSON.stringify({__skip__: "puppeteer-core not resolvable: " + e.message})); process.exit(0); }
@@ -83,7 +84,7 @@ function unwrapFragment(html) {
     await page.setViewport({ width: FRAME_W, height: FRAME_H, deviceScaleFactor: 1 });
     let r = { file: f, ok: true };
     try {
-      await page.goto('file://' + tmpPath, { waitUntil: 'load', timeout: 20000 });
+      await page.goto(pathToFileURL(tmpPath).href, { waitUntil: 'load', timeout: 20000 });
       await page.evaluate(async () => { try { await document.fonts.ready; } catch(e){} });
       await new Promise(res => setTimeout(res, 350));
       r = await page.evaluate((FRAC, MIN_BOX, BG_FRAC) => {

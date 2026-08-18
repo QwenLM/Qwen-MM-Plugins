@@ -20,6 +20,7 @@ from qwen_mm_plugins_core.renderers import DEFAULT_MAX_PAGES
 log = logging.getLogger(__name__)
 
 _egl_configured = False
+_WINDOWS = sys.platform == "win32"
 
 VIEWS = [
     ("Perspective", 30, 45),
@@ -38,28 +39,34 @@ def _ensure_egl():
 
 def _render_pyrender_subprocess(path: str, max_pages: int) -> list:
     """Render with pyrender in a fresh interpreter and load its output images."""
-    from PIL import Image
-
     tmp_dir = tempfile.mkdtemp(prefix="pyrender_render_")
     worker = os.path.join(os.path.dirname(__file__), "_pyrender_worker.py")
+    command = [
+        sys.executable,
+        worker,
+        os.path.abspath(path),
+        tmp_dir,
+        str(max_pages),
+    ]
+    worker_env = os.environ.copy()
+    worker_env["MPLBACKEND"] = "Agg"
 
     try:
         result = subprocess.run(
-            [
-                sys.executable,
-                worker,
-                os.path.abspath(path),
-                tmp_dir,
-                str(max_pages),
-            ],
+            command,
             capture_output=True,
+            close_fds=True,
+            env=worker_env,
+            stdin=subprocess.DEVNULL,
             text=True,
             timeout=120,
         )
 
         if result.returncode != 0:
             error_tail = (result.stderr or result.stdout or "")[-500:]
-            raise RuntimeError(f"pyrender subprocess exited with code {result.returncode}: {error_tail}")
+            raise RuntimeError(f"3D render subprocess exited with code {result.returncode}: {error_tail}")
+
+        from PIL import Image
 
         images = []
         for index in range(len(VIEWS[:max_pages])):
@@ -399,7 +406,7 @@ def _render_matplotlib(meshes, path, total_verts, total_faces, max_pages):
 # public entry point
 
 
-def render(path: str, **opts: Any) -> list:
+def _render_backends(path: str, opts: dict[str, Any], *, isolate_pyrender: bool) -> list:
     max_pages = opts.get("max_pages", DEFAULT_MAX_PAGES)
     budget = opts.get("budget", "large")
 
@@ -414,15 +421,56 @@ def render(path: str, **opts: Any) -> list:
     except ImportError:
         raise RuntimeError('Missing dependency — install with: pip install "qwen-mm-plugins[viz]"')
 
+    meshes = None
     try:
-        images = _render_pyrender_subprocess(path, max_pages)
+        if isolate_pyrender:
+            images = _render_pyrender_subprocess(path, max_pages)
+        else:
+            meshes, total_verts, total_faces = _load_scene(path)
+            images = _render_pyrender(
+                meshes,
+                path,
+                _has_real_materials(meshes),
+                total_verts,
+                total_faces,
+                max_pages,
+            )
         return _images_to_content(images, path, budget)
     except Exception as e:
-        log.info("model3d: pyrender subprocess failed (%s); falling back to matplotlib", e)
+        log.info("model3d: pyrender backend failed (%s); falling back to matplotlib", e)
 
-    meshes, total_verts, total_faces = _load_scene(path)
+    if meshes is None:
+        meshes, total_verts, total_faces = _load_scene(path)
     images = _render_matplotlib(meshes, path, total_verts, total_faces, max_pages)
     return _images_to_content(images, path, budget)
+
+
+def render_isolated(arguments: dict[str, Any]) -> list:
+    """Worker entry point: render without creating another Python worker."""
+    path = arguments.get("path")
+    opts = arguments.get("options", {})
+    if not isinstance(path, str) or not path:
+        raise ValueError("isolated 3D render requires a non-empty path")
+    if not isinstance(opts, dict):
+        raise ValueError("isolated 3D render options must be an object")
+    return _render_backends(path, opts, isolate_pyrender=False)
+
+
+def render(path: str, **opts: Any) -> list:
+    if _WINDOWS:
+        # Native renderer initialization can deadlock inside a Windows stdio MCP
+        # request. The generic worker imports and runs every backend in a clean
+        # interpreter, then returns already-serialized MCP content blocks.
+        from shared.isolated_worker import run_isolated
+
+        return run_isolated(
+            __name__,
+            "render_isolated",
+            {"path": path, "options": opts},
+            timeout=150,
+            env_overrides={"MPLBACKEND": "Agg"},
+        )
+    return _render_backends(path, opts, isolate_pyrender=True)
 
 
 def _images_to_content(images: list, path: str, budget: str) -> list:

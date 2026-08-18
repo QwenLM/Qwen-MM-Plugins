@@ -1,6 +1,8 @@
 {
   "name": "qwen-mm-plugins-edu-agent",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Qwen-MM-Plugins edu-agent — generate step-by-step Chinese math/science tutorial videos (and interactive explainer pages) from a problem statement or image. Skill-only capability (no MCP server).",
-  "skills": ["./skill"]
+  "skills": [
+    "./skill"
+  ]
 }

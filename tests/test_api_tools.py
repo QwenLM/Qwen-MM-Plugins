@@ -21,6 +21,7 @@ Live reachability (does the real API answer?) lives in test_api_reachability.py.
 import base64
 import json
 import os
+import sys
 import types
 
 import pytest
@@ -241,6 +242,31 @@ def test_asr_missing_file_guard():
     # transcribe_audio is local-only (no OSS fallback): a missing file returns an error, not a crash.
     blocks = asr.handle({"file_path": "/does/not/exist.wav"})
     assert _is_error(blocks) and "file not found" in blocks[0]["text"]
+
+
+def test_asr_dashscope_uses_platform_file_uri(tmp_path, monkeypatch):
+    from shared.paths import path_to_file_uri
+
+    source = tmp_path / "音频 # 100%.wav"
+    source.write_bytes(b"audio")
+    captured = {}
+
+    def fake_call(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(
+            status_code=200,
+            output={"choices": [{"message": {"content": [{"text": "transcript"}]}}]},
+        )
+
+    dashscope = types.ModuleType("dashscope")
+    dashscope.MultiModalConversation = types.SimpleNamespace(call=fake_call)
+    monkeypatch.setitem(sys.modules, "dashscope", dashscope)
+
+    assert asr._transcribe_dashscope(str(source), "qwen3-asr-flash", "key") == ["transcript"]
+    audio = captured["messages"][0]["content"][0]["audio"]
+    assert audio == path_to_file_uri(source)
+    assert " " not in audio
+    assert "#" not in audio
 
 
 def test_vision_chat_dry_run_builds_request_without_network(sample_image):

@@ -73,6 +73,7 @@ def is_circuit_scene(txt):
 NODE_DRIVER = r"""
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 let puppeteer;
 try { puppeteer = require('puppeteer-core'); }
 catch (e) { console.log(JSON.stringify({__skip__: "puppeteer-core not resolvable: " + e.message})); process.exit(0); }
@@ -241,7 +242,7 @@ function PAGE_FN(TOL_UNITS) {
     await page.setViewport({ width: FRAME_W, height: FRAME_H, deviceScaleFactor: 1 });
     let r = { file: f };
     try {
-      await page.goto('file://' + path.resolve(tmpPath), { waitUntil: 'load', timeout: 20000 });
+      await page.goto(pathToFileURL(path.resolve(tmpPath)).href, { waitUntil: 'load', timeout: 20000 });
       await page.evaluate(async () => { try { await document.fonts.ready; } catch (e) {} });
       await new Promise(res => setTimeout(res, 350));
       const out = await page.evaluate(PAGE_FN, TOL_UNITS);

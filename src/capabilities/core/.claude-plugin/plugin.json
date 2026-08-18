@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-core",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Qwen-MM-Plugins — read/visualize any file (images, video, PDF, Office, code, SVG, 3D, GIS, notebooks) plus OCR, grounding, segmentation, ASR and vision-chat, exposed as an MCP server.",
   "skills": [
     "./skill"
@@ -10,7 +10,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-core-v1.0.2",
+        "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-core-v1.0.3",
         "qwen-mm-plugins-core"
       ]
     }
