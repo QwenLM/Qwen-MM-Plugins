@@ -12,7 +12,7 @@ on:
       - "tests/test_visualize_real.py"
       - "tests/assets/**"
   push:
-    branches: [main, codex/issue-31-windows-ci]
+    branches: [main]
     paths:
       - ".github/workflows/system-renderers.yml"
       - "pyproject.toml"
