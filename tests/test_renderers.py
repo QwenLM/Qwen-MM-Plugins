@@ -9,7 +9,7 @@ import os
 import shutil
 import sys
 import types
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -136,6 +136,48 @@ def test_web_source_url_preserves_http_urls():
 
     url = "https://example.com/page?q=hello%20world#section"
     assert _source_url_and_label(url) == (url, url)
+
+
+def test_office_profile_uses_platform_file_uri(tmp_path, monkeypatch):
+    from qwen_mm_plugins_core.renderers import office
+    from shared.paths import path_to_file_uri
+
+    source = tmp_path / "文档 # 100%.docx"
+    source.write_bytes(b"docx")
+    destination = tmp_path / "output.pdf"
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(command=command, kwargs=kwargs)
+        output_dir = Path(command[command.index("--outdir") + 1])
+        (output_dir / "converted.pdf").write_bytes(b"pdf")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(office.subprocess, "run", fake_run)
+    office._pdf_producer(str(source), "soffice")(str(destination))
+
+    command = captured["command"]
+    output_dir = Path(command[command.index("--outdir") + 1])
+    profile = next(argument for argument in command if argument.startswith("-env:UserInstallation="))
+    assert profile == f"-env:UserInstallation={path_to_file_uri(output_dir / 'lo_profile')}"
+    assert profile.startswith("-env:UserInstallation=file:///")
+    assert "\\" not in profile
+    assert destination.read_bytes() == b"pdf"
+    assert captured["kwargs"] == {"capture_output": True, "text": True, "timeout": 120}
+
+
+def test_office_failure_reports_return_code_when_libreoffice_is_silent(tmp_path, monkeypatch):
+    from qwen_mm_plugins_core.renderers import office
+
+    monkeypatch.setattr(
+        office.subprocess,
+        "run",
+        lambda *args, **kwargs: types.SimpleNamespace(returncode=1, stdout="", stderr=""),
+    )
+
+    producer = office._pdf_producer(str(tmp_path / "sample.docx"), "soffice")
+    with pytest.raises(RuntimeError, match="exit code 1 with no output"):
+        producer(str(tmp_path / "output.pdf"))
 
 
 def test_web_worker_closes_browser_when_navigation_fails(monkeypatch):

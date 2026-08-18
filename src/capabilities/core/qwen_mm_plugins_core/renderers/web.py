@@ -10,6 +10,8 @@ import io
 from pathlib import Path
 from typing import Any
 
+from shared.paths import path_to_file_uri
+
 # Trailing strip shorter than this fraction of viewport merges into previous page.
 _MERGE_THRESHOLD = 0.4
 _ISOLATED_TIMEOUT = 150
@@ -20,7 +22,7 @@ def _source_url_and_label(path: str) -> tuple[str, str]:
         return path, path
 
     local_path = Path(path).expanduser().resolve()
-    return local_path.as_uri(), local_path.name
+    return path_to_file_uri(local_path), local_path.name
 
 
 def _render_in_process(path: str, opts: dict[str, Any]) -> list:

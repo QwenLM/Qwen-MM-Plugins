@@ -103,6 +103,23 @@ def test_visualize_real_asset(case_id, rel_path, _desc, extra, available):
     assert any(b.get("type") in ("image", "text") for b in content)
 
 
+def test_visualize_real_office_path_with_special_characters(tmp_path):
+    source = os.path.join(ASSETS_DIR, "calibre-test.docx")
+    if not os.path.exists(source):
+        pytest.skip("DOCX asset missing")
+    if not (_tool("libreoffice", "soffice") and _mod("pypdfium2")):
+        pytest.skip("Office renderer dependencies unavailable")
+
+    special_path = tmp_path / "文档 # 100%.docx"
+    shutil.copy2(source, special_path)
+    content = visualize.handle({"file_path": str(special_path), "budget": "small", "max_pages": 1})
+    err = _error_text(content)
+    if err and any(message in err for message in _ENV_GAP):
+        pytest.skip(f"docx: environment gap — {err[:80]}")
+    assert err is None, f"DOCX special-character path render errored: {err}"
+    assert any(block.get("type") == "image" for block in content)
+
+
 # ── manual gallery (not collected by pytest) ─────────────────────────
 
 HTML_HEAD = """\

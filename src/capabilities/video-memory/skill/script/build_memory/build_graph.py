@@ -532,7 +532,7 @@ def _transcribe_chunk_dashscope(audio_path: str, model: str, api_key: str) -> li
 
     resp = dashscope.MultiModalConversation.call(
         model=model,
-        messages=[{"role": "user", "content": [{"audio": f"file://{audio_path}"}]}],
+        messages=[{"role": "user", "content": [{"audio": Path(audio_path).expanduser().resolve().as_uri()}]}],
         result_format="message",
         api_key=api_key,
     )

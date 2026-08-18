@@ -6,8 +6,10 @@ import os
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 from typing import Any
 
+from shared.paths import path_to_file_uri
 from shared.syscmd import which_tool
 
 
@@ -17,11 +19,13 @@ def _pdf_producer(path: str, soffice: str):
     def _convert(dest_pdf: str) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Isolated LibreOffice user profile to avoid lock conflicts.
-            profile = f"-env:UserInstallation=file://{os.path.join(tmpdir, 'lo_profile')}"
+            profile_uri = path_to_file_uri(Path(tmpdir) / "lo_profile")
+            profile = f"-env:UserInstallation={profile_uri}"
             cmd = [soffice, "--headless", "--norestore", profile, "--convert-to", "pdf", "--outdir", tmpdir, path]
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             if proc.returncode != 0:
-                raise RuntimeError(f"LibreOffice conversion failed: {proc.stderr.strip()}")
+                detail = proc.stderr.strip() or proc.stdout.strip() or f"exit code {proc.returncode} with no output"
+                raise RuntimeError(f"LibreOffice conversion failed: {detail}")
 
             pdfs = [f for f in os.listdir(tmpdir) if f.endswith(".pdf")]
             if not pdfs:
