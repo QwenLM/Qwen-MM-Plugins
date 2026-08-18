@@ -38,8 +38,8 @@ QWEN_MM_RUN_REACHABILITY=1 python3 -m pytest -m reachability tests/
 
 1. 每个 MCP server 都需要 schema/发现以及 handler 成功和错误路径测试。
 2. server 存在特殊启动、streaming 或 transport 行为时，增加协议测试。
-3. reader 或 renderer 需要代表性输入时，加入小型确定性 fixture。大型可选样本放在
-   `tests/assets/real/`，缺少依赖时应清晰跳过。
+3. reader 或 renderer 需要代表性输入时，提交小型确定性 fixture。大型第三方快照不进入
+   仓库，只用于显式启用的手动测试。
 4. 两份文件或 manifest 字段必须同步时，增加 anti-drift assertion。
 5. 纯 Skill 修改应验证 frontmatter、引用资源和 manifest 打包。
 

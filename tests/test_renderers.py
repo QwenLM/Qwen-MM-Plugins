@@ -239,6 +239,7 @@ def _has_dep(key: str) -> bool:
         "nbformat": lambda: __import__("nbformat"),
         "geopandas": lambda: __import__("geopandas"),
         "trimesh": lambda: __import__("trimesh"),
+        "playwright": lambda: __import__("playwright"),
         "libreoffice": lambda: shutil.which("libreoffice") or shutil.which("soffice"),
         "pdflatex": lambda: shutil.which("pdflatex"),
         "blender": lambda: shutil.which("blender"),
@@ -247,6 +248,82 @@ def _has_dep(key: str) -> bool:
         return bool(checks[key]())
     except Exception:
         return False
+
+
+def _error_text(content) -> str | None:
+    return next(
+        (
+            block["text"]
+            for block in content
+            if block.get("type") == "text" and block.get("text", "").startswith("Error")
+        ),
+        None,
+    )
+
+
+def _assert_decodable_image(content) -> None:
+    from PIL import Image
+
+    images = [block for block in content if block.get("type") == "image"]
+    assert images, "renderer produced no image blocks"
+    for block in images:
+        assert block.get("mimeType", "").startswith("image/")
+        image = Image.open(io.BytesIO(base64.b64decode(block["data"])))
+        assert image.size[0] > 0 and image.size[1] > 0
+
+
+def test_office_real_render_with_special_character_path(tmp_path):
+    missing = [dependency for dependency in ("libreoffice", "pypdfium2") if not _has_dep(dependency)]
+    if missing:
+        pytest.skip(f"missing deps: {', '.join(missing)}")
+
+    source = Path(ASSETS_DIR) / "sample.docx"
+    special_path = tmp_path / "文档 # 100%.docx"
+    shutil.copy2(source, special_path)
+
+    content = handle({"file_path": str(special_path), "budget": "small", "max_pages": 1})
+    error = _error_text(content)
+    assert error is None, f"DOCX special-character path render errored: {error}"
+    _assert_decodable_image(content)
+
+
+def test_web_real_render_with_special_character_path(tmp_path):
+    if not _has_dep("playwright"):
+        pytest.skip("missing dep: playwright")
+
+    source = Path(ASSETS_DIR) / "sample.html"
+    special_path = tmp_path / "页面 # 100%.html"
+    shutil.copy2(source, special_path)
+
+    content = handle({"file_path": str(special_path), "budget": "small", "max_pages": 1})
+    error = _error_text(content)
+    environment_gaps = (
+        "Executable doesn't exist",
+        "playwright install",
+        "Host system is missing dependencies",
+        "cannot open shared object",
+    )
+    if error and any(message in error for message in environment_gaps):
+        pytest.skip(f"Playwright browser unavailable: {error[:120]}")
+    assert error is None, f"HTML special-character path render errored: {error}"
+    _assert_decodable_image(content)
+
+
+def test_3d_real_render_smoke():
+    missing = [dependency for dependency in ("trimesh", "matplotlib") if not _has_dep(dependency)]
+    if missing:
+        pytest.skip(f"missing deps: {', '.join(missing)}")
+
+    content = handle(
+        {
+            "file_path": str(Path(ASSETS_DIR) / "sample.stl"),
+            "budget": "small",
+            "max_pages": 1,
+        }
+    )
+    error = _error_text(content)
+    assert error is None, f"3D render errored: {error}"
+    _assert_decodable_image(content)
 
 
 # (file, expected_type, min_items, description, requires) — one representative asset

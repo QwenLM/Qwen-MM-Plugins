@@ -9,10 +9,9 @@ on:
       - "src/capabilities/core/qwen_mm_plugins_core/renderers/**"
       - "tests/test_isolated_worker.py"
       - "tests/test_renderers.py"
-      - "tests/test_visualize_real.py"
       - "tests/assets/**"
   push:
-    branches: [main]
+    branches: [main, codex/issue-31-windows-ci]
     paths:
       - ".github/workflows/system-renderers.yml"
       - "pyproject.toml"
@@ -20,7 +19,6 @@ on:
       - "src/capabilities/core/qwen_mm_plugins_core/renderers/**"
       - "tests/test_isolated_worker.py"
       - "tests/test_renderers.py"
-      - "tests/test_visualize_real.py"
       - "tests/assets/**"
   workflow_dispatch:
     inputs:
@@ -84,7 +82,7 @@ jobs:
         if: runner.os == 'Linux'
         run: >-
           uv run --no-project --python 3.12 --with pytest --with ".[core]"
-          python -m pytest -q tests/test_renderers.py tests/test_visualize_real.py
+          python -m pytest -q tests/test_renderers.py
           -k "office or docx or pptx"
 
       - name: Run Office regressions (Windows)
@@ -94,7 +92,7 @@ jobs:
           $lo = Get-Item "C:\Program Files\LibreOffice\program\soffice.exe"
           $env:PATH = "$env:PATH;$($lo.Directory.FullName)"
           uv run --no-project --python 3.12 --with pytest --with ".[core]" `
-            python -m pytest -q tests/test_renderers.py tests/test_visualize_real.py `
+            python -m pytest -q tests/test_renderers.py `
             -k "office or docx or pptx"
 
   latex:
@@ -164,7 +162,7 @@ jobs:
       - name: Run Playwright regressions
         run: |
           uv run --no-project --python 3.12 --with pytest --with ".[core]" python -m pytest -q `
-            tests/test_renderers.py tests/test_visualize_real.py -k "web or html"
+            tests/test_renderers.py -k "web or html"
           uv run --no-project --python 3.12 --with pytest --with ".[core]" python -m pytest -q `
             tests/test_isolated_worker.py
         shell: pwsh
@@ -173,16 +171,15 @@ jobs:
       - name: Run Playwright regressions
         run: |
           uv run --no-project --python 3.12 --with pytest --with ".[core]" python -m pytest -q \
-            tests/test_renderers.py tests/test_visualize_real.py -k "web or html"
+            tests/test_renderers.py -k "web or html"
           uv run --no-project --python 3.12 --with pytest --with ".[core]" python -m pytest -q \
             tests/test_isolated_worker.py
         if: runner.os == 'Linux'
 
   native-3d:
     if: >-
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' &&
-       (inputs.suite == 'all' || inputs.suite == '3d'))
+      github.event_name != 'workflow_dispatch' ||
+      inputs.suite == 'all' || inputs.suite == '3d'
     name: Native 3D (Windows)
     runs-on: windows-latest
     timeout-minutes: 20
@@ -204,6 +201,6 @@ jobs:
         shell: pwsh
         run: |
           uv run --no-project --python 3.12 --with pytest --with ".[core]" python -m pytest -q `
-            tests/test_isolated_worker.py tests/test_renderers.py -k "isolated_worker or 3d"
+            tests/test_isolated_worker.py
           uv run --no-project --python 3.12 --with pytest --with ".[core]" python -m pytest -q `
-            "tests/test_visualize_real.py::test_visualize_real_asset[3d]"
+            tests/test_renderers.py -k "3d"

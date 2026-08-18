@@ -40,8 +40,8 @@ Match tests to the capability's components:
 
 1. Every MCP server needs schema/discovery and handler success/error coverage.
 2. Add protocol tests for server-specific startup, streaming, or transport behavior.
-3. Add small deterministic fixtures when readers or renderers need representative input. Keep
-   large optional samples under `tests/assets/real/` and skip cleanly when dependencies are absent.
+3. Add small, deterministic committed fixtures when readers or renderers need representative input.
+   Keep large third-party snapshots outside the repository and use them only for opt-in manual tests.
 4. Add an anti-drift assertion when two files or manifest fields must stay synchronized.
 5. Skill-only changes should validate frontmatter, referenced resources, and manifest packaging.
 
