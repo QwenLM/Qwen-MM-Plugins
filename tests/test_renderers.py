@@ -78,6 +78,81 @@ def test_isolated_3d_worker_preserves_backend_fallback_order(monkeypatch):
     assert calls == ["blender", "load", "pyrender", "matplotlib"]
 
 
+def test_web_renderer_uses_generic_isolated_worker(monkeypatch):
+    from qwen_mm_plugins_core.renderers import web
+    from shared import isolated_worker
+
+    expected = [{"type": "image", "data": "encoded", "mimeType": "image/png"}]
+    captured = {}
+
+    def fake_run_isolated(module, function, arguments, **options):
+        captured.update(module=module, function=function, arguments=arguments, options=options)
+        return expected
+
+    monkeypatch.setattr(isolated_worker, "run_isolated", fake_run_isolated)
+    monkeypatch.setattr(
+        web,
+        "_render_in_process",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Playwright must not run in the MCP parent")),
+    )
+
+    assert web.render("sample.html", max_pages=2, budget="small") == expected
+    assert captured == {
+        "module": web.__name__,
+        "function": "render_isolated",
+        "arguments": {"path": "sample.html", "options": {"max_pages": 2, "budget": "small"}},
+        "options": {"timeout": web._ISOLATED_TIMEOUT},
+    }
+
+
+def test_web_worker_closes_browser_when_navigation_fails(monkeypatch):
+    from qwen_mm_plugins_core.renderers import web
+
+    class FakePage:
+        def goto(self, *args, **kwargs):
+            raise RuntimeError("navigation failed")
+
+    class FakeBrowser:
+        closed = False
+
+        def new_page(self, **kwargs):
+            return FakePage()
+
+        def close(self):
+            self.closed = True
+
+    browser = FakeBrowser()
+
+    class FakePlaywright:
+        chromium = types.SimpleNamespace(launch=lambda **kwargs: browser)
+
+    class FakeContext:
+        def __enter__(self):
+            return FakePlaywright()
+
+        def __exit__(self, *args):
+            return False
+
+    playwright = types.ModuleType("playwright")
+    sync_api = types.ModuleType("playwright.sync_api")
+    sync_api.sync_playwright = FakeContext
+    monkeypatch.setitem(sys.modules, "playwright", playwright)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+
+    with pytest.raises(RuntimeError, match="navigation failed"):
+        web._render_in_process("sample.html", {})
+    assert browser.closed
+
+
+def test_web_isolated_entry_validates_arguments():
+    from qwen_mm_plugins_core.renderers.web import render_isolated
+
+    with pytest.raises(ValueError, match="non-empty path"):
+        render_isolated({"path": "", "options": {}})
+    with pytest.raises(ValueError, match="options must be an object"):
+        render_isolated({"path": "sample.html", "options": []})
+
+
 def _has_dep(key: str) -> bool:
     checks = {
         "pypdfium2": lambda: __import__("pypdfium2"),
