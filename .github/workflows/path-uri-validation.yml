@@ -31,7 +31,7 @@ jobs:
         shell: pwsh
         run: |
           $lo = Get-Item "C:\Program Files\LibreOffice\program\soffice.exe"
-          $env:PATH = "$($lo.Directory.FullName);$env:PATH"
+          $env:PATH = "$env:PATH;$($lo.Directory.FullName)"
           uv run --no-project --python 3.12 --with pytest --with ".[all]" python -m pytest -q `
             tests/test_renderers.py::test_web_source_url_uses_platform_file_uri `
             tests/test_renderers.py::test_windows_file_uri_encodes_special_characters `
