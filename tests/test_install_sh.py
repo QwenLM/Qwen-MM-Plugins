@@ -334,6 +334,7 @@ do_verify
     ("harness", "expected"),
     [
         ("claude", "claude plugin install qwen-mm-plugins-core@qwen-mm-plugins"),
+        ("codebuddy", "codebuddy plugin install qwen-mm-plugins-core@qwen-mm-plugins"),
         ("codex", "codex plugin add qwen-mm-plugins-core@qwen-mm-plugins"),
         ("qoder", "qodercli plugins install qwen-mm-plugins-core@qwen-mm-plugins"),
         ("openclaw", "openclaw plugins install qwen-mm-plugins-core --marketplace"),
@@ -353,6 +354,61 @@ def test_local_install_uses_each_harness_native_command(tmp_path, harness, expec
     assert str(checkout) in result.stdout
 
 
+def test_harness_catalog_includes_codebuddy_but_not_ui_only_desktop_apps():
+    result = _bash('printf "%s\n%s\n" "$MP_HARNESSES" "$CFG_HARNESSES"')
+    assert result.returncode == 0, result.stderr
+    marketplace, config = result.stdout.splitlines()
+    assert "codebuddy" in marketplace.split()
+    for desktop_app in ("workbuddy", "qoderwork", "qwenwork"):
+        assert desktop_app not in marketplace.split()
+        assert desktop_app not in config.split()
+
+
+def test_codebuddy_rejects_broken_marketplace_ref_urls():
+    result = _bash("REPO_REF=qwen-mm-plugins-core-v1.0.1; install_for codebuddy qwen-mm-plugins-core")
+    assert result.returncode == 1
+    assert "tested codebuddy client cannot install Git marketplace #ref URLs reliably" in result.stdout
+
+
+def test_codebuddy_marketplace_parser_distinguishes_local_and_remote():
+    local_listing = """[
+  {
+    "name": "qwen-mm-plugins",
+    "type": "directory",
+    "description": "Marketplace from /tmp/checkout with spaces"
+  }
+]"""
+    remote_listing = """[
+  {
+    "name": "qwen-mm-plugins",
+    "type": "git",
+    "description": "Marketplace from https://example.test/repo.git"
+  }
+]"""
+    result = _bash(
+        'printf "%s\n" "$LOCAL_LISTING" | codebuddy_marketplace_root_from_list qwen-mm-plugins; '
+        'printf "%s\n" "$REMOTE_LISTING" | codebuddy_marketplace_root_from_list qwen-mm-plugins',
+        LOCAL_LISTING=local_listing,
+        REMOTE_LISTING=remote_listing,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["/tmp/checkout with spaces", "remote"]
+
+
+def test_codebuddy_install_checks_inventory_when_cli_falsely_returns_zero(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    cli = fake_bin / "codebuddy"
+    cli.write_text("#!/usr/bin/env bash\nexit 0\n")
+    cli.chmod(0o755)
+    result = _bash(
+        "confirm() { return 0; }; install_for codebuddy qwen-mm-plugins-core",
+        PATH=f"{fake_bin}:{os.environ['PATH']}",
+    )
+    assert result.returncode == 1
+    assert "CodeBuddy did not install qwen-mm-plugins-core@qwen-mm-plugins" in result.stdout
+
+
 @pytest.mark.parametrize(
     ("harness", "expected"),
     [
@@ -361,6 +417,13 @@ def test_local_install_uses_each_harness_native_command(tmp_path, harness, expec
             (
                 "claude plugin marketplace update qwen-mm-plugins",
                 "claude plugin update qwen-mm-plugins-core@qwen-mm-plugins",
+            ),
+        ),
+        (
+            "codebuddy",
+            (
+                "codebuddy plugin marketplace update qwen-mm-plugins",
+                "codebuddy plugin update qwen-mm-plugins-core@qwen-mm-plugins",
             ),
         ),
         (
@@ -464,6 +527,7 @@ def test_gemini_skill_checkout_uses_same_stable_tag():
     ("harness", "expected"),
     [
         ("claude", "/reload-plugins"),
+        ("codebuddy", "/reload-plugins"),
         ("codex", "start a new task"),
         ("qoder", "/plugins reload"),
         ("openclaw", "openclaw gateway restart"),

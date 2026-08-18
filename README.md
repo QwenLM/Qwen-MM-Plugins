@@ -10,12 +10,12 @@ Native multimodal plugins for Qwen models. Make any agent harness multimodal-nat
 
 ## Install
 
-The guided installer supports Claude Code, Codex, Qoder, OpenClaw, Qwen Code, and Gemini CLI. It
-uses each harness's native install command and keeps shared configuration in
-`~/.qwen-mm-plugins/config`.
+The guided installer supports Claude Code, CodeBuddy, Codex, Qoder, OpenClaw, Qwen Code, and Gemini
+CLI. Shared configuration lives in `~/.qwen-mm-plugins/config`.
 
-Manual setup is also documented for DeepSeek Harness, Hermes Agent, opencode, pi, and QwenPaw in
-the [manual harness guide](docs/en/manual_harnesses.md).
+In-app setup for WorkBuddy, QoderWork, and QwenWork, plus manual setup for DeepSeek Harness, Hermes
+Agent, opencode, pi, and QwenPaw, is documented in the
+[other harness guide](docs/en/manual_harnesses.md).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash

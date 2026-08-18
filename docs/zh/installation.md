@@ -9,19 +9,18 @@
 | 安装正式版本 | `bash install.sh install` | 各能力最新的已发布 tag |
 | 更新已有安装 | `bash install.sh update` | 当前发布目录 |
 | 测试未发布代码 | `bash install.sh local` | 当前 checkout，包括未提交修改 |
-| 回退单个能力 | `QMP_REF=<tag> bash install.sh install` | 指定的不可变 tag |
+| 回退单个能力 | 见[回退](#回退) | 指定的不可变 tag |
 
 正式安装不会跟随 `main`。测试分支时，先 checkout 该分支，再使用 `local`。
 
 ## 引导式安装器
 
-安装器支持 Claude Code、Codex、Qoder、OpenClaw、Qwen Code 和 Gemini CLI。它调用各 harness
-的原生安装机制，并将共享配置保存在 `~/.qwen-mm-plugins/config`。
+安装器支持 Claude Code、CodeBuddy、Codex、Qoder、OpenClaw、Qwen Code 和 Gemini CLI。
+它调用各 harness 的原生安装机制，并将共享配置保存在
+`~/.qwen-mm-plugins/config`。
 
-DeepSeek Harness 不会出现在 harness 选择列表中。它的 `dsh plugin` 命令只管理 profile 的
-JavaScript 包，不能注册 MCP server 或安装 Skill；请改用
-[DeepSeek Harness 手动配置](manual_harnesses.md)。安装器的
-**Configure** 和 **Verify** 不依赖 harness 专属注册命令，因此仍可使用。
+这里的 `Qoder` 和 `Qwen Code` 不包括独立桌面应用 QoderWork 与 QwenWork；后两者请使用
+[应用内安装](manual_harnesses.md)。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash
@@ -44,6 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 | Harness | 让更新生效 |
 |---|---|
 | Claude Code | 执行 `/reload-plugins`，或重启 |
+| CodeBuddy | 执行 `/reload-plugins`，或重启 |
 | Codex | 新建 task，或重启 |
 | Qoder | 执行 `/plugins reload`，或重启 |
 | OpenClaw | 托管 Gateway 通常自动重启；否则执行 `openclaw gateway restart` |
@@ -52,7 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 
 ### 回退
 
-只选择 tag 对应的能力：
+对于支持远程 tag 的引导式 harness，只选择 tag 对应的能力：
 
 ```bash
 QMP_REF=qwen-mm-plugins-search-v1.0.1 bash install.sh install
@@ -100,7 +100,7 @@ uvx --from \
 运行最新安装器，选择 **Update → other (manual / another harness)**，再把两处都更新到脚本打印的
 同一 tag。使用软链接时，每个能力/tag 应使用独立 checkout，因为不同能力 tag 可能指向不同 commit。
 
-各手动 harness 的配置示例见[手动配置其他 Harness](manual_harnesses.md)。
+其他 harness 的应用内步骤和具体配置示例见[其他 Harness 安装](manual_harnesses.md)。
 
 ## Windows（WSL2）
 

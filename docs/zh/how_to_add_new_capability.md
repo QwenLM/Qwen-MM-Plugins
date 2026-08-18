@@ -80,9 +80,10 @@ claude plugin install qwen-mm-plugins-<你的能力>@qwen-mm-plugins
    ```toml
    where = [..., "src/capabilities/<yourname>"]
    ```
-5. 在 `plugin-versions.json` 中加入初始版本，并在 `.claude-plugin/marketplace.json` 中加入
-   固定到对应 tag 的 `git-subdir` entry。从现有能力复制三套 harness manifest；有 server 的
-   能力还需 `.mcp.json`。运行 `scripts/check_manifests.py`，再按[插件发布](releasing.md)打首个 tag。
+5. 在 `plugin-versions.json` 中加入初始版本，并在规范的 `.claude-plugin/marketplace.json`
+   （CodeBuddy 与 WorkBuddy 也读取该文件）中加入固定到对应 tag 的 `git-subdir` entry。从现有
+   能力复制三套 harness manifest；有 server 的能力还需 `.mcp.json`。运行
+   `scripts/check_manifests.py`，再按[插件发布](releasing.md)打首个 tag。
 
 `__main__.py` 从 `src/capabilities/example/` **原样复制**——它从目录名推断 import 名，没有任何 per-server 字面量。
 纯 skill 能力不写 `mcpServers`、也没有 `.mcp.json`，但仍保留三套 harness manifest。

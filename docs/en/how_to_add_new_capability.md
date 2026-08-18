@@ -82,8 +82,9 @@ Copy `src/capabilities/example/` to `src/capabilities/<yourname>/`, rename `qwen
    where = [..., "src/capabilities/<yourname>"]
    ```
 5. Add the initial version to `plugin-versions.json` and a matching tag-pinned `git-subdir` entry to
-   `.claude-plugin/marketplace.json`. Copy the three harness manifests from an existing capability;
-   server capabilities also carry `.mcp.json`. Run `scripts/check_manifests.py`, then follow
+   the canonical `.claude-plugin/marketplace.json`, which CodeBuddy and WorkBuddy also consume. Copy
+   the three harness manifests from an existing capability; server capabilities also carry
+   `.mcp.json`. Run `scripts/check_manifests.py`, then follow
    [Plugin releases](releasing.md) for the first tag.
 
 `__main__.py` is **copied verbatim** from `src/capabilities/example/` — it infers the import name from the directory name and contains no per-server literals.
