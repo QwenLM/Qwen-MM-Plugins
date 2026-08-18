@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import types
+from pathlib import PureWindowsPath
 
 import pytest
 
@@ -103,6 +104,38 @@ def test_web_renderer_uses_generic_isolated_worker(monkeypatch):
         "arguments": {"path": "sample.html", "options": {"max_pages": 2, "budget": "small"}},
         "options": {"timeout": web._ISOLATED_TIMEOUT},
     }
+
+
+def test_web_source_url_uses_platform_file_uri(tmp_path):
+    from qwen_mm_plugins_core.renderers.web import _source_url_and_label
+
+    source = tmp_path / "页面 # 100%.html"
+    url, label = _source_url_and_label(str(source))
+
+    assert url == source.resolve().as_uri()
+    assert label == source.name
+    assert " " not in url
+    assert "#" not in url
+    assert "%23" in url
+    assert "%25" in url
+
+
+def test_windows_file_uri_encodes_special_characters():
+    uri = PureWindowsPath(r"C:\Users\Qwen User\页面 # 100%.html").as_uri()
+
+    assert uri.startswith("file:///C:/Users/Qwen%20User/")
+    assert "\\" not in uri
+    assert " " not in uri
+    assert "#" not in uri
+    assert "%23" in uri
+    assert "%25" in uri
+
+
+def test_web_source_url_preserves_http_urls():
+    from qwen_mm_plugins_core.renderers.web import _source_url_and_label
+
+    url = "https://example.com/page?q=hello%20world#section"
+    assert _source_url_and_label(url) == (url, url)
 
 
 def test_web_worker_closes_browser_when_navigation_fails(monkeypatch):

@@ -7,12 +7,20 @@ merged into the last full page.
 from __future__ import annotations
 
 import io
-import os
+from pathlib import Path
 from typing import Any
 
 # Trailing strip shorter than this fraction of viewport merges into previous page.
 _MERGE_THRESHOLD = 0.4
 _ISOLATED_TIMEOUT = 150
+
+
+def _source_url_and_label(path: str) -> tuple[str, str]:
+    if path.startswith(("http://", "https://")):
+        return path, path
+
+    local_path = Path(path).expanduser().resolve()
+    return local_path.as_uri(), local_path.name
 
 
 def _render_in_process(path: str, opts: dict[str, Any]) -> list:
@@ -30,12 +38,7 @@ def _render_in_process(path: str, opts: dict[str, Any]) -> list:
     viewport = {"small": (800, 600), "normal": (1280, 960), "large": (1920, 1080)}
     vw, vh = viewport.get(budget, (1280, 960))
 
-    if path.startswith(("http://", "https://")):
-        url = path
-        label = path
-    else:
-        url = f"file://{os.path.abspath(path)}"
-        label = os.path.basename(path)
+    url, label = _source_url_and_label(path)
 
     with sync_playwright() as p:
         try:
