@@ -44,6 +44,10 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 | `blender` | 在 Blender 中完成建模、材质、灯光与渲染 | Blender；无界面 Linux 需要 Xvfb | [Cookbook](cookbooks/blender/usage.md) |
 | `freecad` | 参数化 CAD、STEP/STL 与 FEM 工作流 | FreeCAD；FEM 需要 CalculiX；无界面 Linux 需要 Xvfb | [Cookbook](cookbooks/freecad/usage.md) |
 | `edu-agent` | 生成中文数理讲解视频与交互页面 | 纯 Skill；Node/Chromium、ffmpeg；视频旁白需要 DashScope | [Cookbook](cookbooks/edu-agent/usage.md) |
+| `proxy` | 本地协议代理，给纯文本模型看图（拦截图片 → VLM 转文字 → 转发文本） | VLM key + 一个文本模型上游端点 | [视觉代理](#视觉代理vision-proxy给纯文本模型看图零基础快速开始) |
+
+> 说明：`proxy` 以**本地 HTTP 代理（常驻服务）**形态交付，不是 Skill + MCP server；
+> 详见下方独立的[视觉代理](#视觉代理vision-proxy给纯文本模型看图零基础快速开始)章节。
 
 ## 快速体验
 
@@ -73,6 +77,51 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 - [配置参考（英文）](docs/en/configuration.md)
 - [贡献指南](CONTRIBUTING.md) · [本地开发](docs/zh/local_development.md)
 - [添加能力](docs/zh/how_to_add_new_capability.md) · [测试](docs/zh/testing.md)
+
+## 视觉代理（vision-proxy）：给纯文本模型看图（零基础快速开始）
+
+
+**它做什么**：本机起一个常驻服务（默认 `127.0.0.1:8787`）。Claude Code / Codex / Qwen Code 把请求发到它，
+它拦下图片 → 用视觉模型（VLM，如 mimo-v2.5）转成一段文字描述 → 把「文字」转发给上游文本模型。
+上游只收到文字，所以纯文本模型也能"看懂"图。
+
+**代理支持什么**
+- **入站节点类型**：`responses`、`chat` 和 Anthropic（`/v1/messages`）三种。**纯自动识别，没有配置项**：先按请求路径匹配（`/v1/messages`→Anthropic、`/v1/responses`→Responses、`/v1/chat/completions`→Chat），路径认不出再按请求体结构兜底（有 `input` 字段→Responses、有 `messages` 列表→Anthropic、否则 Chat）；两者都认不出则返回 400。
+- **模型类型**：**能看图的 VLM 模型**（图片原样透传）与**纯文本模型**（图片被转成文字描述）都支持；配置文件里的 `model_capabilities` 决定谁是哪种。
+- **上游模型识别机制**：模型名 → 看图/纯文本的映射写在代理配置文件里。每次 `start` 会**自动扫描**三处 harness 配置文件（Claude Code / Codex / Qwen Code），把发现的模型按 harness 分组，只对**新出现的模型**交互询问你确认（默认纯文本，最安全）；已确认的模型静默复用。可用 `qwen-mm-plugins-proxy models` 随时查看或修改这份映射。
+
+**你需要准备**：
+1. 一个能看图的 VLM 的 API Key（mimo / qwen-vl / 豆包等，填在 `vlm.api_key`）；
+2. 文本模型与视觉模型（VLM）的上游端点：**两端都可以是 OpenAI 兼容（Chat）或 Anthropic 格式，文本侧还额外支持 Responses 格式**。文本侧填在 `relays[].base_url`、协议由 `relays[].protocol` 指定；VLM 侧填在 `vlm.base_url`、格式由 `vlm.format` 指定。Volcengine / DeepSeek 等都可以，只要端点支持其中一种格式。
+
+**三步开始**：
+1. 编辑 `~/.qwen-mm-plugins/proxy.json`（不存在就新建），按下面模板填（key 用你自己的）：
+
+```json
+{
+  "server": { "bind_port": 8787 },
+  "relays": [
+    { "name": "my-text", "protocol": "chat",
+      "base_url": "https://<你的上游端点>", "api_key": "<你的上游KEY>", "models": ["*"] }
+  ],
+  "vlm": {
+    "model": "mimo-v2.5",
+    "base_url": "https://<你的VLM端点>", "api_key": "<你的VLM_KEY>", "format": "chat"
+  },
+  "model_capabilities": { "global": { "minimax-m3": "vision", "doubao-seed-2.1-turbo": "vision" } }
+}
+```
+
+2. 启动：`qwen-mm-plugins-proxy start`（首次会交互引导你确认各模型是否支持图片；之后 start/stop 自动接线/还原，不再打扰）。
+3. 验证：在 Claude Code / Codex / Qwen Code 里贴一张图问「这是什么」，然后 `qwen-mm-plugins-proxy logs` 出现
+`injected:1` 即为成功。
+
+**配置文件只在 `start` / `stop` 时被改写**：`start` 会备份并改写三处 harness 的 base_url 指向本代理，`stop` 时还原。服务运行期间代理**不会监听、也不会改写任何配置文件**——你运行中手动改了 harness 配置（如换模型、换 relay）或 `proxy.json`，代理不会感知、也不会去修；改动要等下一次 `start`（或重启代理）才生效。
+
+**常用命令**：`start` / `stop` / `status` / `logs` / `check` / `models`(改模型能力) / `models-scan` / `test-image`。
+
+> 更完整的分步说明（含三层拓扑、CC Switch / Codex++ 共存、故障排查）见
+> `docs/superpowers/plans/2026-08-16-proxy-phase1-manual-test.md`。
 
 ## 许可证
 

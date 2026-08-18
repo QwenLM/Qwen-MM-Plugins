@@ -8,3 +8,12 @@ dist/
 *.egg
 .venv*/
 eval/
+
+# proxy 文档只跟踪 PHASE1 设计规范；以下本地文档不上传
+docs/superpowers/specs/2026-08-13-qwen-mm-proxy-design-phase2.md
+docs/superpowers/plans/2026-08-16-proxy-phase1-plan.md
+docs/superpowers/plans/2026-08-16-proxy-phase1-acceptance.md
+
+# research 调研文档：本地参考用，不跟踪不上传
+research/README.md
+research/dsh-vision-plugins-survey.md

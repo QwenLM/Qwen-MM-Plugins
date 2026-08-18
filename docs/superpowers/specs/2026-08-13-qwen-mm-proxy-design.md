@@ -1,7 +1,7 @@
 # Qwen-MM-Plugins 代理安全网设计（proxy capability）— 第一阶段（Phase 1）
 
 > 日期：2026-08-13
-> 修订：2026-08-16 —— 吸收 DSH 视觉插件生态调研启示；同日拆分为两个文件：**本文件 = 第一阶段（Claude Code + Codex + Qwen Code）**；第二阶段（OpenCode / DSH / hooks / Web UI / 磁盘缓存 / 跨协议流式）见 `2026-08-13-qwen-mm-proxy-design-phase2.md`
+> 修订：2026-08-16 —— 吸收 DSH 视觉插件生态调研启示；同日拆分：**本文件 = 第一阶段（Claude Code + Codex + Qwen Code）**；第二阶段（OpenCode / DSH / hooks / Web UI / 磁盘缓存 / 跨协议流式）另行设计
 > 状态：设计稿（待用户审阅）
 > 目标仓库：QwenLM/Qwen-MM-Plugins（开发从 fork 开始，成熟后回馈上游）
 > 范围：为 Skill + MCP 插件体系增加一层协议代理安全网，解决“纯文本模型接收图片导致报错”和“工具/用户图片漏进上下文”的问题。
@@ -19,9 +19,9 @@ Qwen-MM-Plugins 目前以 Skill + MCP server 形式为 Claude Code、Codex、Qod
 - 代理派（Codex++ PR #1550）：在模型与 harness 之间拦截请求，抽图转文字后替换，最无感，但当前实现绑定 CodexApp，且 Responses 协议下直连上游。
 - Hook 派（CC-Vision、cc-vision-hook 等）：用 `UserPromptSubmit` / `PostToolUse` 把粘贴图和工具图转文字后 `additionalContext` 注入，但只能追加、不能删除原图，对“协议级硬拒绝图片”的模型无效。
 - MCP 工具派（vision-bridge-mcp 等）：提供图片转文字的 MCP 工具，靠模型主动调用，不拦截。
-- 进程内适配器派（DSH 生态，新增主流）：在 harness 的 LLM adapter seam 上注册新 provider 路由，`stream()` 里扫描图片块 → VLM 转文字 → 替换 → 透传内层适配器（如 `dsh-vision-recognizer`、`dsh-deepseek-vision`、`dsh-llm-vision-bridge`、`dsh-vision-proxy` 等 10+ 个插件）。这是“代理派”在 harness 进程内的原生落法：免协议归一化、与 relay 天然共存，但绑定具体 harness。详细调研见 `research/dsh-vision-plugins-survey.md`。
+- 进程内适配器派（DSH 生态，新增主流）：在 harness 的 LLM adapter seam 上注册新 provider 路由，`stream()` 里扫描图片块 → VLM 转文字 → 替换 → 透传内层适配器（如 `dsh-vision-recognizer`、`dsh-deepseek-vision`、`dsh-llm-vision-bridge`、`dsh-vision-proxy` 等 10+ 个插件）。这是“代理派”在 harness 进程内的原生落法：免协议归一化、与 relay 天然共存，但绑定具体 harness。
 
-> **DSH 修订 · 新设计输入**：DSH 存在“附件准入”闸门——按模型 `inputModalities` 在图片进入会话前就拒绝（`MODEL_DOES_NOT_SUPPORT_IMAGES`），插件须先“声明图片输入”图片才能进请求。这是 Claude Code / Codex / Qwen Code 都没有的一层，对“代理派”意味着**只改 base_url 可能拦不到图**，需在能力判定层预留准入声明（第二阶段实现，见 phase-2 §3）。
+> **DSH 修订 · 新设计输入**：DSH 存在“附件准入”闸门——按模型 `inputModalities` 在图片进入会话前就拒绝（`MODEL_DOES_NOT_SUPPORT_IMAGES`），插件须先“声明图片输入”图片才能进请求。这是 Claude Code / Codex / Qwen Code 都没有的一层，对“代理派”意味着**只改 base_url 可能拦不到图**，需在能力判定层预留准入声明（第二阶段实现）。
 
 本设计的目标：**在 Qwen-MM-Plugins 内新增 `proxy` capability，以协议代理为主、hooks 与 MCP 工具为兜底，在纯文本模型场景下统一拦截所有图片内容，并兼容多协议互转。**
 
@@ -29,7 +29,7 @@ Qwen-MM-Plugins 目前以 Skill + MCP server 形式为 Claude Code、Codex、Qod
 
 第一版包含：
 
-- **目标 harness（Phase 1）**：Claude Code（Anthropic）+ Codex（OpenAI）+ Qwen Code（OpenAI Chat / DashScope 兼容）三个一等 harness（本仓库是千问插件，Qwen Code 优先一等）；OpenCode 与 DSH 支持均留第二阶段（见 phase-2 spec）。
+- **目标 harness（Phase 1）**：Claude Code（Anthropic）+ Codex（OpenAI）+ Qwen Code（OpenAI Chat / DashScope 兼容）三个一等 harness（本仓库是千问插件，Qwen Code 优先一等）；OpenCode 与 DSH 支持均留第二阶段。
 - 本地常驻 HTTP 代理，单端口支持三种入站协议：Anthropic Messages、OpenAI Responses、OpenAI Chat。
 - 协议归一化层：**9 种组合（入站 3 × 上游 3）的请求转换全部实现，含 Responses 上游序列化**（Phase 1：三格式全量保留，不瘦身）；流式转换第一版支持“入站=上游”直通，以及 Anthropic ↔ Chat 两种常见跨协议转换，其余跨协议流式（Responses ↔ 其他）留第二阶段。
 - 图片处理管线：每次请求全量扫描、VLM 转文字、两层缓存、上下文预算、fail-open。
@@ -37,10 +37,10 @@ Qwen-MM-Plugins 目前以 Skill + MCP server 形式为 Claude Code、Codex、Qod
 - MCP 复用现有 api 能力（工具派，非 proxy 新增交付）。
 - 生命周期管理：`install.sh` 接入、`proxy start/stop/status/logs/test-image/check`、三 harness base_url 改写与回滚。
 
-第一版不包含（完整设计见 `2026-08-13-qwen-mm-proxy-design-phase2.md`）：
+第一版不包含（第二阶段实现）：
 
 - OpenCode 一等接入（Phase 1 · 第二阶段）：OpenCode 是配置文件型 harness（`opencode.json` 自定义 provider，入站 OpenAI Chat）；本阶段只做 Qwen Code，OpenCode 统一放第二阶段。
-- DSH 兼容（Phase 1 · 第二阶段）：DSH 无 base_url 概念，以 provider 路由/适配器形态接入；准入声明（§6.6→phase-2 §3）第二阶段实现。
+- DSH 兼容（Phase 1 · 第二阶段）：DSH 无 base_url 概念，以 provider 路由/适配器形态接入；准入声明（§6.6）第二阶段实现。
 - Claude Code 侧 hooks（UserPromptSubmit / PostToolUse）兜底（第二阶段）：代理是第一跳、100% 覆盖 CC 流量，hooks 属冗余兜底，实现与 `enable_hooks` 开关留第二阶段。
 - Web UI 控制面板（第二阶段）：控制面第一版只提供 CLI 与 JSON 管理 API 接口预留（`ui_port` 保留），内置 Web UI 留第二阶段。
 - 磁盘缓存与 Phase 2 后台深缓存（第二阶段）：第一版只用内存缓存（§5.5），`cache_disk` 与黄金窗口外后台写缓存留第二阶段。
@@ -190,7 +190,7 @@ harness → 本代理(8787) → [可选] cc-switch / codex++ → 真实上游
 分**两阶段**处理：
 
 - **Phase 1 同步**（阻塞请求，Phase 1 实现）：当前轮不限量 + 黄金窗口内历史（受 X 预算封顶，§5.7）→ 同步调 VLM 并注入描述。
-- **Phase 2 后台**（`asyncio`/线程后台，**第二阶段实现**，见 phase-2 §6）：仅当 `X > 10` 时，收集黄金窗口外、分析深度内、未缓存的深层图，异步调 VLM **只写缓存、不注入当前消息**；失败静默，缓存保持未命中待后续请求重试。
+- **Phase 2 后台**（`asyncio`/线程后台，**第二阶段实现**）：仅当 `X > 10` 时，收集黄金窗口外、分析深度内、未缓存的深层图，异步调 VLM **只写缓存、不注入当前消息**；失败静默，缓存保持未命中待后续请求重试。
 
 不只看本轮的原因：
 
@@ -215,13 +215,13 @@ harness → 本代理(8787) → [可选] cc-switch / codex++ → 真实上游
 
 多图按 `[[图片K]]` 顺序标记。
 
-Phase 1 形态边界：只处理协议内结构化图片块与字符串内嵌 data URL（如上）；**不解析“文件路径形式”的图片**（如工具存盘返回路径、`/tmp/xxx.png` 这类工具输出）。路径图不属于协议内图片通道，交由 MCP 工具派 / Skill 兜底（§7.2），避免 Phase 1 在文件系统探测上膨胀（路径图在 OpenCode 接入时是否纳入，见 phase-2 §2）。
+Phase 1 形态边界：只处理协议内结构化图片块与字符串内嵌 data URL（如上）；**不解析“文件路径形式”的图片**（如工具存盘返回路径、`/tmp/xxx.png` 这类工具输出）。路径图不属于协议内图片通道，交由 MCP 工具派 / Skill 兜底（§7.2），避免 Phase 1 在文件系统探测上膨胀（路径图在 OpenCode 接入时是否纳入，第二阶段再定）。
 
 ### 5.4 VLM 调用
 
 - 当前轮：有用户文字问题时用 Tier2（`URL+问题` 缓存键 + 聚焦 prompt）；无问题退回 Tier1（全面描述）。
 - 历史轮：只用 Tier1。
-- 批量：`BATCH_SIZE=5`，单批失败隔离、各自重试；`BATCH_MAX_ATTEMPTS=2`（每批共 3 次尝试），指数退避 `3·2^(n-1)` 加抖动。**（Phase 1 已实现：VLM 失败重试 3 次 + 指数退避 + 抖动——`pipeline._describe_with_retry` / `vlm._is_retryable`；AUTH/PARSE 不重试。BATCH_SIZE 分批并行留 Phase 2，见 phase-2 §8。）**
+- 批量：`BATCH_SIZE=5`，单批失败隔离、各自重试；`BATCH_MAX_ATTEMPTS=2`（每批共 3 次尝试），指数退避 `3·2^(n-1)` 加抖动。**（Phase 1 已实现：VLM 失败重试 3 次 + 指数退避 + 抖动——`pipeline._describe_with_retry` / `vlm._is_retryable`；AUTH/PARSE 不重试。BATCH_SIZE 分批并行留 Phase 2。）**
 - 后端：默认 DashScope Qwen（`qwen3.5-omni-plus` / `qwen-vl-max`），可配任意 OpenAI-compatible 或 Anthropic 端点。
 - **格式独立于主模型**：VLM 后端单独配 `format ∈ {anthropic, responses, chat}`（默认 `chat`）。主模型与 VLM 常非同一厂商、协议不同，故默认不自动跟随主 relay；枚举与主入口一致，可选 `auto` 跟随匹配到的主 relay 协议（仅同厂商时方便）。
 - **VLM 端协议面收敛为 OpenAI 兼容为主、Anthropic 原生可选**（DSH 修订，参考 `dsh-vision-recognizer`）：VLM 端点绝大多数是 OpenAI 兼容，第一版只实现 `/chat/completions`（chat）作为完整路径，`format=anthropic` 只做原生 Messages 直发，`responses` 留二版——降低 VLM 端协议实现面，把精力留给主链路协议归一化。
@@ -364,13 +364,13 @@ auto_local_ollama = true       # DSH 修订：启动时探测 http://localhost:1
 
 api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的标记，真实上游 key 不下发到 harness；日志不写明文 key。
 
-### 6.6 准入声明（第二阶段 · 完整设计见 phase-2 spec §3）
+### 6.6 准入声明（第二阶段实现）
 
-针对带 `inputModalities` 类“附件准入”闸门的客户端（典型：DSH）：这类客户端在图片进入会话前按模型声明拒绝（`MODEL_DOES_NOT_SUPPORT_IMAGES`），**纯改 base_url 拦不到图——图片根本进不了请求**。本阶段三 harness（Claude Code / Codex / Qwen Code）均无此闸门，准入声明的完整设计（`admission_declare` 字段、声明机制、判定结果缓存、安全语义）移入 `2026-08-13-qwen-mm-proxy-design-phase2.md` §3，第二阶段实现。
+针对带 `inputModalities` 类“附件准入”闸门的客户端（典型：DSH）：这类客户端在图片进入会话前按模型声明拒绝（`MODEL_DOES_NOT_SUPPORT_IMAGES`），**纯改 base_url 拦不到图——图片根本进不了请求**。本阶段三 harness（Claude Code / Codex / Qwen Code）均无此闸门，准入声明的完整设计（`admission_declare` 字段、声明机制、判定结果缓存、安全语义）留待第二阶段实现。
 
 ## 7. MCP 工具派兜底（复用现有 api 能力）
 
-代理是主机制；MCP 工具派只做代理覆盖不到的兜底（参考社区「MCP 工具派」做法）。Claude Code hooks 兜底已移出本阶段（代理是第一跳、100% 覆盖 CC 流量，hooks 属冗余且只能追加不能删原图），完整设计见 `2026-08-13-qwen-mm-proxy-design-phase2.md` §4。
+代理是主机制；MCP 工具派只做代理覆盖不到的兜底（参考社区「MCP 工具派」做法）。Claude Code hooks 兜底已移出本阶段（代理是第一跳、100% 覆盖 CC 流量，hooks 属冗余且只能追加不能删原图）。
 
 ### 7.1 MCP 工具派（复用现有 api 能力，不新增）
 
@@ -380,7 +380,7 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 
 - 本阶段三 harness（CC/Codex/Qwen Code）全部只依赖代理，不做任何 harness 侧 hooks。
 - 路径形式图片的兜底（若需要）：由 MCP 工具派 / Skill 处理，代理不解析文件路径（§5.3 边界）。
-- DSH 上 MCP 图片块被丢弃的实测约束（`content discarded`）是第二阶段的 DSH 设计输入，见 phase-2 spec §3。
+- DSH 上 MCP 图片块被丢弃的实测约束（`content discarded`）是第二阶段的 DSH 设计输入。
 
 ## 8. 生命周期与 harness 接入
 
@@ -412,7 +412,7 @@ api_key 只存本地配置（600 权限）；客户端只发识别 relay 用的�
 - 改写前备份原配置，`proxy uninstall` 可回滚。
 - **冲突检测**：改写前读当前 base_url 归属，若已是 cc-switch / codex++ / 其它代理，提示链路顺序（本代理需为第一跳，§4.4）而非静默覆盖。
 
-**DSH 不在本阶段 base_url 改写范围（第二阶段，见 phase-2 spec §3）**：DSH 无 base_url 概念，外部 HTTP 代理的 base_url 改写机制不适用，其等价形态是 provider 路由 / 进程内适配器包装（即准入声明的落地形态）。本阶段三 harness（CC/Codex/Qwen Code）维持 base_url 改写；DSH 支持以 DSH 生态形态接入，第二阶段实现。
+**DSH 不在本阶段 base_url 改写范围（第二阶段实现）**：DSH 无 base_url 概念，外部 HTTP 代理的 base_url 改写机制不适用，其等价形态是 provider 路由 / 进程内适配器包装（即准入声明的落地形态）。本阶段三 harness（CC/Codex/Qwen Code）维持 base_url 改写；DSH 支持以 DSH 生态形态接入，第二阶段实现。
 
 ### 8.3 运行命令
 
@@ -517,12 +517,12 @@ Phase 1 完成的硬性判定，逐项在真实环境验证：
 - 补上 MCP 工具派（复用 api 能力），覆盖代理覆盖不到的通道。
 - 模型能力判定从“写死名单”改为“配置为主 + 名单兜底”，避免名称启发式误判。
 
-**与 DSH 进程内适配器派的对照（第二阶段设计输入，详见 `research/dsh-vision-plugins-survey.md` §4.2 与 phase-2 spec §3）**：DSH 生态主流（`dsh-vision-recognizer` 等）与本设计目标一致、位置不同——进程内方案免协议归一化、天然与 relay 共存，但绑定 harness；本设计以跨 harness（CC/Codex/Qwen Code 一套代码）为代价换取通用性。
+**与 DSH 进程内适配器派的对照（第二阶段设计输入）**：DSH 生态主流（`dsh-vision-recognizer` 等）与本设计目标一致、位置不同——进程内方案免协议归一化、天然与 relay 共存，但绑定 harness；本设计以跨 harness（CC/Codex/Qwen Code 一套代码）为代价换取通用性。
 
 ## 12. 已确认决策记录（Phase 1）
 
 - 协议范围：方案 A，Claude Code（Anthropic）+ Codex / Qwen Code（OpenAI Responses/Chat），**三协议全量（含 Responses 上游序列化）**。
-- 目标 harness（Phase 1）：Claude Code + Codex + Qwen Code 三个一等（本仓库是千问插件，Qwen Code 优先）；OpenCode 与 DSH 留第二阶段（见 phase-2 spec）。
+- 目标 harness（Phase 1）：Claude Code + Codex + Qwen Code 三个一等（本仓库是千问插件，Qwen Code 优先）；OpenCode 与 DSH 留第二阶段。
 - 总体路线：方案 3，代理为主 + MCP 工具派兜底 + 能力声明。
 - 落地方式：在 Qwen-MM-Plugins fork 上新增 `proxy` capability，成熟后回馈上游。
 - 未知模型：默认拦截，走一次 VLM。
@@ -550,4 +550,4 @@ Phase 1 完成的硬性判定，逐项在真实环境验证：
 - Web UI 控制面板留第二阶段：本阶段控制面为 CLI + JSON 管理 API，无 UI 维护负担。
 - VLM 结构化证据 prompt 会拉长描述输出（逐字 OCR + uncertainty），增加注入 token，受 §5.7 上下文预算约束，`AVG_DESC_BUDGET` 需实测调参。
 - 调研数据新鲜度：DSH 插件迭代极快，个别插件实现可能漂移；但“进程内适配器包装是主流、纯工具派退居二线”这一分类结论稳定。
-- 第二阶段风险（OpenCode 接入 / DSH 兼容与准入声明 / hooks / Web UI / 磁盘缓存 / 跨协议流式 / relay 轮转）见 `2026-08-13-qwen-mm-proxy-design-phase2.md` §8。
+- 第二阶段风险（OpenCode 接入 / DSH 兼容与准入声明 / hooks / Web UI / 磁盘缓存 / 跨协议流式 / relay 轮转）在第二阶段另行评估。
