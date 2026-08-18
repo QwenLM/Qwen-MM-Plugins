@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Qwen multimodal understanding plugins — Agent Skills + MCP servers",
-    "version": "1.0.5"
+    "version": "1.0.6"
   },
   "plugins": [
     {
@@ -25,7 +25,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/api",
-        "ref": "qwen-mm-plugins-api-v1.0.3"
+        "ref": "qwen-mm-plugins-api-v1.0.4"
       },
       "description": "Cloud APIs for understanding media, by model family: VL (vision chat, OCR, grounding), Omni A/V (timestamped captioning, ASR / multi-speaker diarization, temporal grounding, event counting), plus ASR and segmentation (SAM3) — as MCP tools; currently supports DashScope."
     },
@@ -45,7 +45,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/video-memory",
-        "ref": "qwen-mm-plugins-video-memory-v1.0.1"
+        "ref": "qwen-mm-plugins-video-memory-v1.0.2"
       },
       "description": "Hierarchical graph memory for long-video QA (build + query) as an MCP server."
     },
@@ -65,7 +65,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/edu-agent",
-        "ref": "qwen-mm-plugins-edu-agent-v1.0.1"
+        "ref": "qwen-mm-plugins-edu-agent-v1.0.2"
       },
       "description": "Educational tutorial-video generator (skill only): turn a math/science problem or image into a step-by-step Chinese explainer video or interactive page."
     },
