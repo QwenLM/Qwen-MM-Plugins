@@ -1,0 +1,44 @@
+name: Path URI validation
+
+on:
+  push:
+    branches: [codex/issue-31-windows-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  windows-file-uri:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.10.9"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install LibreOffice
+        shell: pwsh
+        run: choco install libreoffice-fresh --yes --no-progress
+
+      - name: Run Windows path regressions
+        shell: pwsh
+        run: |
+          $lo = Get-Item "C:\Program Files\LibreOffice\program\soffice.exe"
+          $env:PATH = "$($lo.Directory.FullName);$env:PATH"
+          uv run --no-project --python 3.12 --with pytest --with ".[all]" python -m pytest -q `
+            tests/test_renderers.py::test_web_source_url_uses_platform_file_uri `
+            tests/test_renderers.py::test_windows_file_uri_encodes_special_characters `
+            tests/test_renderers.py::test_office_profile_uses_platform_file_uri `
+            tests/test_renderers.py::test_office_failure_reports_return_code_when_libreoffice_is_silent `
+            tests/test_visualize_real.py::test_visualize_real_office_path_with_special_characters `
+            tests/test_api_tools.py::test_asr_dashscope_uses_platform_file_uri `
+            tests/test_build_memory.py::test_build_asr_dashscope_uses_platform_file_uri `
+            tests/test_edu_agent.py::test_browser_checks_use_node_file_url_conversion `
+            tests/test_edu_agent.py::test_browser_check_node_driver_syntax
