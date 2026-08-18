@@ -120,6 +120,23 @@ def test_visualize_real_office_path_with_special_characters(tmp_path):
     assert any(block.get("type") == "image" for block in content)
 
 
+def test_visualize_real_web_path_with_special_characters(tmp_path):
+    source = os.path.join(REPO_ROOT, "tests", "assets", "sample.html")
+    if not os.path.exists(source):
+        pytest.skip("HTML asset missing")
+    if not _mod("playwright"):
+        pytest.skip("Playwright unavailable")
+
+    special_path = tmp_path / "页面 # 100%.html"
+    shutil.copy2(source, special_path)
+    content = visualize.handle({"file_path": str(special_path), "budget": "small", "max_pages": 1})
+    err = _error_text(content)
+    if err and any(message in err for message in _ENV_GAP):
+        pytest.skip(f"html: environment gap — {err[:80]}")
+    assert err is None, f"HTML special-character path render errored: {err}"
+    assert any(block.get("type") == "image" for block in content)
+
+
 # ── manual gallery (not collected by pytest) ─────────────────────────
 
 HTML_HEAD = """\
