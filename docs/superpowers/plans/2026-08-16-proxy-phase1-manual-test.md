@@ -31,13 +31,17 @@
 > **路径写法（PowerShell）**：Windows 路径一律反斜杠，例如 C:\Users\bunny\Downloads\test.png。命令里图片路径建议用单引号包裹（PowerShell 单引号是字面量）：'C:\Users\bunny\Downloads\test.png'。下文所有命令已按此写好。
 
 > **显示编码（每个 PowerShell 窗口开头执行一次即可，后续命令都生效）**：
+>
 > ```powershell
 > [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 > ```
+>
 > 这样所有中文（请求/响应/日志）正常显示，不用每条命令重复贴。想让**以后每次开 PowerShell 都自动生效**，写入配置文件：
+>
 > ```powershell
 > Add-Content $PROFILE '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8'
 > ```
+>
 > 注：PowerShell 5.1 的 `Invoke-RestMethod` 会把中文响应解码成乱码，测试用例统一用 `Invoke-WebRequest` + UTF-8 解码（见 §5）；判据以 proxy 日志为准。
 
 ---
@@ -155,7 +159,7 @@ New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.qwen-mm-plugins" | 
     - base 非纯 origin（scheme://host 后还有路径）→ 直接 base + path
     - base 纯 origin（scheme://host）→ base + /v1 + path
     - 最后 /v1/v1 去重
-    例：https://api.deepseek.com（chat）→ /v1/chat/completions；火山 .../api/coding/v3（chat/responses）→ /v3/chat/completions、/v3/responses；anthropic 直连根 https://ark.cn-beijing.volces.com/api/coding → 自动拼 .../api/coding/v1/messages（无需手动加 /v1）。
+      例：https://api.deepseek.com（chat）→ /v1/chat/completions；火山 .../api/coding/v3（chat/responses）→ /v3/chat/completions、/v3/responses；anthropic 直连根 https://ark.cn-beijing.volces.com/api/coding → 自动拼 .../api/coding/v1/messages（无需手动加 /v1）。
   - models：通配符，匹配请求的 model 字段。留空则兜底该协议所有模型。
   - 若你的 DeepSeek key 不支持 Responses 协议（老账号），把 deepseek-responses 的 base_url 换成一个支持 Responses 的端点。
 - vlm：图片转写的视觉后端，与主 relay 解耦。
@@ -220,6 +224,7 @@ Write-Output ("base64 length: " + $IMG_B64.Length)   # 确认非空（正常图�
 **显示与判据**：下面各用例用 `Invoke-WebRequest` 发请求 + 手动 `[Text.Encoding]::UTF8` 解码响应，中文能正常显示（PowerShell 5.1 的 `Invoke-RestMethod` 会按错误编码解码中文导致乱码，故不用它）。功能判据以 proxy 日志为准（`qwen-mm-plugins-proxy logs` 里 `injected:1, upstream_status:200` 即通过）。
 
 **图片安全网行为**：
+
 - 所有图片（结构化块 + 字符串内嵌 data URL）都会被识别并转写/剥离；字符串 data URL 会在 IR 层**提前剥离为 [图片] 短占位**（base64 不占文本预算、不碰主模型文本），**普通网址 / 文件路径 / 非 image data URL 不受影响**。
 - 工具返回图（read_image / 截图等被模型主动调用）同样处理（T4）。
 - 历史有图 + 当前轮纯文本追问时，proxy 注入「描述未覆盖请重发图+问题，禁止编造」提示（spec §5.8）。
@@ -306,7 +311,7 @@ $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8787/v1/chat/completions' -Method 
 ```powershell
 $IMG_B64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\Users\bunny\Downloads\test.png'))
 $body = @{
-  model = 'qwen-vl-max'
+  model = 'minimax-m3'
   messages = @(
     @{ role = 'user'; content = @(
       @{ type = 'text'; text = '看图' },
@@ -343,21 +348,25 @@ $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8787/v1/chat/completions' -Method 
 
 ### T7. fail-open：拔 VLM key（§10.5 #5）
 
-清空 VLM key 后重启，再跑 T1：
+清空 VLM key 后重启，再跑 T1。
+
+> ⚠️ PowerShell 注意：`$env:VAR = ''`（空字符串）等于**删除该变量**，空值不会传给子进程，
+> proxy 会回落 proxy.json 里的**真实 key** → mimo 照常转写，fail-open 永远不触发（曾踩坑）。
+> 在 PowerShell 上要真正让 VLM 失败，必须用**无效但非空**的 key，或直接改配置文件。
 
 ```powershell
 qwen-mm-plugins-proxy stop
-# 方式 1：临时用 env 覆盖（当前窗口有效，不删文件）
-$env:QWEN_MM_PROXY_VLM_API_KEY = ''
+# 方式 1（推荐，PowerShell 下空串不生效）：用一个必然无效的非空 key 覆盖
+$env:QWEN_MM_PROXY_VLM_API_KEY = 'invalid-key-for-failopen-test'
 qwen-mm-plugins-proxy start
-# 方式 2：直接编辑 C:\Users\bunny\.qwen-mm-plugins\proxy.json，把 vlm.api_key 置空，再 start
+# 方式 2：直接编辑 C:\Users\bunny\.qwen-mm-plugins\proxy.json，把 vlm.api_key 置为空串/删掉，再 start
 ```
 
 跑一次 T1 的代码块（带图片）。
 
-**预期**：仍返回 HTTP 200（绝不 400 / 死锁）；图片被剥离 + 注入 看不到图：视觉模型调用失败（…），请更换多模态模型或检查 VLM 配置，不要编造内容。；**历史缓存命中项仍注入**（同一张图在 T1 描述过 → 缓存命中不受 key 影响）。日志 fail_open:"VLM_FAILED"。
+**预期**：仍返回 HTTP 200（绝不 400 / 死锁）；图片被剥离 + 注入 看不到图：视觉模型调用失败（…），请更换多模态模型或检查 VLM 配置，不要编造内容。；**历史缓存命中项仍注入**（同一张图在 T1 描述过 → 缓存命中不受 key 影响）。日志 fail_open:"AUTH"（无效 key 触发 401）或 "VLM_FAILED"。
 
-测试完记得恢复：把 $env:QWEN_MM_PROXY_VLM_API_KEY 清空/关闭窗口，或恢复 proxy.json 里的 api_key，再重启。
+测试完记得恢复：移除 $env:QWEN_MM_PROXY_VLM_API_KEY（Remove-Item Env:\QWEN_MM_PROXY_VLM_API_KEY），或恢复 proxy.json 里的 api_key，再重启。
 
 ### T8. 多图 [[图片K]] 前缀（§5.6）
 
@@ -483,17 +492,17 @@ qwen-mm-plugins-proxy check    # 路由态识别，确认 base_url 已指向本�
 
 ## 7. 常见问题排查
 
-| 现象                                                | 排查                                                                                                               |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| qwen-mm-plugins-proxy: command not found            | 方式 B 用 uv run --extra proxy 前缀；或把 %USERPROFILE%\.local\bin 加 PATH 后开新终端（见 §1.1）                  |
-| 报错「找不到路径 C:\e\...」                         | 说明你在用 Git Bash 的 /e/ 路径写法；本机用 PowerShell，路径写 E:\LLMproject\...（反斜杠）                         |
-| curl 报「Invoke-WebRequest」或参数解析错误          | 你敲了 curl（别名）；PowerShell 里必须写 curl.exe                                                                  |
-| port 8787 already in use                            | check 会提示；qwen-mm-plugins-proxy logs 看是否旧实例残留，stop 后重 start，或改 proxy.json 的 bind_port           |
-| 上游返回 401                                        | relay 的 api_key 填错或该端点不支持所选 protocol（DeepSeek Anthropic 端点要用 https://api.deepseek.com/anthropic/v1） |
+| 现象                                                | 排查                                                                                                                                                                              |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| qwen-mm-plugins-proxy: command not found            | 方式 B 用 uv run --extra proxy 前缀；或把 %USERPROFILE%\.local\bin 加 PATH 后开新终端（见 §1.1）                                                                                 |
+| 报错「找不到路径 C:\e\...」                         | 说明你在用 Git Bash 的 /e/ 路径写法；本机用 PowerShell，路径写 E:\LLMproject\...（反斜杠）                                                                                        |
+| curl 报「Invoke-WebRequest」或参数解析错误          | 你敲了 curl（别名）；PowerShell 里必须写 curl.exe                                                                                                                                 |
+| port 8787 already in use                            | check 会提示；qwen-mm-plugins-proxy logs 看是否旧实例残留，stop 后重 start，或改 proxy.json 的 bind_port                                                                          |
+| 上游返回 401                                        | relay 的 api_key 填错或该端点不支持所选 protocol（DeepSeek Anthropic 端点要用 https://api.deepseek.com/anthropic/v1）                                                             |
 | 上游返回 404                                        | 多半是 base_url 版本段不对：chat/responses 用 .../v3（拼 .../v3/chat/completions、.../v3/responses），anthropic 必须带 v1（拼 .../v1/messages）；纯主机 https://host 会自动补 /v1 |
-| VLM 报错 / 看不到图：…                             | test-image 单独验证 VLM 后端；检查 vlm.api_key / base_url / model 是否支持视觉；无 key 时属预期的 fail-open        |
-| 装依赖报 Python 版本错误                            | 见 §1.3，uv python install 3.12 后用 --python 3.12 重装                                                           |
-| config error: relay ... protocol must be one of ... | proxy.json 的 relays[] 里 protocol 写错或缺失；必须是 anthropic                                                    |
+| VLM 报错 / 看不到图：…                             | test-image 单独验证 VLM 后端；检查 vlm.api_key / base_url / model 是否支持视觉；无 key 时属预期的 fail-open                                                                       |
+| 装依赖报 Python 版本错误                            | 见 §1.3，uv python install 3.12 后用 --python 3.12 重装                                                                                                                          |
+| config error: relay ... protocol must be one of ... | proxy.json 的 relays[] 里 protocol 写错或缺失；必须是 anthropic                                                                                                                   |
 
 ```
 

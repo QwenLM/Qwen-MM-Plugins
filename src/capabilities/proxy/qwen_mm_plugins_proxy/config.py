@@ -111,8 +111,12 @@ def _apply_env(cfg: ProxyConfig) -> ProxyConfig:
         cfg.vlm.model = v
     if v := get_env("QWEN_MM_PROXY_VLM_BASE_URL"):
         cfg.vlm.base_url = v
-    if v := get_env("QWEN_MM_PROXY_VLM_API_KEY"):
-        cfg.vlm.api_key = v
+    # API key 用 is not None 而非真值判断：环境变量显式设为空串也必须清掉配置里的 key。
+    # 否则 walrus 写法会把空串 '' 当 falsy 跳过，导致 T7 这类"拔 VLM key 测 fail-open"永远失效
+    # （proxy.json 里的 key 原样保留，VLM 照常被调用）。
+    vlm_key = get_env("QWEN_MM_PROXY_VLM_API_KEY")
+    if vlm_key is not None:
+        cfg.vlm.api_key = vlm_key
     if v := get_env("QWEN_MM_PROXY_VLM_FORMAT"):
         if v in VLM_FORMATS:
             cfg.vlm.format = v

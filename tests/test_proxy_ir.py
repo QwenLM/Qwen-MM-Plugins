@@ -246,6 +246,33 @@ def test_serialize_responses_text_and_tool_items():
     assert parse_responses(out) == parse_responses(body)
 
 
+def test_parse_chat_assistant_null_content_with_tool_calls_does_not_crash():
+    # T4：标准 OpenAI chat 里 assistant 带 tool_calls 时 content 为 null，解析不得抛错（原 TypeError）
+    body = {
+        "model": "deepseek-v4-pro",
+        "messages": [
+            {"role": "user", "content": "用工具看看这张图"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": "t1", "type": "function", "function": {"name": "view_image", "arguments": "{}"}}],
+            },
+            {"role": "tool", "tool_call_id": "t1", "content": "data:image/png;base64,QUJD"},
+        ],
+    }
+    ir = parse_chat(body)
+    assert ir.messages[1].role == "assistant"
+    assert ir.messages[1].content[0].type == "tool_use"
+    assert ir.messages[1].content[0].tool_use_id == "t1"
+    assert ir.messages[2].content[0].type == "tool_result"
+    assert ir.messages[2].content[0].tool_use_id == "t1"
+    out = serialize_chat(ir)
+    asst = next(m for m in out["messages"] if m["role"] == "assistant")
+    assert asst["tool_calls"] == body["messages"][1]["tool_calls"]
+    tool_msg = next(m for m in out["messages"] if m["role"] == "tool")
+    assert tool_msg["tool_call_id"] == "t1"
+
+
 def test_serialize_chat_omits_empty_tool_calls():
     ir = parse_chat({"model": "m", "messages": [{"role": "assistant", "content": "hello"}]})
     out = serialize_chat(ir)

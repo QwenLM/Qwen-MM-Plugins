@@ -132,3 +132,35 @@ def test_proxy_forwards_text_request_and_transcribes_image(upstream):
         assert "base64,QUJD" not in texts
     finally:
         server.shutdown()
+
+
+def test_proxy_does_not_truncate_multibyte_upstream_response(upstream):
+    """中文（多字节）上游回复不得被截断。
+
+    回归 T1-T4 手测 bug：do_POST 曾用 len(text)（字符数）当 content-length，而实际写入的
+    是 UTF-8 字节；中文每字 3 字节使 content-length 偏小，客户端读到截断的多字节尾部
+    （中文被掐成半句、JSON 都不完整）。必须按字节数写 content-length。
+    """
+    upstream.content = "北京的秋天很美。" * 500  # 足够长的多字节回复
+    cfg = ProxyConfig(
+        bind_port=0,
+        relays=[RelayConfig(name="up", protocol="chat", base_url=f"http://127.0.0.1:{upstream.port}/v1")],
+        vlm=__import__("qwen_mm_plugins_proxy.config", fromlist=["VLMConfig"]).VLMConfig(model="qwen-vl-max"),
+    )
+    pipe = Pipeline(
+        NoopVLM(), __import__("qwen_mm_plugins_proxy.cache", fromlist=["DescriptionCache"]).DescriptionCache()
+    )
+    server = run_server(cfg)
+    server.pipeline = pipe
+    server_port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        resp = httpx.Client(trust_env=False).post(
+            f"http://127.0.0.1:{server_port}/v1/chat/completions",
+            json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        # JSON 能完整解析（没有被按错误的 content-length 掐断）、内容一字不缺
+        data = resp.json()
+        assert data["choices"][0]["message"]["content"] == "北京的秋天很美。" * 500
+    finally:
+        server.shutdown()

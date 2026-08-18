@@ -81,6 +81,7 @@ class RecordingUpstream:
         self.received: list[dict] = []
         self._server = None
         self.port = None
+        self.content = "ok"
 
     def start(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -91,7 +92,11 @@ class RecordingUpstream:
             def do_POST(self):
                 length = int(self.headers.get("content-length", 0))
                 up.received.append(json.loads(self.rfile.read(length)))
-                payload = json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode()
+                # ensure_ascii=False：真实上游返回原始 UTF-8 中文（非 \uXXXX 转义），
+                # 才能复现 do_POST 用字符数当 content-length 导致的多字节截断 bug。
+                payload = json.dumps({"choices": [{"message": {"content": up.content}}]}, ensure_ascii=False).encode(
+                    "utf-8"
+                )
                 self.send_response(200)
                 self.send_header("content-type", "application/json")
                 self.send_header("content-length", str(len(payload)))

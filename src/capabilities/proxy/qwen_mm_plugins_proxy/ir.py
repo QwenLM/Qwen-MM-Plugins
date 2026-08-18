@@ -155,6 +155,9 @@ def _content_blocks(blocks: list) -> list[ContentBlock]:
 
 
 def _message(role: str, content) -> Message:
+    if content is None:
+        # 兼容标准 OpenAI chat 里 assistant 带 tool_calls 时 content 为 null 的写法
+        return Message(role=role, content=[])
     if isinstance(content, str):
         return Message(role=role, content=_text_with_images(content))
     return Message(role=role, content=_content_blocks(content))

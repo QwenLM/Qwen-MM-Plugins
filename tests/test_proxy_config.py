@@ -42,6 +42,25 @@ def test_load_config_reads_json_and_env(tmp_path: Path, monkeypatch):
     assert cfg.vlm.model == "qwen-vl-max"
 
 
+def test_empty_env_vlm_api_key_clears_config_key(tmp_path: Path, monkeypatch):
+    """T7：环境变量显式设为空串必须清掉 proxy.json 里的 VLM key（而非被 falsy 吞掉）。"""
+    cfg_path = tmp_path / "proxy.json"
+    cfg_path.write_text(json.dumps({"vlm": {"model": "qwen-vl-max", "api_key": "super-secret"}}))
+    monkeypatch.setenv("QWEN_MM_PROXY_VLM_API_KEY", "")
+    cfg = load_config(str(cfg_path))
+    assert cfg.vlm.model == "qwen-vl-max"  # 其他字段不受影响
+    assert cfg.vlm.api_key == ""  # key 被显式清空
+
+
+def test_unset_env_vlm_api_key_keeps_config_key(tmp_path: Path, monkeypatch):
+    """仅当环境变量没设时才保留配置里的 key（空串 vs 未设置二者语义不同）。"""
+    cfg_path = tmp_path / "proxy.json"
+    cfg_path.write_text(json.dumps({"vlm": {"api_key": "super-secret"}}))
+    monkeypatch.delenv("QWEN_MM_PROXY_VLM_API_KEY", raising=False)
+    cfg = load_config(str(cfg_path))
+    assert cfg.vlm.api_key == "super-secret"
+
+
 def test_missing_config_file_uses_defaults(tmp_path: Path):
     cfg = load_config(str(tmp_path / "nope.json"))
     assert cfg.bind_port == 8787

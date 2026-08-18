@@ -151,11 +151,12 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     "duration_ms": int((time.time() - started) * 1000),
                 }
             )
+            body_bytes = text.encode("utf-8")
             self.send_response(status)
             self.send_header("content-type", "application/json")
-            self.send_header("content-length", str(len(text)))
+            self.send_header("content-length", str(len(body_bytes)))
             self.end_headers()
-            self.wfile.write(text.encode())
+            self.wfile.write(body_bytes)
         except Exception as exc:  # noqa: BLE001 - fail-open: never worse than no proxy
             log_json({"event": "proxy_error", "proto": proto, "error": repr(exc)})
             self._json_error(502, "proxy internal error (fail-open)")
