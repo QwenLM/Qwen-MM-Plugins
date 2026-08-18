@@ -192,6 +192,21 @@ def cmd_check(cfg) -> int:
         problems.append("no VLM key configured and auto_local_ollama disabled")
     if not cfg.relays:
         problems.append("no relays configured")
+    # 每条 relay 的拓扑提示（一层直连 / 两层经工具）＋ via 与 base_url 端口一致性校验。
+    import re
+
+    from .config import VIA_TOOLS
+
+    for relay in cfg.relays:
+        m = re.search(r":(\d+)", relay.base_url)
+        port = int(m.group(1)) if m else None
+        via = relay.via
+        if via is None and port in (15721, 57321):
+            via = "cc-switch" if port == 15721 else "codex-plus"
+        topo = f"两层(经工具 via={via})" if via else "一层(直连)"
+        print(f"  {relay.name}: {relay.protocol} → {topo}  ({relay.base_url})")
+        if via and port is not None and VIA_TOOLS[via] != port:
+            problems.append(f"relay {relay.name!r}: via={via} 期望端口 {VIA_TOOLS[via]}，实际 base_url 端口 {port}")
     for p in problems:
         print(f"\u26a0 {p}")
     if not problems:

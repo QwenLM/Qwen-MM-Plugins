@@ -12,6 +12,7 @@ from qwen_mm_plugins_proxy.config import (
     PROTOCOLS,
     ConfigError,
     ProxyConfig,
+    RelayConfig,
     default_config,
     load_config,
 )
@@ -59,6 +60,16 @@ def test_unset_env_vlm_api_key_keeps_config_key(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("QWEN_MM_PROXY_VLM_API_KEY", raising=False)
     cfg = load_config(str(cfg_path))
     assert cfg.vlm.api_key == "super-secret"
+
+
+def test_relay_via_field_optional_and_validated():
+    # via 可选、纯描述性；合法值（cc-switch / codex-plus）通过，非法值报 ConfigError
+    r = RelayConfig(name="x", protocol="responses", base_url="http://127.0.0.1:57321/v1", via="codex-plus")
+    assert r.via == "codex-plus"
+    r0 = RelayConfig(name="y", protocol="chat", base_url="http://x")
+    assert r0.via is None  # 缺省=一层
+    with pytest.raises(ConfigError):
+        RelayConfig(name="bad", protocol="chat", base_url="http://x", via="nope")
 
 
 def test_missing_config_file_uses_defaults(tmp_path: Path):

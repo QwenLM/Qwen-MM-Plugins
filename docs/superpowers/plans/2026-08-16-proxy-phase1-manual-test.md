@@ -403,8 +403,8 @@ curl.exe -N -s http://127.0.0.1:8787/v1/chat/completions -H 'content-type: appli
 ### T10. test-image（§8.3）
 
 ```powershell
-qwen-mm-plugins-proxy test-image C:\Users\bunny\Downloads\test.png
-qwen-mm-plugins-proxy test-image C:\Users\bunny\Downloads\test.png --question "红色文字说了什么"
+qwen-mm-plugins-proxy test-image C:\Users\bunny\Downloads\a.png
+qwen-mm-plugins-proxy test-image C:\Users\bunny\Downloads\a.png --question "绿色按钮左边的文字是什么"
 ```
 
 **预期**：第一条输出 Tier1 (全面): …；第二条输出 Tier1 (全面): … + Tier2 (聚焦): … 并排对比。
@@ -448,12 +448,12 @@ qwen-mm-plugins-proxy stop
 qwen-mm-plugins-proxy start
 
 # model=deepseek-v4-pro  → 应命中 chat-a
-$body = @{ model = 'deepseek-v4-pro'; messages = @(@{ role = 'user'; content = 'hi' }) } | ConvertTo-Json -Depth 5
+$body = @{ model = 'deepseek-v4-flash'; messages = @(@{ role = 'user'; content = 'hi' }) } | ConvertTo-Json -Depth 5
 $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8787/v1/chat/completions' -Method Post -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -UseBasicParsing
 [System.Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray())
 
 # model=other-model      → 应命中 chat-b（改一下 models 通配符与你测试名匹配）
-$body = @{ model = 'other-model'; messages = @(@{ role = 'user'; content = 'hi' }) } | ConvertTo-Json -Depth 5
+$body = @{ model = 'glm-5.1'; messages = @(@{ role = 'user'; content = 'hi' }) } | ConvertTo-Json -Depth 5
 $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8787/v1/chat/completions' -Method Post -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -UseBasicParsing
 [System.Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray())
 ```
@@ -478,6 +478,47 @@ qwen-mm-plugins-proxy check    # 路由态识别，确认 base_url 已指向本�
 > 这就是"一次安装、多个 CLI 都生效"的原因：proxy 的安装 hook（proxy_rewrite_cc / proxy_rewrite_codex / proxy_rewrite_qwen_code）不区分 target harness，装上 proxy 就同时改写三处 base_url（spec §8.2）。
 
 然后启动 proxy，在 Claude Code / Codex 里真实贴图验证（§10.5 #1/#2/#4），完成后 bash install.sh uninstall 回滚。
+---
+
+### 5.13.1 三终端真实贴图用例（拓扑 = 我们代理第一层 A：harness → 8787 → 工具 → 供应商）
+
+> 以下三套用例把「真实 harness 里贴图、代理转写、日志验签」跑通，是 §10.5 的 Phase 1 硬性验收。
+> **共同前提**：代理已装、VLM key 有效（先 `qwen-mm-plugins-proxy test-image C:\Users\bunny\Downloads\test.png` 确认 VLM 可用）；三台 harness 的 base_url 都必须指向 `http://127.0.0.1:8787`（第一跳）。
+> 每个场景的 `.qwen-mm-plugins/proxy.json` 里各放一条对应 relay（可并存，按 protocol/models 区分）；`via` 仅用于 `check` 显示拓扑。
+
+#### 通用校验步骤（三台通用）
+```powershell
+qwen-mm-plugins-proxy start
+# 在 harness 里贴一张图（如 C:\Users\bunny\Downloads\test.png）并问：这张图里有什么？
+qwen-mm-plugins-proxy logs   # 看是否出现 proto 对应的 proxy_request
+qwen-mm-plugins-proxy check  # 看 relay 拓扑提示 + VLM/端口是否就绪
+```
+**通过标准**：日志出现 `injected:1、stripped:0、upstream_status:200`，且 harness 的回答能描述出图中细节（不是『看不到图』）。
+**失败模式**：日志**没有**这条 proxy_request → harness 没走 8787（工具抢占了 base_url，需关掉该工具对 harness 的路由）；有请求但 `upstream_status` 非 200 → 看 base_url 拼接与工具端口是否监听。
+
+#### 场景 1 · Claude Code + CC Switch（两层经 CC Switch，端口 15721）
+```json
+{ "name": "cc-claude", "protocol": "anthropic", "base_url": "http://127.0.0.1:15721", "via": "cc-switch", "models": ["*"] }
+```
+- 接线：Claude Code 的 ANTHROPIC_BASE_URL 指向 8787（install.sh proxy_rewrite_cc，或 CC Switch 里把 Claude 的 provider base_url 设成 http://127.0.0.1:8787）；确认 CC Switch 本地代理已监听 15721（它是我们的转发目标）。
+- 日志看 `proto:"anthropic"` 的 proxy_request（我们经 CC Switch 转发到真实模型）。
+
+#### 场景 2 · Codex + Codex++（两层经 Codex++，端口 57321）
+```json
+{ "name": "codex-plus", "protocol": "responses", "base_url": "http://127.0.0.1:57321/v1", "via": "codex-plus", "models": ["*"] }
+```
+- 接线：Codex 的 model provider base_url 指向 8787（install.sh proxy_rewrite_codex）；确认 Codex++ 本地协议代理已监听 57321。
+- 日志看 `proto:"responses"` 的 proxy_request。（若你的 Codex 走 chat，protocol 改 `chat`、看 `proto:"chat"`。）
+
+#### 场景 3 · 裸 Qwen Code（无工具，我们代理直连供应商）
+```json
+{ "name": "qwen-direct", "protocol": "chat", "base_url": "<Qwen Code 平时直连的端点>", "models": ["*"] }
+```
+- 接线：Qwen Code base_url 指向 8787（install.sh proxy_rewrite_qwen_code 写 ~/.qwen-code/.env 的 DASHSCOPE_BASE_URL=http://127.0.0.1:8787，或手动）。
+- 日志看 `proto:"chat"` 的 proxy_request（我们 relay 直连上游，无工具层）。
+
+#### 结束与回滚
+三套都跑通后，`bash install.sh uninstall` 恢复三处原始 base_url（备份为 *.qwen-mm-proxy.bak）；或手动把 harness base_url 改回原值，并移除 proxy.json 里本次临时加的 relay。
 
 ---
 

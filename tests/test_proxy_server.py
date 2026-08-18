@@ -164,3 +164,74 @@ def test_proxy_does_not_truncate_multibyte_upstream_response(upstream):
         assert data["choices"][0]["message"]["content"] == "北京的秋天很美。" * 500
     finally:
         server.shutdown()
+
+
+def test_upstream_url_codex_plus_local_proxy():
+    # Codex++ 本地协议代理（protocol_proxy.rs，端口 57321，暴露 /v1，认 responses + chat）
+    cases = [
+        ("http://127.0.0.1:57321/v1", "chat", "/chat/completions", "http://127.0.0.1:57321/v1/chat/completions"),
+        ("http://127.0.0.1:57321/v1", "responses", "/responses", "http://127.0.0.1:57321/v1/responses"),
+        ("http://127.0.0.1:57321", "responses", "/responses", "http://127.0.0.1:57321/v1/responses"),
+        ("http://127.0.0.1:57321", "chat", "/chat/completions", "http://127.0.0.1:57321/v1/chat/completions"),
+    ]
+    for base, proto, path, expected in cases:
+        assert _upstream_url(RelayConfig(name="u", protocol=proto, base_url=base), path) == expected
+
+
+def test_upstream_url_cc_switch_proxy():
+    # CC Switch 本地反向代理（默认 15721），各工具用专属路径前缀 + /v1
+    cases = [
+        ("http://127.0.0.1:15721", "anthropic", "/messages", "http://127.0.0.1:15721/v1/messages"),
+        ("http://127.0.0.1:15721", "chat", "/chat/completions", "http://127.0.0.1:15721/v1/chat/completions"),
+        (
+            "http://127.0.0.1:15721/grokbuild/v1",
+            "chat",
+            "/chat/completions",
+            "http://127.0.0.1:15721/grokbuild/v1/chat/completions",
+        ),
+        ("http://127.0.0.1:15721/codex/v1", "responses", "/responses", "http://127.0.0.1:15721/codex/v1/responses"),
+    ]
+    for base, proto, path, expected in cases:
+        assert _upstream_url(RelayConfig(name="u", protocol=proto, base_url=base), path) == expected
+
+
+def test_proxy_two_layer_responses_preserves_model_and_strips_image(upstream):
+    # 两层路由（我们代理→回环工具）responses 协议下的协议保真：
+    # model 保留、图片剥离、协议形态（responses input）不变——工具能正常读模型
+    cfg = ProxyConfig(
+        bind_port=0,
+        relays=[RelayConfig(name="tool", protocol="responses", base_url=f"http://127.0.0.1:{upstream.port}")],
+        vlm=__import__("qwen_mm_plugins_proxy.config", fromlist=["VLMConfig"]).VLMConfig(model="qwen-vl-max"),
+    )
+    pipe = Pipeline(
+        NoopVLM(), __import__("qwen_mm_plugins_proxy.cache", fromlist=["DescriptionCache"]).DescriptionCache()
+    )
+    server = run_server(cfg)
+    server.pipeline = pipe
+    server_port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        resp = httpx.Client(trust_env=False).post(
+            f"http://127.0.0.1:{server_port}/v1/responses",
+            json={
+                "model": "kimi-k2.7",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "看"},
+                            {"type": "input_image", "image_url": "data:image/png;base64,QQ=="},
+                        ],
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        sent = upstream.received[-1]
+        assert sent["model"] == "kimi-k2.7"  # model 保留
+        assert sent.get("input") is not None  # 同协议（responses input）形态不变
+        blob = json.dumps(sent)
+        assert "fake description" in blob  # 图片被转写注入
+        assert "QQ==" not in blob and "data:image" not in blob  # 图不再外泄
+    finally:
+        server.shutdown()

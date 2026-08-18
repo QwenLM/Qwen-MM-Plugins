@@ -168,6 +168,16 @@ harness → 本代理(8787) → [可选] cc-switch / codex++ → 真实上游
 - **单一图片路由代理原则**：链路里只开一个「路由+剥图」代理，其余中继关掉图片处理。若两个代理同时对同一张图各调一次 VLM，会产生双倍延迟与费用（竞态），故 `check` 需检测并告警（§8.3）。
 - **入站侧协议归一化不依赖具体中继**：只要入站是三种协议之一即可，不管它是 cc-switch 转来的还是 codex++ 转来的。
 
+**拓扑形态 A/B 对比（本代理放第一层 vs 第二层）**
+
+- **A. 第一层（默认/首推）**：`harness -> 本代理(8787) -> 工具(15721/57321) -> 真实上游`
+  - 优点：图 100% 先被本代理截到（核心功能从机制上保证）；最先做 IR 归一化、入站协议最可控；彻底绕开「工具是否透传图片」的不确定。
+  - 代价：需让 harness 一次性指向 8787（install.sh proxy_rewrite_* 或手动）；工具从「harness 直属网关」降级为本代理的下游，链路多一层。
+- **B. 第二层（可选，非首选）**：`harness -> 工具(15721/57321) -> 本代理(8787) -> 真实上游`
+  - 优点：完全不用改 harness 配置（工具自身路由把 harness 指向工具，我们只把工具 upstream 指向 8787，属工具配置而非 harness 配置）；工具保持自然网关位、可继续做模型路由/角色映射。
+  - 致命依赖（不满足则视觉静默失效）：工具有没有把**原始图片载荷原样透传**给上游（本代理）；以及工具上游变成 8787 而非真实模型 URL 时，工具（尤其 Codex++ 的 chat<->responses、CC Switch 的模型读取）可能「读不到模型/格式不对」。
+  - 结论：B 可支持但需先验证目标工具会透传图片、且本代理能装得像个标准模型端点；文档须标注失败模式。
+
 ## 5. 图片处理管线
 
 ### 5.1 扫描范围与两阶段
@@ -328,6 +338,15 @@ auto_local_ollama = true       # DSH 修订：启动时探测 http://localhost:1
 6. 最后 `/v1/v1` 去重。
 
 例：`https://api.deepseek.com`（chat）→ `/v1/chat/completions`；`https://ark.cn-beijing.volces.com/api/coding/v3`（chat / responses）→ `/v3/chat/completions`、`/v3/responses`；anthropic 填直连根 `https://ark.cn-beijing.volces.com/api/coding` → 自动拼 `/api/coding/v1/messages`（无需手动加 /v1）。实现：`server.py` 的 `_upstream_url`。
+
+**修订 · relay `via` 字段与单/双层显式表达**：拓扑由 relay 的 `base_url` 唯一决定——远端地址 = 一层直连；回环工具地址（15721 / 57321）= 两层经工具。可选、纯描述性字段 `via`（∈ cc-switch | codex-plus，默认省略=一层），**不参与 URL 拼接**，只用于 `check` 输出每条 relay 的拓扑（一层直连 / 两层经工具）与校验（via 与 base_url 端口不一致时告警，如 via=codex-plus 但端口不是 57321）。老配置（无 via）完全兼容（实现：config.py 的 VIA_TOOLS / RelayConfig.via，cli.py 的 cmd_check）。
+
+- 一层（直连）模板：`{ "name":"deepseek", "protocol":"chat", "base_url":"https://api.deepseek.com", "models":["deepseek-*"] }`
+- 两层（经 Codex++）模板：`{ "name":"codex", "protocol":"responses", "base_url":"http://127.0.0.1:57321/v1", "via":"codex-plus", "models":["*"] }`
+- 两层（经 CC Switch，Codex 模型）模板：`{ "name":"cc-codex", "protocol":"chat", "base_url":"http://127.0.0.1:15721", "via":"cc-switch", "models":["*"] }`
+- 两层（经 CC Switch，Claude 模型）模板：`{ "name":"cc-claude", "protocol":"anthropic", "base_url":"http://127.0.0.1:15721", "via":"cc-switch", "models":["*"] }`
+- Qwen Code 不在 CC Switch 支持列表（claude/codex/gemini），给它单独一条 relay 直连真实端点：`{ "name":"qwen-direct", "protocol":"chat", "base_url":"<Qwen Code 直连端点>", "models":["*"] }`
+- **抗干扰（显式配置的收益）**：机制完全由配置决定、从不探测/指纹端口，VPN 或其他本地代理插在链路中间不会造成误判；唯一涉及系统代理处是远端上游转发时的 `_is_loopback -> trust_env=False`（回环工具跳不套 VPN/系统代理）。若未来要加自动检测，需记录其失败模式（端口探测易与 VPN/本地服务端口撞、工具无法可靠指纹、可能误判 A/B 放法），做成 opt-in + 严格指纹 + 绝不改写 harness 配置；当前不实现。
 
 **DSH 修订 · 免费/本地 VLM 通道**（启示 6，参考 `dsh-vision-recognizer` / `dsh-vision-proxy` 的 `autoLocalOllama`）：`auto_local_ollama=true` 时，启动探测本地 Ollama，命中则把本地视觉模型插到 VLM fallback 链最前——无 key 用户零配置即可识图、图片不出本机；未命中或无本地模型时静默跳过，回退到配置的云端端点。
 

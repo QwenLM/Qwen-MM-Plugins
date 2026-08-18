@@ -17,6 +17,10 @@ VLM_FORMATS = ("chat", "anthropic")
 # relay 上游转发协议枚举：配置 proxy.json 时 protocol 字段只能是这三个之一（强校验）。
 PROTOCOLS = ("anthropic", "responses", "chat")
 
+# 已知的本地路由工具（两层拓扑）与其默认端口。via 只是描述性标签＋供 check 校验，
+# 不参与 URL 拼接——URL 始终由 base_url 决定（回环=经工具两层、远端=直连一层）。
+VIA_TOOLS = {"cc-switch": 15721, "codex-plus": 57321}
+
 
 class ConfigError(Exception):
     """proxy.json 配置非法（显式错误，不静默回退默认配置）。"""
@@ -42,11 +46,16 @@ class RelayConfig:
     api_key: str = ""
     models: list[str] = field(default_factory=list)
     capability: str | None = None  # 显式覆盖能力判定
+    via: str | None = None  # 可选：本 relay 是否经本地路由工具转发(两层拓扑)。纯描述性，不参与 URL 拼接。
 
     def __post_init__(self) -> None:
         if self.protocol not in PROTOCOLS:
             raise ConfigError(
                 f"relay {self.name!r}: protocol must be one of {', '.join(PROTOCOLS)}, got {self.protocol!r}"
+            )
+        if self.via is not None and self.via not in VIA_TOOLS:
+            raise ConfigError(
+                f"relay {self.name!r}: via must be one of {sorted(VIA_TOOLS)} (or omitted), got {self.via!r}"
             )
 
 
