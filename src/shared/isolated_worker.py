@@ -29,6 +29,36 @@ class IsolatedWorkerError(RuntimeError):
     """An isolated call failed before returning a valid result."""
 
 
+def _loaded_module_import_root(module_name: str) -> str | None:
+    """Return the import root for an already-loaded module without importing it."""
+
+    loaded_module = sys.modules.get(module_name)
+    module_file = getattr(loaded_module, "__file__", None)
+    if not isinstance(module_file, str):
+        return None
+
+    import_root = Path(module_file).resolve().parent
+    module_depth = len(module_name.split("."))
+    parent_count = module_depth if hasattr(loaded_module, "__path__") else module_depth - 1
+    for _ in range(parent_count):
+        import_root = import_root.parent
+    return str(import_root)
+
+
+def _prepend_loaded_module_roots(environment: dict[str, str], module_name: str) -> None:
+    """Make the child prefer the same loaded source trees as the parent."""
+
+    roots = []
+    for name in (__name__, module_name):
+        root = _loaded_module_import_root(name)
+        if root is not None and root not in roots:
+            roots.append(root)
+    existing = environment.get("PYTHONPATH")
+    entries = roots + (existing.split(os.pathsep) if existing else [])
+    if entries:
+        environment["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(entries))
+
+
 def _read_tail(path: Path, limit: int = MAX_LOG_TAIL_BYTES) -> str:
     try:
         with path.open("rb") as stream:
@@ -97,6 +127,7 @@ def run_isolated(
                 worker_env.pop(key, None)
             else:
                 worker_env[key] = value
+        _prepend_loaded_module_roots(worker_env, module)
 
         command = [
             sys.executable,

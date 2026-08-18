@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -55,6 +56,15 @@ def test_isolated_worker_round_trip_and_stdout_capture(isolated_target, capsys):
     module, env = isolated_target
     assert run_isolated(module, "echo", {"value": "ok"}, env_overrides=env) == {"value": "ok"}
     assert capsys.readouterr().out == ""
+
+
+def test_isolated_worker_uses_same_loaded_source_tree(tmp_path, monkeypatch):
+    module_name = "isolated_worker_loaded_target"
+    (tmp_path / f"{module_name}.py").write_text(_TARGETS, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.import_module(module_name)
+
+    assert run_isolated(module_name, "echo", {"value": "source"}) == {"value": "source"}
 
 
 def test_isolated_worker_environment_override_and_removal(isolated_target, monkeypatch):
