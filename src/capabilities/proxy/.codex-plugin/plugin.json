@@ -1,0 +1,6 @@
+{
+  "name": "qwen-mm-plugins-proxy",
+  "version": "0.1.0",
+  "description": "Qwen-MM-Plugins proxy — local HTTP protocol proxy giving text-only models vision: intercept images, transcribe via a VLM, forward text to the upstream. Standalone HTTP server (not an MCP server); manage via `qwen-mm-plugins-proxy start|stop|status|logs|test-image|check`.",
+  "skills": []
+}

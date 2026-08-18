@@ -6,10 +6,12 @@ synthetically so the suite stays hermetic — no binary fixtures committed for t
 tests/assets/; those cases skip when an asset or optional dependency is missing.)
 """
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import threading
 
 import pytest
 
@@ -66,6 +68,59 @@ def mcp_call(server_dir, action, env=None):
                 return await action(session)
 
     return asyncio.run(_run())
+
+
+class RecordingUpstream:
+    """Minimal local HTTP upstream stub shared by proxy server/integration tests.
+
+    Serves a canned completion and records every POST body it receives (so tests can
+    assert the proxy replaced images with description text and leaked no base64).
+    """
+
+    def __init__(self):
+        self.received: list[dict] = []
+        self._server = None
+        self.port = None
+        self.content = "ok"
+
+    def start(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        up = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("content-length", 0))
+                up.received.append(json.loads(self.rfile.read(length)))
+                # ensure_ascii=False：真实上游返回原始 UTF-8 中文（非 \uXXXX 转义），
+                # 才能复现 do_POST 用字符数当 content-length 导致的多字节截断 bug。
+                payload = json.dumps({"choices": [{"message": {"content": up.content}}]}, ensure_ascii=False).encode(
+                    "utf-8"
+                )
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.send_header("content-length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *a):
+                pass
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._server.server_address[1]
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        return self
+
+    def stop(self):
+        self._server.shutdown()
+
+
+@pytest.fixture()
+def upstream():
+    """A running RecordingUpstream, torn down after the test."""
+    u = RecordingUpstream().start()
+    yield u
+    u.stop()
 
 
 @pytest.fixture(scope="session")

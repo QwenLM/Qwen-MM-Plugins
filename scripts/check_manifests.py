@@ -104,8 +104,21 @@ def parse_toml_table(text: str, table: str) -> dict[str, str]:
     return out
 
 
+NON_MCP_SERVER_CAPS = {"proxy"}  # standalone HTTP server capability (no MCP transport)
+
+
+def capability_package(cap_dir: Path) -> str | None:
+    """The capability's Python package import name (a dir with an __init__.py), if any."""
+    for sub in sorted(cap_dir.iterdir()):
+        if sub.is_dir() and sub.name.isidentifier() and (sub / "__init__.py").is_file():
+            return sub.name
+    return None
+
+
 def server_package(cap_dir: Path) -> str | None:
     """The capability's MCP-server package dir (a valid import name with an __init__.py), if any."""
+    if cap_dir.name in NON_MCP_SERVER_CAPS:
+        return None  # non-MCP server capability: has a package, but no MCP server identity
     for sub in sorted(cap_dir.iterdir()):
         if sub.is_dir() and sub.name.isidentifier() and (sub / "__init__.py").is_file():
             return sub.name
@@ -152,6 +165,35 @@ def check_mcp_servers(mcp_servers, expected_name: str, where: str) -> dict | Non
     return server_cfg
 
 
+def check_package_registration(
+    cap_dir: Path,
+    cap: str,
+    import_name: str,
+    expected_name: str,
+    version: str | None,
+    scripts: dict[str, str],
+    package_dir: dict[str, str],
+) -> None:
+    """Validate the pyproject console entry, package dir and __version__ registration."""
+    if scripts.get(expected_name) != f"{import_name}.__main__:main":
+        fail(
+            f"pyproject.toml [project.scripts]: {expected_name} = {scripts.get(expected_name)!r}, "
+            f"expected '{import_name}.__main__:main'"
+        )
+    expected_pkg_dir = f"src/capabilities/{cap}/{import_name}"
+    if package_dir.get(import_name) != expected_pkg_dir:
+        fail(
+            f"pyproject.toml [tool.setuptools.package-dir]: {import_name} = "
+            f"{package_dir.get(import_name)!r}, expected {expected_pkg_dir!r}"
+        )
+    if version is not None:
+        init_text = (cap_dir / import_name / "__init__.py").read_text(encoding="utf-8")
+        match = re.search(r'^__version__ = "([^"]+)"', init_text, re.MULTILINE)
+        if not match or match.group(1) != version:
+            actual = match.group(1) if match else None
+            fail(f"{rel(cap_dir / import_name / '__init__.py')}: __version__ {actual!r} != {version!r}")
+
+
 def check_capability(
     cap_dir: Path,
     version: str | None,
@@ -162,6 +204,7 @@ def check_capability(
     cap = cap_dir.name
     expected_name = PREFIX + cap
     import_name = server_package(cap_dir)
+    non_mcp_server = cap in NON_MCP_SERVER_CAPS
 
     manifests = {
         "claude": cap_dir / ".claude-plugin" / "plugin.json",
@@ -187,7 +230,15 @@ def check_capability(
     if len(set(manifest_versions.values())) > 1:
         fail(f"{rel(cap_dir)}: manifest versions differ: {manifest_versions}")
 
-    if import_name is not None:
+    if non_mcp_server:
+        # Non-MCP server capability: has a Python package + console script, but no MCP identity.
+        # Validate the standalone contract; .mcp.json / mcpServers checks do not apply here.
+        standalone_import = capability_package(cap_dir)
+        if standalone_import is None:
+            fail(f"{rel(cap_dir)}: non-MCP server capability has no Python package")
+        else:
+            check_package_registration(cap_dir, cap, standalone_import, expected_name, version, scripts, package_dir)
+    elif import_name is not None:
         # MCP-server capability: server key + entry consistent everywhere, and registered in pyproject.
         if "claude" in loaded:
             cfg = check_mcp_servers(loaded["claude"].get("mcpServers"), expected_name, f"{rel(manifests['claude'])}")
@@ -207,23 +258,7 @@ def check_capability(
             fail(f"{rel(manifests['codex'])}: mcpServers should reference './.mcp.json'")
         if "qoder" in loaded and loaded["qoder"].get("mcp") != ".mcp.json":
             fail(f"{rel(manifests['qoder'])}: mcp should reference '.mcp.json'")
-        if scripts.get(expected_name) != f"{import_name}.__main__:main":
-            fail(
-                f"pyproject.toml [project.scripts]: {expected_name} = {scripts.get(expected_name)!r}, "
-                f"expected '{import_name}.__main__:main'"
-            )
-        expected_pkg_dir = f"src/capabilities/{cap}/{import_name}"
-        if package_dir.get(import_name) != expected_pkg_dir:
-            fail(
-                f"pyproject.toml [tool.setuptools.package-dir]: {import_name} = "
-                f"{package_dir.get(import_name)!r}, expected {expected_pkg_dir!r}"
-            )
-        if version is not None:
-            init_text = (cap_dir / import_name / "__init__.py").read_text(encoding="utf-8")
-            match = re.search(r'^__version__ = "([^"]+)"', init_text, re.MULTILINE)
-            if not match or match.group(1) != version:
-                actual = match.group(1) if match else None
-                fail(f"{rel(cap_dir / import_name / '__init__.py')}: __version__ {actual!r} != {version!r}")
+        check_package_registration(cap_dir, cap, import_name, expected_name, version, scripts, package_dir)
     else:
         # Skill-only capability: must not declare an MCP server anywhere.
         if "claude" in loaded and "mcpServers" in loaded["claude"]:
