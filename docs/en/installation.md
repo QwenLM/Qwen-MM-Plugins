@@ -164,6 +164,11 @@ this order:
 2. `npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use mcp`.
 3. `open-computer-use` on `PATH` when `npx` is unavailable.
 
+The plugin exposes `click` and `drag` coordinates on a resolution-independent `0–1000` scale,
+where `(0, 0)` is the screenshot's top-left and `(1000, 1000)` is its bottom-right. The proxy reads
+the returned PNG dimensions and converts these values to the pixel coordinates expected by the
+upstream runtime.
+
 The npx path downloads the pinned package on first launch. On macOS, start the runtime once and
 approve Accessibility and Screen Recording when prompted:
 
@@ -171,8 +176,20 @@ approve Accessibility and Screen Recording when prompted:
 npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use doctor
 ```
 
-The runtime needs a real display. Pixel clicks and keyboard input may activate the target
+The runtime needs a real display. Coordinate clicks and keyboard input may activate the target
 application; background delivery is not guaranteed.
+
+Global pointer fallback stays off by default. On a dedicated desktop or VM, enable it explicitly
+in `~/.qwen-mm-plugins/config` when higher pointer compatibility is more important than preserving
+the user's foreground session:
+
+```dotenv
+QWEN_MM_CUA_GLOBAL_POINTER_FALLBACKS=on
+```
+
+The proxy maps this setting to the upstream
+`OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`. It applies to click, drag, and scroll
+fallbacks, but not `press_key`.
 
 ### Complete configuration
 

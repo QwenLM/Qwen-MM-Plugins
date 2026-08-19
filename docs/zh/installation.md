@@ -156,6 +156,10 @@ key 的后端：Serper、Tavily、Exa。设为 `serper`、`tavily` 或 `exa` 会
 2. `npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use mcp`。
 3. `npx` 不可用时，使用 `PATH` 中的 `open-computer-use`。
 
+插件对外使用与分辨率无关的 `0–1000` 相对坐标：`(0, 0)` 是截图左上角，
+`(1000, 1000)` 是截图右下角。代理会读取返回 PNG 的实际尺寸，并将 `click` 和 `drag`
+坐标转换为上游运行时所需的像素坐标。
+
 npx 路径会在首次启动时下载固定版本。macOS 上请先启动一次运行时，并在弹窗中授予辅助功能
 和屏幕录制权限：
 
@@ -163,7 +167,17 @@ npx 路径会在首次启动时下载固定版本。macOS 上请先启动一次�
 npx --yes --package=@qwen-code/open-computer-use@0.2.3 open-computer-use doctor
 ```
 
-运行时需要真实屏幕。像素点击和键盘输入可能激活目标应用，不保证后台投递。
+运行时需要真实屏幕。坐标点击和键盘输入可能激活目标应用，不保证后台投递。
+
+全局指针回退默认关闭。在专用桌面或虚拟机中，如果兼容性比维持用户前台会话更重要，可以
+在 `~/.qwen-mm-plugins/config` 中显式开启：
+
+```dotenv
+QWEN_MM_CUA_GLOBAL_POINTER_FALLBACKS=on
+```
+
+代理会将它映射为上游的 `OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`。该开关只
+影响点击、拖拽和滚动的回退路径，不改变 `press_key`。
 
 ### 完整配置
 

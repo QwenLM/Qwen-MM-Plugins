@@ -8,15 +8,17 @@ version: 1.0.0
 
 The runtime is [QwenLM/open-computer-use](https://github.com/QwenLM/open-computer-use). It has a
 deliberately small MCP surface: it returns a current screenshot together with an
-Accessibility tree, then accepts pixel coordinates or element indexes for actions.
+Accessibility tree, then accepts relative coordinates or element indexes for actions.
 
 ## Core loop
 
 1. Call `list_apps` if the exact app name or bundle ID is unknown.
 2. Call `get_app_state({app})` **once at the beginning of every turn**. It starts or resumes the
    app-use session and returns the key-window screenshot plus the Accessibility tree.
-3. Use the fresh screenshot's coordinate system for visual actions. Coordinates are not durable;
-   never reuse them after an action.
+3. Use `0–1000` relative coordinates on the fresh screenshot for visual actions: `(0, 0)` is the
+   top-left and `(1000, 1000)` is the bottom-right. Do not convert them to pixels; the proxy does
+   that using the actual returned PNG dimensions. Coordinates are not durable, so never reuse them
+   after an action.
 4. Prefer an `element_index` from that same state when an element is unambiguous. Prefer `x`, `y`
    when the task depends on visual content that is absent from the tree.
 5. Call `get_app_state({app})` again to confirm the visible result before continuing or declaring
@@ -28,8 +30,8 @@ Accessibility tree, then accepts pixel coordinates or element indexes for action
 |---|---|
 | `list_apps` | Find running or recently used applications. |
 | `get_app_state` | Fresh screenshot + Accessibility tree; required observation step. |
-| `click` | Click an `element_index` or screenshot pixel coordinates. |
-| `drag` | Drag between screenshot pixel coordinates. |
+| `click` | Click an `element_index` or `0–1000` screenshot-relative coordinates. |
+| `drag` | Drag between `0–1000` screenshot-relative coordinates. |
 | `type_text` | Type literal text into an app. |
 | `press_key` | Send a key or key combination. |
 | `scroll` | Scroll a tree element by pages and direction. |
@@ -42,10 +44,13 @@ Accessibility tree, then accepts pixel coordinates or element indexes for action
   on old coordinates.
 - Do not send messages, submit forms, confirm purchases, or perform other irreversible actions
   until the user has clearly authorized that result.
-- This visual runtime may activate its target application for pixel clicks and keyboard input. Do
+- This visual runtime may activate its target application for coordinate clicks and keyboard input. Do
   not claim that it can drive an arbitrary app entirely in the background.
 - If the user explicitly requires low-focus/background delivery, explain that this capability does
-  not guarantee it. Pixel clicks and keyboard input may activate the target application.
+  not guarantee it. Coordinate clicks and keyboard input may activate the target application.
+- Global pointer fallback is off by default. Enable it only for a dedicated desktop/VM or after the
+  user accepts that it may activate the target app and move the physical pointer. It affects
+  coordinate click, drag, and scroll fallbacks; it does not change `press_key`.
 
 ## Setup
 
@@ -62,3 +67,12 @@ asks. Check the runtime with:
 ```bash
 qwen-mm-plugins-cua --check-system
 ```
+
+For a dedicated desktop where foreground pointer fallback is acceptable, add this to
+`~/.qwen-mm-plugins/config`:
+
+```dotenv
+QWEN_MM_CUA_GLOBAL_POINTER_FALLBACKS=on
+```
+
+Remove the line or set it to `off` to restore the safe default.

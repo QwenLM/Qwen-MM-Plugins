@@ -127,7 +127,8 @@ def del_config(keys: Iterable[str]) -> str:
 # first appearance.
 # install.sh mirrors this list (CONFIG_SPEC) for its own editor — keep the two in sync when adding a
 # var. Excludes the config-location bootstrap (QWEN_MM_CONFIG/_DIR — can't live in the config it
-# locates), the example demo var, and behavioral on/off toggles (QWEN_MM_AUTOLAUNCH/…, FREECAD_* flags). ──
+# locates), the example demo var, and harness-managed behavioral toggles such as
+# QWEN_MM_AUTOLAUNCH and FREECAD_* flags. ──
 CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
     # Media APIs & endpoints
     (
@@ -180,6 +181,13 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "Runtime paths & limits",
         "",
         "absolute path to open-computer-use (overrides PATH and npx fallback)",
+    ),
+    (
+        "QWEN_MM_CUA_GLOBAL_POINTER_FALLBACKS",
+        False,
+        "Runtime paths & limits",
+        "off",
+        "allow CUA click/drag/scroll to activate the app and use the global pointer after background paths fail",
     ),
     # OSS storage (serve large media by URL)
     ("OSS_AK", True, "OSS storage (serve large media by URL)", "", "OSS access key id"),

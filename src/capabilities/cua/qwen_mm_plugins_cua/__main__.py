@@ -75,7 +75,8 @@ def main() -> None:
             "Usage: qwen-mm-plugins-cua [--version | --check-system | --setup | --set KEY=VALUE … | "
             "--unset KEY … | --help]\n\n"
             "Runtime: QwenLM open-computer-use (nine screenshot-first tools). The pinned npm "
-            "package is resolved via npx unless QWEN_MM_OPEN_COMPUTER_USE_PATH is set."
+            "package is resolved via npx unless QWEN_MM_OPEN_COMPUTER_USE_PATH is set. Global "
+            "pointer fallback is off unless QWEN_MM_CUA_GLOBAL_POINTER_FALLBACKS is enabled."
         )
         return
     try:
@@ -86,7 +87,12 @@ def main() -> None:
     if command is None:
         print(check_system(), file=sys.stderr)
         raise SystemExit(127)
-    raise SystemExit(run_proxy(command))
+    try:
+        returncode = run_proxy(command)
+    except RuntimeError as exc:
+        print(f"qwen-mm-plugins-cua: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    raise SystemExit(returncode)
 
 
 if __name__ == "__main__":

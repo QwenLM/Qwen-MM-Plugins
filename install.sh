@@ -59,8 +59,8 @@ ALL_HARNESSES="$MP_HARNESSES $CFG_HARNESSES"
 # two in sync when adding a var. Each row: KEY|secret(0/1)|group-tag|default|one-line description.
 # `default` is the effective value or a concise default hint when the var is unset (empty = no
 # default / required / off). Groups are ordered + titled by CONFIG_GROUPS / config_group_title.
-# Excludes the config-location bootstrap (QWEN_MM_CONFIG/_DIR) and behavioral toggles
-# (QWEN_MM_AUTOLAUNCH/…).
+# Excludes the config-location bootstrap (QWEN_MM_CONFIG/_DIR) and harness-managed behavioral
+# toggles such as QWEN_MM_AUTOLAUNCH.
 # bash-3.2 safe (no assoc arrays).
 CONFIG_SPEC=(
   "DASHSCOPE_API_KEY|1|services||vision, OCR, grounding, ASR, generation, memory builds"
@@ -76,6 +76,7 @@ CONFIG_SPEC=(
   "QWEN_MM_CHAT_TIMEOUT|0|runtime|tool-specific (600; Omni 1800)|OpenAI-compatible chat request timeout seconds"
   "QWEN_MM_MAX_TOTAL_FRAMES|0|runtime|600|max frames sampled from a video"
   "QWEN_MM_OPEN_COMPUTER_USE_PATH|0|runtime||absolute path to open-computer-use (overrides PATH and npx fallback)"
+  "QWEN_MM_CUA_GLOBAL_POINTER_FALLBACKS|0|runtime|off|allow CUA click/drag/scroll to activate the app and use the global pointer after background paths fail"
   "OSS_AK|1|oss||OSS access key id"
   "OSS_SK|1|oss||OSS access key secret"
   "OSS_ENDPOINT|0|oss||OSS endpoint"
