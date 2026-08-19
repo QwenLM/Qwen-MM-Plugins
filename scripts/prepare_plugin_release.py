@@ -131,6 +131,11 @@ def main() -> int:
     if entry is None:
         raise SystemExit(f"marketplace: missing qwen-mm-plugins-{cap}")
     versions[cap] = version
+    source_refs = index.get("source_refs")
+    if isinstance(source_refs, dict):
+        source_refs.pop(cap, None)
+        if not source_refs:
+            index.pop("source_refs", None)
     update_distribution_version(index, market, args.distribution_version)
     entry["source"] = {
         "source": "git-subdir",

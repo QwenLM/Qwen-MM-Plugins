@@ -25,6 +25,7 @@ def _rewrite_marketplace(
     *,
     restore: bool,
     versions: dict[str, str],
+    source_refs: dict[str, str],
 ) -> bool:
     original = path.read_text()
     data = json.loads(original)
@@ -40,7 +41,7 @@ def _rewrite_marketplace(
                     "source": "git-subdir",
                     "url": REPO_URL,
                     "path": f"src/capabilities/{cap}",
-                    "ref": f"qwen-mm-plugins-{cap}-v{versions[cap]}",
+                    "ref": source_refs.get(cap, f"qwen-mm-plugins-{cap}-v{versions[cap]}"),
                 }
                 if restore
                 else f"./src/capabilities/{cap}"
@@ -93,6 +94,7 @@ def main() -> int:
 
     version_data = json.loads((repo / "plugin-versions.json").read_text())
     versions: dict[str, str] = version_data["plugins"]
+    source_refs: dict[str, str] = version_data.get("source_refs", {})
     capabilities = set(versions) if args.capabilities == ["all"] else set(args.capabilities)
     unknown = capabilities - set(versions)
     if unknown:
@@ -104,11 +106,7 @@ def main() -> int:
         mcp_manifest = cap_dir / ".mcp.json"
         if not mcp_manifest.is_file():
             continue
-        paths.extend(
-            (path, cap)
-            for path in (cap_dir / ".claude-plugin/plugin.json", mcp_manifest)
-            if path.is_file()
-        )
+        paths.extend((path, cap) for path in (cap_dir / ".claude-plugin/plugin.json", mcp_manifest) if path.is_file())
 
     for path, cap in paths:
         try:
@@ -118,12 +116,17 @@ def main() -> int:
                     capabilities,
                     restore=args.restore,
                     versions=versions,
+                    source_refs=source_refs,
                 )
                 if path == marketplace
                 else _rewrite_mcp(
                     path,
                     cap,
-                    (f"git+{REPO_URL}@qwen-mm-plugins-{cap}-v{versions[cap]}" if args.restore else repo.as_uri()),
+                    (
+                        f"git+{REPO_URL}@{source_refs.get(cap, f'qwen-mm-plugins-{cap}-v{versions[cap]}')}"
+                        if args.restore
+                        else repo.as_uri()
+                    ),
                     refresh=args.refresh,
                 )
             )

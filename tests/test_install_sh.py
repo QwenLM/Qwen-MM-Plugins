@@ -184,6 +184,33 @@ def test_rewrite_plugin_sources_localizes_catalog_and_mcp(tmp_path):
     assert "--refresh" not in restored
 
 
+def test_rewrite_plugin_sources_restores_explicit_development_ref(tmp_path):
+    checkout = _make_local_checkout(tmp_path)
+    index_path = checkout / "plugin-versions.json"
+    index = json.loads(index_path.read_text())
+    index["source_refs"] = {"core": "support_core"}
+    index_path.write_text(json.dumps(index) + "\n")
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(checkout / "scripts/rewrite_plugin_sources.py"),
+            "--repo",
+            str(checkout),
+            "--restore",
+            "core",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    marketplace = json.loads((checkout / ".claude-plugin/marketplace.json").read_text())
+    core = next(item for item in marketplace["plugins"] if item["name"] == "qwen-mm-plugins-core")
+    assert core["source"]["ref"] == "support_core"
+    assert "@support_core" in (checkout / "src/capabilities/core/.mcp.json").read_text()
+
+
 def test_rewrite_plugin_sources_all_skips_skill_only_manifests(tmp_path):
     checkout = _make_local_checkout(tmp_path)
     skill_manifest = checkout / "src/capabilities/search/.claude-plugin/plugin.json"

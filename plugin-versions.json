@@ -1,6 +1,9 @@
 {
   "distribution_version": "1.0.3",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
+  "source_refs": {
+    "cua": "support_cua"
+  },
   "plugins": {
     "api": "1.0.1",
     "blender": "1.0.1",

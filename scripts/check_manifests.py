@@ -5,9 +5,10 @@ For every capability under src/capabilities/<cap>/ this verifies the naming conv
 (capability name / plugin name / MCP-server key / console entry are all `qwen-mm-plugins-<cap>`)
 and that the three registration surfaces agree:
 
-- plugin-versions.json — canonical latest stable version and tag format for each published plugin.
+- plugin-versions.json — canonical latest stable version and source ref for each published plugin;
+  source_refs may temporarily override the immutable tag while a capability is tested pre-release.
 - .claude-plugin/marketplace.json — each published plugin uses a git-subdir source pinned to its
-  canonical immutable tag; the marketplace metadata version matches mcp_framework.
+  canonical source ref (normally an immutable tag); marketplace metadata matches mcp_framework.
 - src/capabilities/<cap>/{.claude-plugin,.codex-plugin,.qoder-plugin}/plugin.json (+ .mcp.json) —
   same name and per-capability version; MCP launch specs pin the same capability tag. A server's
   `__version__` is the plugin version, independent of the one-distribution release-train version.
@@ -61,13 +62,14 @@ def framework_version() -> str | None:
     return m.group(1)
 
 
-def release_index() -> tuple[str | None, dict[str, str], str]:
+def release_index() -> tuple[str | None, dict[str, str], str, dict[str, str]]:
     data = load_json(VERSIONS)
     if not isinstance(data, dict):
-        return None, {}, "qwen-mm-plugins-{cap}-v{version}"
+        return None, {}, "qwen-mm-plugins-{cap}-v{version}", {}
     distribution_version = data.get("distribution_version")
     versions = data.get("plugins")
     tag_format = data.get("tag_format")
+    source_refs = data.get("source_refs", {})
     if not isinstance(distribution_version, str) or not re.fullmatch(
         r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", distribution_version
     ):
@@ -84,7 +86,20 @@ def release_index() -> tuple[str | None, dict[str, str], str]:
     for cap, version in versions.items():
         if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version):
             fail(f"{rel(VERSIONS)}: {cap} has invalid semver {version!r}")
-    return distribution_version, versions, tag_format
+    if not isinstance(source_refs, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) and re.fullmatch(r"[0-9A-Za-z._/-]+", v)
+        for k, v in source_refs.items()
+    ):
+        fail(f"{rel(VERSIONS)}: source_refs must be an object of capability -> Git ref strings")
+        source_refs = {}
+    unknown_refs = set(source_refs) - set(versions)
+    if unknown_refs:
+        fail(f"{rel(VERSIONS)}: source_refs contains unknown capabilities: {sorted(unknown_refs)}")
+    return distribution_version, versions, tag_format, source_refs
+
+
+def source_ref(cap: str, version: str, tag_format: str, source_refs: dict[str, str]) -> str:
+    return source_refs.get(cap, tag_format.format(cap=cap, version=version))
 
 
 def parse_toml_table(text: str, table: str) -> dict[str, str]:
@@ -156,6 +171,7 @@ def check_capability(
     cap_dir: Path,
     version: str | None,
     tag_format: str,
+    source_refs: dict[str, str],
     scripts: dict[str, str],
     package_dir: dict[str, str],
 ) -> None:
@@ -192,8 +208,8 @@ def check_capability(
         if "claude" in loaded:
             cfg = check_mcp_servers(loaded["claude"].get("mcpServers"), expected_name, f"{rel(manifests['claude'])}")
             if cfg is not None and version is not None:
-                tag = tag_format.format(cap=cap, version=version)
-                check_launch_ref(cfg, cap, tag, rel(manifests["claude"]))
+                ref = source_ref(cap, version, tag_format, source_refs)
+                check_launch_ref(cfg, cap, ref, rel(manifests["claude"]))
         if not mcp_json_path.is_file():
             fail(f"{rel(cap_dir)}: server capability without .mcp.json (codex/qoder manifests need it)")
         else:
@@ -201,8 +217,8 @@ def check_capability(
             if mcp_json is not None:
                 cfg = check_mcp_servers(mcp_json.get("mcpServers"), expected_name, rel(mcp_json_path))
                 if cfg is not None and version is not None:
-                    tag = tag_format.format(cap=cap, version=version)
-                    check_launch_ref(cfg, cap, tag, rel(mcp_json_path))
+                    ref = source_ref(cap, version, tag_format, source_refs)
+                    check_launch_ref(cfg, cap, ref, rel(mcp_json_path))
         if "codex" in loaded and loaded["codex"].get("mcpServers") != "./.mcp.json":
             fail(f"{rel(manifests['codex'])}: mcpServers should reference './.mcp.json'")
         if "qoder" in loaded and loaded["qoder"].get("mcp") != ".mcp.json":
@@ -234,7 +250,7 @@ def check_capability(
 
 def main() -> int:
     framework_release = framework_version()
-    distribution_version, versions, tag_format = release_index()
+    distribution_version, versions, tag_format, source_refs = release_index()
     if distribution_version is not None and framework_release != distribution_version:
         fail(
             f"{rel(FRAMEWORK)}: __version__ {framework_release!r} != "
@@ -277,13 +293,13 @@ def main() -> int:
             if version is None:
                 fail(f"{rel(MARKETPLACE)}: {name}: missing from {rel(VERSIONS)}")
             else:
-                expected_tag = tag_format.format(cap=cap, version=version)
-                if source.get("ref") != expected_tag:
-                    fail(f"{rel(MARKETPLACE)}: {name}: ref {source.get('ref')!r}, expected {expected_tag!r}")
+                expected_ref = source_ref(cap, version, tag_format, source_refs)
+                if source.get("ref") != expected_ref:
+                    fail(f"{rel(MARKETPLACE)}: {name}: ref {source.get('ref')!r}, expected {expected_ref!r}")
 
     # Per-capability manifests ↔ pyproject.
     for cap_dir in caps:
-        check_capability(cap_dir, versions.get(cap_dir.name), tag_format, scripts, package_dir)
+        check_capability(cap_dir, versions.get(cap_dir.name), tag_format, source_refs, scripts, package_dir)
         if cap_dir.name not in listed:
             notes.append(f"note: {rel(cap_dir)} is not listed in {rel(MARKETPLACE)} (intentional for the template)")
 
