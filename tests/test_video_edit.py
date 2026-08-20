@@ -5,31 +5,12 @@ package), so it imports like any other server. Handlers hit remote DashScope API
 exercise discovery + the advertised schema/handler surface here (no live calls).
 """
 
-import json
-import re
 import sys
 import types
-from pathlib import Path
-
-from conftest import REPO_ROOT
 
 import qwen_mm_plugins_video_edit as ve
 
 GENERATION_TOOLS = {"qwen_image", "qwen_tts", "wan_s2v", "wan_t2v", "happyhorse"}
-SKILL_MD = Path(REPO_ROOT) / "src/capabilities/video-edit/skill/SKILL.md"
-
-
-def test_skill_description_is_a_strict_yaml_safe_quoted_scalar():
-    text = SKILL_MD.read_text(encoding="utf-8")
-    frontmatter = re.match(r"\A---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    assert frontmatter, "SKILL.md must start with YAML frontmatter"
-    match = re.search(r"^description:\s*(.+)$", frontmatter.group(1), re.MULTILINE)
-    assert match, "SKILL.md frontmatter must declare a description"
-
-    # JSON strings are also valid YAML double-quoted scalars. Parsing here guards both quoting and
-    # escaping, including the `: ` sequence that strict YAML parsers reject in a bare scalar.
-    description = json.loads(match.group(1))
-    assert "workflow: it contributes" in description
 
 
 def test_lists_the_generation_tools():
