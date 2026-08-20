@@ -27,6 +27,15 @@ def _wait_seconds(attempt: int, base: float, mode: str, cap: float | None, jitte
     return wait
 
 
+def _exception_label(error: Exception) -> str:
+    """Return a log-safe error label without provider-controlled response or request text."""
+    status = getattr(error, "status_code", None)
+    if not isinstance(status, int):
+        status = getattr(getattr(error, "response", None), "status_code", None)
+    suffix = f" (HTTP {status})" if isinstance(status, int) else ""
+    return f"{type(error).__name__}{suffix}"
+
+
 def retry_call(
     fn: Callable[[], T],
     *,
@@ -56,14 +65,13 @@ def retry_call(
             if attempt == attempts:
                 break
             wait = _wait_seconds(attempt, base_backoff, mode, cap, jitter)
-            # Log only the exception type + a truncated message: API errors can embed request
-            # context (URLs, payload fragments) that doesn't belong in a warning line.
+            # Provider-controlled error messages can echo request bodies, including base64 media
+            # or credentials. Log only a local type and numeric HTTP status.
             log.warning(
-                "call failed (attempt %d/%d): %s: %.200s — retrying in %.1fs",
+                "call failed (attempt %d/%d): %s — retrying in %.1fs",
                 attempt,
                 attempts,
-                type(e).__name__,
-                e,
+                _exception_label(e),
                 wait,
             )
             time.sleep(wait)

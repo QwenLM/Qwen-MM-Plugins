@@ -6,7 +6,7 @@ import threading
 from mcp_framework import build_registry
 from shared.env import get_env
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 log = logging.getLogger("qwen-mm-plugins-video-memory")
 

@@ -21,8 +21,10 @@ through shared.env.get_env, so a key from env or config is honoured the same way
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
+from conftest import mcp_call
 
 from qwen_mm_plugins_search.backends import BACKEND_KEY_ENVS, resolve_backend
 from shared.env import get_env
@@ -100,6 +102,35 @@ def test_grounding_reachable(sample_image):
     txt = _assert_reached(blocks)
     result = json.loads(txt)  # handler emits a JSON result block
     assert "detections" in result  # may be empty; we only assert the round-trip + shape
+
+
+@requires_dashscope
+def test_native_mode_pdf_caption_reachable(server_dir):
+    """Real PDF renderer → MCP stdio → paid VL caption → text-only MCP result."""
+    pytest.importorskip("pypdfium2")
+    pdf = Path(__file__).parent / "assets" / "sample.pdf"
+    env = {**os.environ, "QWEN_MM_NATIVE_MODE": "0"}
+
+    result = mcp_call(
+        server_dir,
+        lambda session: session.call_tool(
+            "visualize",
+            {
+                "file_path": str(pdf),
+                "pages": "1",
+                "budget": "small",
+                "max_pages": 1,
+            },
+        ),
+        env=env,
+    )
+
+    assert not result.isError
+    assert result.content and all(block.type == "text" for block in result.content)
+    text = "\n".join(block.text for block in result.content)
+    assert "[PDF Start]" in text
+    assert "[Generated visual caption]" in text
+    assert "[Visual content unavailable:" not in text
 
 
 @requires_dashscope

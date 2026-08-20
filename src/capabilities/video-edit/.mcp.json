@@ -4,7 +4,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "qwen-mm-plugins[video-edit] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-edit-v1.0.1",
+        "qwen-mm-plugins[video-edit] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-edit-v1.0.2",
         "qwen-mm-plugins-video-edit"
       ]
     }

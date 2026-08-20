@@ -7,7 +7,7 @@ and Tavily through the package-local backend adapters. ``image_search`` uses Ser
 
 from mcp_framework import build_registry
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 # Auto-discover tools from tools/.
 SPECS, get_handler, list_tools = build_registry(__name__, ["tools"])

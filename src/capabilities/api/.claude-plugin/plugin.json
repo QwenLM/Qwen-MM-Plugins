@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-api",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Qwen-MM-Plugins api — cloud APIs for understanding media, by model family: VL (vision chat, OCR, grounding), Omni A/V (timestamped captioning, ASR / multi-speaker diarization, temporal grounding, event counting), plus ASR and segmentation (SAM3), exposed as an MCP server; currently supports DashScope.",
   "skills": [
     "./skill"
@@ -10,7 +10,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "qwen-mm-plugins[api] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-api-v1.0.4",
+        "qwen-mm-plugins[api] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-api-v1.0.5",
         "qwen-mm-plugins-api"
       ]
     }

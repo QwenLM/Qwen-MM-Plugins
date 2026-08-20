@@ -14,7 +14,7 @@ Depends only on the `mcp` SDK (bundles FastMCP + pydantic) + anyio, so servers s
 
 from __future__ import annotations
 
-__version__ = "1.0.6"  # distribution/release-train version; plugin versions are per capability
+__version__ = "1.0.7"  # distribution/release-train version; plugin versions are per capability
 
 import asyncio
 import importlib
@@ -181,7 +181,14 @@ def _to_content_block(block: dict):
 
 
 async def _run_handle(handle, arguments: dict):
-    raw = await anyio.to_thread.run_sync(lambda: handle(arguments))
+    def run_and_adapt():
+        # Caption fallback may perform network I/O; keep it in the same worker thread as the
+        # synchronous handler rather than blocking FastMCP's event loop.
+        from shared.native_mode import adapt_content_blocks
+
+        return adapt_content_blocks(handle(arguments))
+
+    raw = await anyio.to_thread.run_sync(run_and_adapt)
     return [_to_content_block(b) for b in raw]
 
 

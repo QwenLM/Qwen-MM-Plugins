@@ -11,9 +11,10 @@ from pathlib import Path
 import pytest
 from scripts.gen_env_docs import check, load_config_fields
 
-from shared.env import _int_env
+from shared.env import _int_env, get_bool_env
 
 _VAR = "QMP_TEST_INT_ENV"
+_BOOL_VAR = "QMP_TEST_BOOL_ENV"
 _ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -52,3 +53,24 @@ def test_garbage_falls_back_without_raising(monkeypatch):
     # Used to crash the server at import with ValueError; now warns to stderr and uses the default.
     monkeypatch.setenv(_VAR, "not-a-number")
     assert _int_env(_VAR, 99) == 99
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "  On  "])
+def test_bool_env_accepts_true_spellings(monkeypatch, value):
+    monkeypatch.setenv(_BOOL_VAR, value)
+    assert get_bool_env(_BOOL_VAR) is True
+
+
+@pytest.mark.parametrize("value", ["0", "false", "FALSE", "no", "off", "  Off  "])
+def test_bool_env_accepts_false_spellings(monkeypatch, value):
+    monkeypatch.setenv(_BOOL_VAR, value)
+    assert get_bool_env(_BOOL_VAR, default=True) is False
+
+
+def test_bool_env_unset_or_invalid_uses_default(monkeypatch, caplog):
+    monkeypatch.delenv(_BOOL_VAR, raising=False)
+    assert get_bool_env(_BOOL_VAR, default=True) is True
+
+    monkeypatch.setenv(_BOOL_VAR, "maybe")
+    assert get_bool_env(_BOOL_VAR, default=True) is True
+    assert f"invalid {_BOOL_VAR}" in caplog.text

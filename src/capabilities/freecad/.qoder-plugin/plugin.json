@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-freecad",
   "displayName": "Qwen MM Plugins FreeCAD",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "FreeCAD parametric CAD: create/edit objects, execute Python, named-view screenshots, parts library, and CalculiX FEM as MCP tools + a skill.",
   "skills": "./skill",
   "mcp": ".mcp.json"

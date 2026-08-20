@@ -32,11 +32,12 @@ classifiers = [
     "Topic :: Multimedia :: Graphics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# Base runtime — enough to run a server + read_image; everything else is an extra below.
+# Base runtime — server + read_image + optional text-only image captions; everything else is an extra.
 dependencies = [
     "mcp>=1.0.0,<2",
     "anyio>=4.0,<5",
     "pillow<12",
+    "openai",  # shared text-only fallback captions for MCP image results
 ]
 
 [project.urls]
@@ -46,7 +47,7 @@ Issues = "https://github.com/QwenLM/Qwen-MM-Plugins/issues"
 
 [project.optional-dependencies]
 # capability extras — compose via the profiles below
-api = ["openai", "dashscope", "httpx[socks]", "requests[socks]"]  # cloud media APIs + HTTP/SOCKS
+api = ["dashscope", "httpx[socks]", "requests[socks]"]  # cloud media APIs + HTTP/SOCKS
 search = ["requests[socks]"]                    # Serper / Exa / Tavily + optional SOCKS proxy transport
 # viz = the full visualize stack — a `core` install then renders every format out of the box.
 viz = [
@@ -60,7 +61,7 @@ viz = [
 ]
 video-memory = ["numpy<3", "requests"]        # long-video graph-memory server
 video-edit = ["dashscope>=1.25.16", "requests"]  # image/video/audio generation server
-example = ["openai"]                           # template capability — base deps + openai (for the `describe` API demo)
+example = []                                   # template capability — uses the base OpenAI client
 oss = ["oss2"]                                 # optional: upload large media to OSS for a signed URL (memory-build clip upload, api oversized-video upload)
 blender = []                                   # Blender live-session MCP client (stdlib socket; needs a running Blender + addon)
 freecad = []                                   # FreeCAD live-session MCP client (stdlib xml-rpc; needs a running FreeCAD + addon)

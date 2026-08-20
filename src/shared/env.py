@@ -8,8 +8,12 @@ capability-private env vars keep their own defaults in the capability that owns 
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterable
+
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
 
 def get_env(name: str, default: str | None = None) -> str | None:
@@ -20,6 +24,20 @@ def get_env(name: str, default: str | None = None) -> str | None:
     """
     val = os.environ.get(name)
     return val if val is not None else _config().get(name, default)
+
+
+def get_bool_env(name: str, default: bool = False) -> bool:
+    """Parse a boolean config var at call time, returning ``default`` when unset or invalid."""
+    raw = get_env(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    logging.getLogger(__name__).warning("invalid %s=%r; using default %d", name, raw, int(default))
+    return default
 
 
 # ── User config file (~/.qwen-mm-plugins/config): KEY=VALUE lines, read when a var isn't in the
@@ -127,7 +145,8 @@ def del_config(keys: Iterable[str]) -> str:
 # first appearance.
 # install.sh mirrors this list (CONFIG_SPEC) for its own editor — keep the two in sync when adding a
 # var. Excludes the config-location bootstrap (QWEN_MM_CONFIG/_DIR — can't live in the config it
-# locates), the example demo var, and behavioral on/off toggles (QWEN_MM_AUTOLAUNCH/…, FREECAD_* flags). ──
+# locates), the example demo var, and capability-private on/off toggles
+# (QWEN_MM_AUTOLAUNCH/…, FREECAD_* flags). ──
 CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
     # Media APIs & endpoints
     (
@@ -135,7 +154,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         True,
         "Media APIs & endpoints",
         "",
-        "vision, OCR, grounding, ASR, generation, memory builds",
+        "vision, OCR, grounding, text-only image captions, ASR, generation, memory builds",
     ),
     (
         "DASHSCOPE_BASE_URL",
@@ -149,7 +168,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         False,
         "Media APIs & endpoints",
         "qwen3.7-plus",
-        "default VL model for vision_chat, OCR, and grounding",
+        "default VL model for vision_chat, OCR, grounding, and text-only image captions",
     ),
     (
         "QWEN_MM_API_OMNI_MODEL",
@@ -186,6 +205,13 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "Runtime paths & limits",
         "tool-specific (600; Omni 1800)",
         "OpenAI-compatible chat request timeout seconds",
+    ),
+    (
+        "QWEN_MM_NATIVE_MODE",
+        False,
+        "Runtime paths & limits",
+        "1",
+        "1 returns MCP images; 0 sends images to the VL endpoint and returns captions",
     ),
     ("QWEN_MM_MAX_TOTAL_FRAMES", False, "Runtime paths & limits", "600", "max frames sampled from a video"),
     # OSS storage (serve large media by URL)

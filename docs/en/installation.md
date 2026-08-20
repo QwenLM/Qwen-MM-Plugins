@@ -131,7 +131,7 @@ These are the settings most users need for cloud capabilities. The
 
 | Variable | Used by |
 |---|---|
-| `DASHSCOPE_API_KEY` | Cloud media APIs, generation, and video-memory builds |
+| `DASHSCOPE_API_KEY` | Cloud media APIs, text-only image captions, generation, and video-memory builds |
 | `SERPER_API_KEY` | Serper web search/extraction and all reverse-image search |
 | `TAVILY_API_KEY` | Tavily web search and extraction |
 | `EXA_API_KEY` | Exa web search and extraction |

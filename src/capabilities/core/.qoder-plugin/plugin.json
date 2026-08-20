@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-core",
   "displayName": "Qwen MM Plugins Core",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Vision: read/visualize any file (images, video, PDF, Office, code, SVG, 3D, GIS, notebooks) plus OCR, grounding, segmentation, ASR and vision-chat as MCP tools.",
   "skills": "./skill",
   "mcp": ".mcp.json"

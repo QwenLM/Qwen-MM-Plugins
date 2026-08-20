@@ -325,6 +325,22 @@ def test_retry_predicate_propagates_non_matching(monkeypatch):
     assert calls["n"] == 1  # predicate rejects → propagates on first try, no retry
 
 
+def test_retry_log_omits_provider_error_message(monkeypatch, caplog):
+    monkeypatch.setattr(sr.time, "sleep", lambda *_: None)
+
+    class EchoedRequestError(RuntimeError):
+        status_code = 500
+
+    def fail():
+        raise EchoedRequestError("data:image/png;base64,SECRET_BASE64_PAYLOAD")
+
+    with pytest.raises(EchoedRequestError):
+        sr.retry_call(fail, attempts=2)
+
+    assert "EchoedRequestError (HTTP 500)" in caplog.text
+    assert "SECRET_BASE64_PAYLOAD" not in caplog.text
+
+
 # ── B1: poll + download survive a transient blip on a billed job ─────
 
 
