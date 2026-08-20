@@ -64,7 +64,8 @@ MCP tool.
 ## Requirements and configuration
 
 - [`uv`](https://docs.astral.sh/uv/) provides `uvx`, which installs Python dependencies on demand.
-- Local `core` tools need no API key. Cloud and search capabilities need their provider credentials.
+- Local `core` tools need no API key in the default native-image mode. Text-only caption fallback,
+  cloud, and search capabilities need their provider credentials.
 - Video, document, browser, Blender, and FreeCAD workflows may need system applications.
 
 Run the installer's **Configure** and **Verify** actions to set credentials and check dependencies.

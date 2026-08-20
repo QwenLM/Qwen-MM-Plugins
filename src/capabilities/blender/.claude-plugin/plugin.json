@@ -1,13 +1,21 @@
 {
   "name": "qwen-mm-plugins-blender",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Blender 3D modeling: drive a running Blender (execute Python, viewport screenshots, PolyHaven/Sketchfab/Hyper3D/Hunyuan3D assets) as MCP tools + a build→refine→verify skill.",
-  "skills": ["./skill"],
+  "skills": [
+    "./skill"
+  ],
   "mcpServers": {
     "qwen-mm-plugins-blender": {
       "command": "uvx",
-      "args": ["--from", "qwen-mm-plugins[blender] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-blender-v1.0.1", "qwen-mm-plugins-blender"],
-      "env": {"QWEN_MM_AUTOLAUNCH": "1"}
+      "args": [
+        "--from",
+        "qwen-mm-plugins[blender] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-blender-v1.0.2",
+        "qwen-mm-plugins-blender"
+      ],
+      "env": {
+        "QWEN_MM_AUTOLAUNCH": "1"
+      }
     }
   }
 }

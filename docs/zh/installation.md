@@ -124,7 +124,7 @@ wsl --install -d Ubuntu
 
 | 变量 | 用途 |
 |---|---|
-| `DASHSCOPE_API_KEY` | 云端媒体 API、内容生成和 video-memory 构建 |
+| `DASHSCOPE_API_KEY` | 云端媒体 API、纯文本模型的图片描述、内容生成和 video-memory 构建 |
 | `SERPER_API_KEY` | Serper 网页搜索/抽取，以及所有反向图像搜索 |
 | `TAVILY_API_KEY` | Tavily 网页搜索和页面抽取 |
 | `EXA_API_KEY` | Exa 网页搜索和页面抽取 |

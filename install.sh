@@ -30,7 +30,7 @@ LOCAL_REPO_ROOT=''
 CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.3 1.0.4 1.0.3 1.0.2 1.0.1 1.0.1 1.0.1 1.0.2)
+CAP_VERSIONS=(1.0.4 1.0.5 1.0.4 1.0.3 1.0.2 1.0.2 1.0.2 1.0.2)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
@@ -64,9 +64,9 @@ ALL_HARNESSES="$MP_HARNESSES $CFG_HARNESSES"
 # (QWEN_MM_AUTOLAUNCH/…).
 # bash-3.2 safe (no assoc arrays).
 CONFIG_SPEC=(
-  "DASHSCOPE_API_KEY|1|services||vision, OCR, grounding, ASR, generation, memory builds"
+  "DASHSCOPE_API_KEY|1|services||vision, OCR, grounding, text-only image captions, ASR, generation, memory builds"
   "DASHSCOPE_BASE_URL|0|services|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
-  "QWEN_MM_API_VL_MODEL|0|services|qwen3.7-plus|default VL model for vision_chat, OCR, and grounding"
+  "QWEN_MM_API_VL_MODEL|0|services|qwen3.7-plus|default VL model for vision_chat, OCR, grounding, and text-only image captions"
   "QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|default Omni model for audio/video understanding tools"
   "SAM3_SERVER_URL|0|services||segmentation SAM3 server URL"
   "ASR_SERVER_URLS|0|services||self-hosted ASR fallback URLs (comma-separated)"
@@ -77,6 +77,7 @@ CONFIG_SPEC=(
   "QWEN_MM_CACHE|0|runtime|OS cache dir|cache dir for derived render artifacts"
   "QWEN_MM_FFMPEG_TIMEOUT|0|runtime|120|ffmpeg/ffprobe timeout seconds"
   "QWEN_MM_CHAT_TIMEOUT|0|runtime|tool-specific (600; Omni 1800)|OpenAI-compatible chat request timeout seconds"
+  "QWEN_MM_NATIVE_MODE|0|runtime|1|1 returns MCP images; 0 sends images to the VL endpoint and returns captions"
   "QWEN_MM_MAX_TOTAL_FRAMES|0|runtime|600|max frames sampled from a video"
   "OSS_AK|1|oss||OSS access key id"
   "OSS_SK|1|oss||OSS access key secret"

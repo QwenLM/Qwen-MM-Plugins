@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-video-memory",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Qwen-MM-Plugins video-memory — hierarchical graph memory for long-video QA (Root → SuperEvent → MacroEvent → Subgraph with embedding search), exposed as an MCP server.",
   "skills": "./skill",
   "mcpServers": "./.mcp.json"

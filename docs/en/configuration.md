@@ -8,6 +8,23 @@ Use `QWEN_MM_CONFIG=/path/to/file` to select another file, or `QWEN_MM_CONFIG_DI
 change the directory containing the default `config` file. These bootstrap variables must be set
 in the process environment because they determine which file is read.
 
+## Model output mode
+
+`QWEN_MM_NATIVE_MODE=1` is the default. MCP tools return native image content blocks so a
+multimodal host model can inspect the original visual result directly.
+
+Set `QWEN_MM_NATIVE_MODE=0` when the host model is text-only. Every returned image block is replaced
+at the same position by a generated caption, while existing text blocks (file metadata, PDF text
+layers, video timestamps, and similar context) are preserved. The caption path uses
+`DASHSCOPE_BASE_URL`, `DASHSCOPE_API_KEY`, and `QWEN_MM_API_VL_MODEL`, and requires a non-empty API
+key for every configured endpoint. For an authentication-free local endpoint, set an explicit
+non-empty placeholder key. Missing credentials or a failed caption call produce an explicit
+`Visual content unavailable` text block instead of exposing base64 or silently dropping the image.
+
+Enabling text-only mode sends tool-result images—including local files and application or desktop
+screenshots—to the configured VL endpoint. Use it only when that data may be shared with the
+endpoint. Invalid mode values fail safe to native mode and do not trigger an upload.
+
 ## Search selection
 
 Leave `QWEN_MM_SEARCH_BACKEND` unset or set it to `auto` to select the first configured key in this
@@ -27,9 +44,9 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DASHSCOPE_API_KEY` | — | vision, OCR, grounding, ASR, generation, memory builds *(secret)* |
+| `DASHSCOPE_API_KEY` | — | vision, OCR, grounding, text-only image captions, ASR, generation, memory builds *(secret)* |
 | `DASHSCOPE_BASE_URL` | DashScope compat URL | override the DashScope OpenAI-compatible base URL |
-| `QWEN_MM_API_VL_MODEL` | qwen3.7-plus | default VL model for vision_chat, OCR, and grounding |
+| `QWEN_MM_API_VL_MODEL` | qwen3.7-plus | default VL model for vision_chat, OCR, grounding, and text-only image captions |
 | `QWEN_MM_API_OMNI_MODEL` | qwen3.5-omni-plus | default Omni model for audio/video understanding tools |
 | `SAM3_SERVER_URL` | — | segmentation SAM3 server URL |
 | `ASR_SERVER_URLS` | — | self-hosted ASR fallback URLs (comma-separated) |
@@ -50,6 +67,7 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 | `QWEN_MM_CACHE` | OS cache dir | cache dir for derived render artifacts |
 | `QWEN_MM_FFMPEG_TIMEOUT` | 120 | ffmpeg/ffprobe timeout seconds |
 | `QWEN_MM_CHAT_TIMEOUT` | tool-specific (600; Omni 1800) | OpenAI-compatible chat request timeout seconds |
+| `QWEN_MM_NATIVE_MODE` | 1 | 1 returns MCP images; 0 sends images to the VL endpoint and returns captions |
 | `QWEN_MM_MAX_TOTAL_FRAMES` | 600 | max frames sampled from a video |
 
 ### OSS storage (serve large media by URL)
