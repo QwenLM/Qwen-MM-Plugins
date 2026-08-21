@@ -46,7 +46,7 @@ def _capabilities() -> list[str]:
 
 
 def _load(cap: str, rel: str) -> dict:
-    return json.loads((_CAPS_DIR / cap / rel).read_text())
+    return json.loads((_CAPS_DIR / cap / rel).read_text(encoding="utf-8"))
 
 
 def _server_capabilities() -> list[str]:
@@ -122,7 +122,7 @@ def test_mcp_launch_spec_agrees(cap):
 def test_marketplace_lists_every_capability():
     import mcp_framework
 
-    market = json.loads((_ROOT / ".claude-plugin" / "marketplace.json").read_text())
+    market = json.loads((_ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     listed = {p["name"] for p in market["plugins"]}
     # `example` is a copy-me template that ships in the repo but is intentionally NOT published to
     # the marketplace (end users shouldn't see a demo plugin). Every other capability must be listed.
