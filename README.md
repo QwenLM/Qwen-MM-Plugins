@@ -38,7 +38,7 @@ install name is `qwen-mm-plugins-<capability>`.
 
 | Capability | Use case | Main requirements | Cookbook |
 |---|---|---|---|
-| `core` | Read images and video; visualize documents, code, data, 3D files, and more | No API key; ffmpeg for audio/video; format-specific apps as needed | [Cookbook](cookbooks/core/usage.md) |
+| `core` | Read images and video; visualize documents, code, data, 3D files, NIfTI volumes, and more | No API key; ffmpeg for audio/video; nibabel for NIfTI; format-specific apps as needed | [Cookbook](cookbooks/core/usage.md) |
 | `api` | Qwen VL/Omni vision, OCR, grounding, ASR, segmentation, and audio-video understanding | DashScope; ffmpeg for local audio/video | [Cookbook](cookbooks/api/usage.md) |
 | `search` | Web search, page extraction, and reverse-image search | Serper, Exa, or Tavily key; image search requires Serper | [Cookbook](cookbooks/search/usage.md) |
 | `video-memory` | Build hierarchical memory for long-video QA | DashScope; ffmpeg/ffprobe for builds | [Cookbook](cookbooks/video-memory/usage.md) |
@@ -57,9 +57,11 @@ MCP tool.
 @meeting.mp4         Transcribe this with speaker labels and timestamps.
 @place.jpg           Identify where this photo was taken and verify it on the web.
 @lecture-2h.mp4      List the main points with timestamps.
+@brain.nii.gz        Inspect metadata and show orthogonal center slices.
 ```
 
 `core` reads media at dynamic resolution, so manual resizing is normally unnecessary.
+NIfTI files stay local and are opened read-only; this visualization is not for clinical diagnosis.
 
 ## Requirements and configuration
 

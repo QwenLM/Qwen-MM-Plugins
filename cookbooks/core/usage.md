@@ -16,7 +16,7 @@ verification lives in [`qwen-mm-plugins-search`](../search/usage.md).
 - `read_image` — read an image at dynamic resolution
 - `read_video` — sample video frames with automatic FPS and resolution
 - `media_info` — inspect container, video, and audio metadata with ffprobe
-- `visualize` — render PDF, Office, CSV, code, SVG, DrawIO, 3D, GIS, notebook, and LaTeX files
+- `visualize` — render PDF, Office, CSV, code, SVG, DrawIO, 3D, NIfTI, GIS, notebook, and LaTeX files
 
 **Write image views**
 
@@ -35,9 +35,20 @@ claude plugin marketplace add https://github.com/QwenLM/Qwen-MM-Plugins.git
 claude plugin install qwen-mm-plugins-core@qwen-mm-plugins
 ```
 
-`core` needs no API key. Video tools require ffmpeg/ffprobe; individual visualization formats may
-need LibreOffice, TeX, Chromium, Blender, or FreeCAD. Run `bash install.sh verify` to check system
-dependencies for the installed capability.
+`core` needs no API key. Video tools require ffmpeg/ffprobe; NIfTI visualization uses nibabel; other
+formats may need LibreOffice, TeX, Chromium, Blender, or FreeCAD. Run `bash install.sh verify` to
+check system dependencies for the installed capability.
+
+### NIfTI volumes
+
+`visualize` opens `.nii` and `.nii.gz` files locally and read-only. For a 3D volume it returns
+metadata and axial, coronal, and sagittal center slices. For a 4D image it uses the first volume by
+default. Slices use the closest-canonical voxel axes; oblique volumes are not resampled. The source
+is never uploaded. This feature is for inspection and visualization, not clinical diagnosis.
+
+```text
+@brain.nii.gz  Show its metadata and orthogonal center slices.
+```
 
 ---
 

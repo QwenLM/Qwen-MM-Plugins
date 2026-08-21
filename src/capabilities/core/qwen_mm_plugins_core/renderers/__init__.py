@@ -56,6 +56,9 @@ _REGISTRY: dict[str, tuple[str, str]] = {
     ".geojson": ("geo", "render"),
     ".kml": ("geo", "render"),
     ".shp": ("geo", "render"),
+    # Medical imaging volumes
+    ".nii": ("nifti", "render"),
+    ".nii.gz": ("nifti", "render"),
     # Jupyter notebooks
     ".ipynb": ("notebook", "render"),
     # LaTeX
@@ -76,6 +79,17 @@ IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif",
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".webm", ".avi", ".mkv"})
 
 SUPPORTED_EXTENSIONS = frozenset(_REGISTRY.keys()) | IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
+
+_COMPOUND_EXTENSIONS = tuple(sorted((ext for ext in SUPPORTED_EXTENSIONS if ext.count(".") > 1), key=len, reverse=True))
+
+
+def detect_extension(path: str) -> str:
+    """Return a supported compound extension when present, else the final suffix."""
+    lower_path = os.fspath(path).lower()
+    for ext in _COMPOUND_EXTENSIONS:
+        if lower_path.endswith(ext):
+            return ext
+    return os.path.splitext(lower_path)[1]
 
 
 def get_renderer(ext: str) -> Callable[..., Any] | None:
@@ -131,7 +145,7 @@ def source_to_pdf(path: str, **opts: Any) -> str | None:
     form here (it rasterizes via resvg) — callers handle it separately.
     """
 
-    ext = os.path.splitext(path)[1].lower()
+    ext = detect_extension(path)
     if ext in _PDF_NATIVE_EXTENSIONS:
         return path
 

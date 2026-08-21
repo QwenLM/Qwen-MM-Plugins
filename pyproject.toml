@@ -56,6 +56,7 @@ viz = [
     "numpy<3",                                # 3D render math (renderers/model3d) — also pulled in by the libs above
     "nbformat",                               # Jupyter notebooks
     "geopandas",                              # GIS (.geojson/.kml/.shp)
+    "nibabel>=5,<6",                          # NIfTI medical volumes (.nii/.nii.gz)
     "trimesh", "pyrender", "cascadio",        # 3D (.obj/.stl/.glb)
     "playwright",                             # HTML screenshot
 ]
