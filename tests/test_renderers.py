@@ -239,6 +239,7 @@ def _has_dep(key: str) -> bool:
         "nbformat": lambda: __import__("nbformat"),
         "geopandas": lambda: __import__("geopandas"),
         "trimesh": lambda: __import__("trimesh"),
+        "cascadio": lambda: __import__("cascadio"),  # trimesh STEP/STP loader
         "playwright": lambda: __import__("playwright"),
         "libreoffice": lambda: shutil.which("libreoffice") or shutil.which("soffice"),
         "pdflatex": lambda: shutil.which("pdflatex"),
@@ -339,7 +340,7 @@ TESTS = [
     ("sample.drawio", "image", 1, "DrawIO (XML → SVG)", ["resvg_py", "lxml"]),
     ("sample.srt", "text", 1, "SRT subtitle (text)", []),
     ("sample-model.glb", "image", 3, "GLB (blender)", ["blender"]),
-    ("GothicRoseWindow.step", "image", 3, "STEP (trimesh)", ["trimesh"]),
+    ("GothicRoseWindow.step", "image", 3, "STEP (trimesh)", ["trimesh", "cascadio"]),
     ("sample.geojson", "image", 1, "GeoJSON (geopandas)", ["geopandas"]),
     ("sample.ipynb", "text", 3, "Jupyter notebook", ["nbformat"]),
     ("charts.ipynb", "image", 3, "Jupyter notebook (charts)", ["nbformat"]),
