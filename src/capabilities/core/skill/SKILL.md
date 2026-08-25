@@ -35,7 +35,7 @@ Producing / annotating (writes an image file):
 | Diagrams | `.drawio` | XML → SVG rendering |
 | Subtitles | `.srt`, `.vtt` | Returns text |
 | 3D Models | `.obj`, `.stl`, `.glb`, `.gltf`, `.fbx`, `.ply`, `.step`, `.stp` | Built-in; `blender` for best quality |
-| Medical volumes | `.nii`, `.nii.gz` | Local/read-only (`nibabel`); 3 center slices; 4D `pages` selects volumes (default 1) |
+| Medical volumes | `.nii`, `.nii.gz` | Local/read-only (`nibabel`); 3 interior source-axis-2 slices; 4D `pages` selects volumes (default 1) |
 | GIS/Geo | `.geojson`, `.kml`, `.shp` | Built-in |
 | Notebooks | `.ipynb` | Text cells + embedded images |
 | LaTeX | `.tex` | Compiles to PDF; falls back to source on failure |
@@ -43,8 +43,15 @@ Producing / annotating (writes an image file):
 
 Use `pages` for page ranges, `budget` for resolution, `max_pages` to cap output.
 
-NIfTI uses closest-canonical voxel axes without resampling and is intended for inspection, not
-clinical diagnosis.
+For NIfTI, source voxel axes are not necessarily anatomical axes. The default is three uniformly
+spaced interior slices on source axis 2, with no resampling, and one volume-level P1–P99 display
+range shared across the slices. Use `nifti_slice_axis`, `nifti_num_slices`,
+`nifti_slice_indices`, or normalized `nifti_slice_positions` to override sampling. Use
+`nifti_intensity_mode=window` with center/width or `preset` with one of `ct_brain`,
+`ct_soft_tissue`, `ct_lung`, and `ct_bone` to override intensity mapping. The result reports the
+resolved indices and effective intensity configuration. If the images suggest a modality or body
+region, clearly label that inference and propose an alternate configuration; do not silently apply
+a CT preset. NIfTI visualization is intended for inspection, not clinical diagnosis.
 
 ## Metadata First
 

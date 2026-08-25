@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 @meeting.mp4         带说话人标签和时间戳转写这段会议。
 @place.jpg           判断照片拍摄地点，并联网核实。
 @lecture-2h.mp4      按时间戳列出这段长视频的主要观点。
-@brain.nii.gz        查看元数据和三个正交方向的中心切片。
+@brain.nii.gz        查看元数据和源体素第 2 轴上的三张内部等距切片。
 ```
 
 `core` 会以动态分辨率读取媒体，通常无需手动缩放。

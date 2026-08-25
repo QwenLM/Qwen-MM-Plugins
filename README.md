@@ -57,7 +57,7 @@ MCP tool.
 @meeting.mp4         Transcribe this with speaker labels and timestamps.
 @place.jpg           Identify where this photo was taken and verify it on the web.
 @lecture-2h.mp4      List the main points with timestamps.
-@brain.nii.gz        Inspect metadata and show orthogonal center slices.
+@brain.nii.gz        Inspect metadata and show three interior source-axis-2 slices.
 ```
 
 `core` reads media at dynamic resolution, so manual resizing is normally unnecessary.
