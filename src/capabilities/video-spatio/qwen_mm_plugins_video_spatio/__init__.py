@@ -13,9 +13,8 @@ SYSTEM_DEPS = []
 SYSTEM_DEPS_NOTE = "  Model-free / prompt-only: no external perception (GPU) server required."
 
 USAGE_NOTE = (
-    "Flattened: skill + stateless tools driven by the OUTER model (which does perception itself). "
+    "Flattened: skill + stateless tools driven by the OUTER model (which does perception itself).\n"
     "Geometry tools (build_scene/triangulate/visualize_bev/...) need no API key. The few single-shot "
-    "VLM tools (orient_facing/verify_grounding/...) reuse the MAIN model endpoint by default "
-    "(MODEL_BASE_URL/MODEL_API_KEY/MODEL) — Anthropic-native (routify /protocol/anthropic) auto-detected, "
-    "OpenAI-compatible otherwise. Override with VIDEO_SPATIO_VLM_BASE_URL/_API_KEY/_MODEL."
+    "VLM tools (orient_facing/verify_grounding/...) resolve like the api capability's VL tools: "
+    "DASHSCOPE_BASE_URL/DASHSCOPE_API_KEY + QWEN_MM_API_VL_MODEL, or a per-call `model` argument."
 )

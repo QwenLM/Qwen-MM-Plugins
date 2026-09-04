@@ -168,7 +168,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         False,
         "Media APIs & endpoints",
         "qwen3.7-plus",
-        "default VL model for vision_chat, OCR, grounding, and text-only image captions",
+        "default VL model for vision_chat, OCR, grounding, video-spatio's VLM tools, and text-only image captions",
     ),
     (
         "QWEN_MM_API_OMNI_MODEL",
@@ -179,27 +179,6 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
     ),
     ("SAM3_SERVER_URL", False, "Media APIs & endpoints", "", "segmentation SAM3 server URL"),
     ("ASR_SERVER_URLS", False, "Media APIs & endpoints", "", "self-hosted ASR fallback URLs (comma-separated)"),
-    (
-        "VIDEO_SPATIO_VLM_BASE_URL",
-        False,
-        "Media APIs & endpoints",
-        "MODEL_BASE_URL, else DashScope",
-        "endpoint for video-spatio's single-shot VLM tools (orient_facing, verify_grounding, ...)",
-    ),
-    (
-        "VIDEO_SPATIO_VLM_API_KEY",
-        True,
-        "Media APIs & endpoints",
-        "MODEL_API_KEY, else DASHSCOPE_API_KEY",
-        "key for video-spatio's single-shot VLM tools",
-    ),
-    (
-        "VIDEO_SPATIO_VLM_MODEL",
-        False,
-        "Media APIs & endpoints",
-        "MODEL, else qwen-vl-max",
-        "model for video-spatio's single-shot VLM tools",
-    ),
     # Search providers
     (
         "QWEN_MM_SEARCH_BACKEND",

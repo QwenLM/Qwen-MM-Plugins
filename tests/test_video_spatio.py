@@ -167,9 +167,9 @@ def test_vlm_tool_degrades_to_an_error_block_without_a_reachable_endpoint(frames
     """A single-shot VLM tool must return an error block, never raise out of the handler."""
     from qwen_mm_plugins_video_spatio.tools import orient_facing
 
-    monkeypatch.setenv("VIDEO_SPATIO_VLM_BASE_URL", "http://127.0.0.1:1/v1")
-    monkeypatch.setenv("VIDEO_SPATIO_VLM_API_KEY", "not-a-key")
-    monkeypatch.setenv("VIDEO_SPATIO_VLM_MODEL", "does-not-exist")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "not-a-key")
+    monkeypatch.setenv("QWEN_MM_API_VL_MODEL", "does-not-exist")
 
     blocks = orient_facing.handle({"image": frames[0], "target": "chair", "votes": 1})
     assert blocks and all(b.get("type") == "text" for b in blocks)

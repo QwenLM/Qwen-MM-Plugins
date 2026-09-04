@@ -1,13 +1,14 @@
-"""Single-shot VLM shim — VLMModule-compatible (ask / ask_with_thinking / locate) over ONE external
-endpoint, auto-selecting protocol:
+"""Single-shot VLM shim — VLMModule-compatible (ask / ask_with_thinking / locate) over ONE endpoint,
+auto-selecting protocol:
 
 - **Anthropic-native** (base_url contains 'protocol/anthropic', or model contains 'claude'): POST
-  `{base}/v1/messages` with `x-api-key: Bearer <key>` + `anthropic-version`, NO temperature (routify/opus
-  rejects temperature) — mirrors the last clean inner run (dd998acf). Reuses the MAIN model endpoint.
+  `{base}/v1/messages` with `x-api-key: Bearer <key>` + `anthropic-version`, NO temperature (routify
+  rejects it).
 - **OpenAI-compatible** otherwise: shared.api_openai.call_openai_chat (DashScope etc.).
 
-Endpoint/key/model default to the MAIN model's (MODEL_BASE_URL / MODEL_API_KEY / MODEL) so the VLM tools
-reuse the same external routify endpoint with zero extra config; VIDEO_SPATIO_VLM_* overrides if needed.
+Endpoint, key and model resolve exactly like the api capability's VL tools — `resolve_openai_endpoint`
+(DASHSCOPE_BASE_URL / DASHSCOPE_API_KEY) and `resolve_vl_model` (QWEN_MM_API_VL_MODEL) — so this
+capability adds no config surface of its own. Each tool's own `model` argument still wins per call.
 No temperature/thinking/multi-provider matrix — just one clean single-shot call.
 """
 
@@ -48,31 +49,10 @@ class VLMShim:
     """Minimal VLMModule replacement: images + a question → text, over one external endpoint."""
 
     def __init__(self, model: str | None = None, base_url: str | None = None, api_key: str | None = None):
-        from shared.env import get_env
+        from shared.api_openai import resolve_openai_endpoint, resolve_vl_model
 
-        self._base_url = (
-            base_url
-            or get_env("VIDEO_SPATIO_VLM_BASE_URL")
-            or get_env("SPATIAL_AGENT_LLM_BASE_URL")
-            or get_env("MODEL_BASE_URL")
-            or get_env("DASHSCOPE_BASE_URL")
-            or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        )
-        self._api_key = (
-            api_key
-            or get_env("VIDEO_SPATIO_VLM_API_KEY")
-            or get_env("SPATIAL_AGENT_LLM_API_KEY")
-            or get_env("MODEL_API_KEY")
-            or get_env("DASHSCOPE_API_KEY")
-            or "EMPTY"
-        )
-        self._model = (
-            model
-            or get_env("VIDEO_SPATIO_VLM_MODEL")
-            or get_env("SPATIAL_AGENT_LLM_MODEL")
-            or get_env("MODEL")
-            or "qwen-vl-max"
-        )
+        self._base_url, self._api_key = resolve_openai_endpoint({"base_url": base_url, "api_key": api_key})
+        self._model = resolve_vl_model(model)
         self._anthropic = ("protocol/anthropic" in self._base_url) or ("claude" in self._model.lower())
 
     # ── Anthropic-native (routify /protocol/anthropic) — NO temperature ──────
