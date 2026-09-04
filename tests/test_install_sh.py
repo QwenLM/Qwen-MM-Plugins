@@ -559,7 +559,8 @@ def test_capability_rows_never_wrap_at_narrow_terminal_widths(width):
     result = _bash(f"term_cols() {{ printf {width}; }}; load_caps core; _multi_rows 0")
     assert result.returncode == 0, result.stderr
     lines = [line.replace("\x1b[2K", "") for line in result.stdout.splitlines()]
-    assert len(lines) == 9
+    n_caps = int(_bash('printf "%s" "${#CAP_ITEMS[@]}"').stdout)
+    assert len(lines) == n_caps
     assert all(len(line) < width for line in lines), result.stdout
 
 

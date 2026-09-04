@@ -27,16 +27,17 @@ QMP_DRY=0
 LOCAL_REPO_ROOT=''
 
 # ── capability catalog — the ONE place capabilities are declared; every menu iterates this ──
-CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent)
+CAP_ITEMS=(core api search video-memory omni-memory video-edit video-spatio blender freecad edu-agent)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.0 1.0.2 1.0.2 1.0.2 1.0.2)
+CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.0 1.0.2 1.0.0 1.0.2 1.0.2 1.0.2)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
           "hierarchical graph memory for long-video QA"
           "audio-visual memory for long video: who said what, how, and what it sounded like"
           "video-edit + image/video/audio generation"
+          "3D spatial reasoning over images/video: distance, size, orientation, camera motion"
           "drive a running Blender: 3D modeling / materials / render (thin client)"
           "drive a running FreeCAD: parametric CAD / STEP·STL / FEM (thin client)"
           "step-by-step Chinese math/science tutorial videos (skill-only)")
@@ -71,6 +72,9 @@ CONFIG_SPEC=(
   "QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|default Omni model for audio/video understanding tools and omni-memory"
   "SAM3_SERVER_URL|0|services||segmentation SAM3 server URL"
   "ASR_SERVER_URLS|0|services||self-hosted ASR fallback URLs (comma-separated)"
+  "VIDEO_SPATIO_VLM_BASE_URL|0|services|MODEL_BASE_URL, else DashScope|endpoint for video-spatio's single-shot VLM tools (orient_facing, verify_grounding, ...)"
+  "VIDEO_SPATIO_VLM_API_KEY|1|services|MODEL_API_KEY, else DASHSCOPE_API_KEY|key for video-spatio's single-shot VLM tools"
+  "VIDEO_SPATIO_VLM_MODEL|0|services|MODEL, else qwen-vl-max|model for video-spatio's single-shot VLM tools"
   "QWEN_MM_SEARCH_BACKEND|0|search|auto|text search backend (auto: serper > tavily > exa; or choose one)"
   "SERPER_API_KEY|1|search||Serper web_search / web_extractor and Serper-only image_search"
   "TAVILY_API_KEY|1|search||Tavily web_search / web_extractor"
@@ -1143,14 +1147,17 @@ menu_pick() {
 
 # _multi_rows <cur> — render MP_ITEMS/MP_DESC/MP_SEL/MP_DIS (cur=-1 → num mode: no pointer / no clear)
 _multi_rows() {
-  local cur=$1 i box ptr num body clr='' cols desc_w name_w desc name
+  local cur=$1 i box ptr num body clr='' cols desc_w name_w desc name total num_w
   [ "$cur" != -1 ] && clr='\033[2K'
-  cols=$(term_cols); desc_w=$(( cols - 26 ))
+  # The index column widens once the list reaches 10 items — budget for it, or the widest rows
+  # wrap by exactly that overflow.
+  total=${#MP_ITEMS[@]}; num_w=${#total}
+  cols=$(term_cols); desc_w=$(( cols - 25 - num_w ))
   for ((i = 0; i < ${#MP_ITEMS[@]}; i++)); do
     num=$((i + 1)); [ "$i" = "$cur" ] && ptr="${CB}${CC}❯${C0}" || ptr=' '
-    if [ "$cols" -lt 27 ]; then
+    if [ "$cols" -lt $(( 26 + num_w )) ]; then
       # At very small widths omit the description and spend the remaining columns on the name.
-      name_w=$(( cols - 12 )); [ "$name_w" -lt 1 ] && name_w=1
+      name_w=$(( cols - 11 - num_w )); [ "$name_w" -lt 1 ] && name_w=1
       name=$(_fit "${MP_ITEMS[$i]}" "$name_w")
       if [ "${MP_DIS[$i]}" = 1 ]; then
         body=$(printf '%b[-] %d) %s%b' "$CD" "$num" "$name" "$C0")

@@ -49,6 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 |---|---|---|
 | `video-memory` | 为长视频构建层次化记忆，之后的提问直接从记忆里回答，不必重看视频。需要 DashScope key 和 ffmpeg。 | [Cookbook](cookbooks/video-memory/usage.md) |
 | `video-edit` | 生成图片、视频和音频，并在其上运行剪辑工作流。需要 DashScope key、ffmpeg 和 Node。 | [Cookbook](cookbooks/video-edit/usage.md) |
+| `video-spatio` | 回答图片和视频里的 3D 问题——距离、尺寸、朝向、左右前后、相机运动、3D 计数。感知由模型自己完成，无状态几何工具负责算数。几何工具不需要 API key。 | [Skill](src/capabilities/video-spatio/skill/SKILL.md) |
 | `blender` | 驱动一个正在运行的 Blender：建模、材质、灯光与渲染。需要已安装 Blender。 | [Cookbook](cookbooks/blender/usage.md) |
 | `freecad` | 驱动一个正在运行的 FreeCAD：参数化 CAD、STEP/STL 与 FEM。需要已安装 FreeCAD。 | [Cookbook](cookbooks/freecad/usage.md) |
 | `edu-agent` | 生成中文数理讲解视频与交互页面。纯 Skill，需要 Node 和 ffmpeg。 | [Cookbook](cookbooks/edu-agent/usage.md) |

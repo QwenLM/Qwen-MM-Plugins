@@ -10,6 +10,7 @@
     "omni-memory": "1.0.0",
     "search": "1.0.4",
     "video-edit": "1.0.2",
-    "video-memory": "1.0.3"
+    "video-memory": "1.0.3",
+    "video-spatio": "1.0.0"
   }
 }

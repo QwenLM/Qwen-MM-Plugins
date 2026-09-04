@@ -70,6 +70,16 @@
       "description": "ffmpeg-based video-editing workflows (skill) + image/video/audio generation as MCP tools."
     },
     {
+      "name": "qwen-mm-plugins-video-spatio",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
+        "path": "src/capabilities/video-spatio",
+        "ref": "qwen-mm-plugins-video-spatio-v1.0.0"
+      },
+      "description": "Model-free 3D spatial reasoning (skill) + stateless geometry/BEV MCP tools."
+    },
+    {
       "name": "qwen-mm-plugins-edu-agent",
       "source": {
         "source": "git-subdir",
