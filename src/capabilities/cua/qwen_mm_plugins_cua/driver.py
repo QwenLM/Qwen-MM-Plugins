@@ -12,21 +12,25 @@ import hashlib
 import io
 import json
 import math
+import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from shared.content import image, text
 from shared.env import get_env
 
 MIN_DRIVER_VERSION = (0, 20, 0)
-DEFAULT_SESSION = "qwen-mm-cua"
+SESSION_REFRESH_SECONDS = 240.0
+DEFAULT_SESSION = f"qwen-mm-cua-{os.getpid()}-{secrets.token_hex(4)}"
 SCREENSHOT_KEY = "screenshot_png_b64"
 _VERSION_RE = re.compile(r"(?:cua-driver(?:-rs)?\s+)?(\d+)\.(\d+)\.(\d+)")
 _SNAPSHOT_RE = re.compile(r"^(s[0-9a-f]{8})")
@@ -34,6 +38,18 @@ _SNAPSHOT_RE = re.compile(r"^(s[0-9a-f]{8})")
 
 class CuaError(RuntimeError):
     """A user-facing, fail-closed adapter error."""
+
+
+def driver_result_refused(result: dict[str, Any]) -> bool:
+    """Recognize every documented Driver refusal marker without guessing from prose."""
+    status = result.get("status")
+    return (
+        result.get("ok") is False
+        or bool(result.get("refusal"))
+        or status in {"error", "failed", "refused"}
+        or result.get("effect") == "refused"
+        or bool(result.get("code"))
+    )
 
 
 def resolve_driver_binary() -> str:
@@ -67,6 +83,7 @@ class DriverClient:
         self.binary = binary or resolve_driver_binary()
         self.timeout = timeout
         self._version_checked = False
+        self._session_last_used: dict[str, float] = {}
         self._lock = threading.RLock()
 
     def ensure_compatible(self) -> tuple[int, int, int]:
@@ -93,6 +110,14 @@ class DriverClient:
         with self._lock:
             if not self._version_checked:
                 self.ensure_compatible()
+            arguments = arguments or {}
+            session = arguments.get("session")
+            if tool not in {"start_session", "end_session"} and isinstance(session, str):
+                last_used = self._session_last_used.get(session)
+                if last_used is None or time.monotonic() - last_used >= SESSION_REFRESH_SECONDS:
+                    started = self.call("start_session", {"session": session})
+                    if driver_result_refused(started):
+                        raise CuaError(f"cua-driver start_session refused: {started}")
             encoded = json.dumps(arguments or {}, ensure_ascii=False, separators=(",", ":"))
             try:
                 proc = subprocess.run(
@@ -114,6 +139,11 @@ class DriverClient:
                 raise CuaError(f"cua-driver {tool} returned invalid JSON: {preview}") from exc
             if not isinstance(result, dict):
                 raise CuaError(f"cua-driver {tool} returned {type(result).__name__}, expected an object")
+            if isinstance(session, str) and not driver_result_refused(result):
+                if tool == "end_session":
+                    self._session_last_used.pop(session, None)
+                else:
+                    self._session_last_used[session] = time.monotonic()
             return result
 
 
@@ -149,6 +179,7 @@ class SnapshotRecord:
     ax_hash: str
     visual_hash: str | None
     projected: bool
+    session: str
 
 
 class SnapshotStore:
@@ -156,9 +187,22 @@ class SnapshotStore:
         self._lock = threading.RLock()
         self._current: dict[tuple[int, int], SnapshotRecord] = {}
         self._by_id: dict[str, SnapshotRecord] = {}
+        self._target_locks: dict[tuple[int, int], threading.RLock] = {}
+
+    @staticmethod
+    def _key(target: Target) -> tuple[int, int]:
+        return target.pid, target.window_id
+
+    @contextmanager
+    def transaction(self, target: Target) -> Iterator[None]:
+        key = self._key(target)
+        with self._lock:
+            target_lock = self._target_locks.setdefault(key, threading.RLock())
+        with target_lock:
+            yield
 
     def put(self, record: SnapshotRecord) -> None:
-        key = (record.target.pid, record.target.window_id)
+        key = self._key(record.target)
         with self._lock:
             old = self._current.get(key)
             if old is not None:
@@ -168,25 +212,30 @@ class SnapshotStore:
 
     def current(self, target: Target) -> SnapshotRecord | None:
         with self._lock:
-            return self._current.get((target.pid, target.window_id))
+            return self._current.get(self._key(target))
 
-    def require(self, target: Target, snapshot_id: str | None) -> SnapshotRecord:
-        current = self.current(target)
-        if current is None:
-            raise CuaError("no current snapshot for this window; call get_app_state first")
-        if not snapshot_id:
-            raise CuaError("snapshot_id is required; copy it from the latest get_app_state result")
-        if snapshot_id != current.snapshot_id:
-            raise CuaError(
-                f"stale snapshot_id {snapshot_id!r}; the current snapshot for this window is "
-                f"{current.snapshot_id!r}. Re-observe before acting."
-            )
-        return current
+    def consume(self, target: Target, snapshot_id: str | None) -> SnapshotRecord:
+        """Atomically validate and invalidate one snapshot before any input can be delivered."""
+        with self._lock:
+            current = self._current.get(self._key(target))
+            if current is None:
+                raise CuaError("no current snapshot for this window; call get_app_state first")
+            if not snapshot_id:
+                raise CuaError("snapshot_id is required; copy it from the latest get_app_state result")
+            if snapshot_id != current.snapshot_id:
+                raise CuaError(
+                    f"stale snapshot_id {snapshot_id!r}; the current snapshot for this window is "
+                    f"{current.snapshot_id!r}. Re-observe before acting."
+                )
+            self._current.pop(self._key(target), None)
+            self._by_id.pop(current.snapshot_id, None)
+            return current
 
     def clear(self) -> None:
         with self._lock:
             self._current.clear()
             self._by_id.clear()
+            self._target_locks.clear()
 
 
 SNAPSHOTS = SnapshotStore()
@@ -347,7 +396,7 @@ def _hash_json(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def record_snapshot(target: Target, state: dict[str, Any]) -> SnapshotRecord:
+def record_snapshot(target: Target, state: dict[str, Any], *, session: str = DEFAULT_SESSION) -> SnapshotRecord:
     snapshot_id = state.get("snapshot_id")
     if not isinstance(snapshot_id, str) or not _SNAPSHOT_RE.fullmatch(snapshot_id):
         raise CuaError("get_window_state returned no valid snapshot_id")
@@ -367,6 +416,7 @@ def record_snapshot(target: Target, state: dict[str, Any]) -> SnapshotRecord:
         ax_hash=_hash_json(_clean_for_ax_hash(state)),
         visual_hash=_perceptual_hash(screenshot) if isinstance(screenshot, str) else None,
         projected="filtered_element_count" in state,
+        session=session,
     )
     SNAPSHOTS.put(record)
     return record
@@ -393,13 +443,14 @@ def observe_target(
     if query:
         arguments["query"] = query
     state: dict[str, Any] = {}
-    for attempt in range(3):
-        state = client.call("get_window_state", arguments, timeout=45)
-        snapshot_id = state.get("snapshot_id")
-        if isinstance(snapshot_id, str) and _SNAPSHOT_RE.fullmatch(snapshot_id):
-            return state, record_snapshot(target, state)
-        if attempt < 2:
-            time.sleep(0.2 * (attempt + 1))
+    with SNAPSHOTS.transaction(target):
+        for attempt in range(3):
+            state = client.call("get_window_state", arguments, timeout=45)
+            snapshot_id = state.get("snapshot_id")
+            if isinstance(snapshot_id, str) and _SNAPSHOT_RE.fullmatch(snapshot_id):
+                return state, record_snapshot(target, state, session=session)
+            if attempt < 2:
+                time.sleep(0.2 * (attempt + 1))
     detail = state.get("refusal") or state.get("error") or state.get("status") or state
     raise CuaError(f"get_window_state returned no valid snapshot_id after 3 observations: {detail}")
 
@@ -442,22 +493,31 @@ def state_content(
     record: SnapshotRecord,
     *,
     extra: dict[str, Any] | None = None,
+    ok: bool = True,
 ) -> list[dict[str, str]]:
     screenshot = state.get(SCREENSHOT_KEY)
     public_state = {key: value for key, value in state.items() if key != SCREENSHOT_KEY}
     payload: dict[str, Any] = {
-        "ok": True,
+        "ok": ok,
         "app": {key: target.app.get(key) for key in ("name", "bundle_id", "pid", "active", "running")},
         "selected_window": target.window,
         "window_selection": target.selection,
         "pixel_actions": {
             "available": record.frame_valid,
-            "coordinate_spaces": ["pixel", "relative_1000"] if record.frame_valid else [],
+            "coordinate_space": "pixel" if record.frame_valid else None,
             "snapshot_binding": record.snapshot_id,
             "rule": "Coordinates are valid only with this snapshot_id; re-observe after every action.",
         },
         "state": public_state,
     }
+    if isinstance(screenshot, str) and record.width is not None and record.height is not None:
+        payload["image_metadata"] = {
+            "format": "png",
+            "width": record.width,
+            "height": record.height,
+            "snapshot_binding": record.snapshot_id,
+            "authoritative_for_coordinates": record.frame_valid,
+        }
     if extra:
         payload.update(extra)
     blocks = [text(json.dumps(payload, ensure_ascii=False, indent=2))]
@@ -465,10 +525,10 @@ def state_content(
         if record.frame_valid and record.width is not None and record.height is not None:
             blocks.append(
                 text(
-                    f"Screenshot coordinate frame for {record.snapshot_id}: "
+                    f"Authoritative encoded-PNG metadata for {record.snapshot_id}: "
                     f"H×W={record.height}×{record.width} px; use absolute "
-                    f"x∈[0,{record.width}), y∈[0,{record.height}). The harness may visually resize "
-                    "this image; do not use its displayed dimensions."
+                    f"x∈[0,{record.width}), y∈[0,{record.height}). A client or model pipeline may "
+                    "resize the displayed image; do not infer coordinates from its rendered dimensions."
                 )
             )
         else:
@@ -553,14 +613,6 @@ def evaluate_condition(
     raise CuaError(f"unsupported condition: {condition}")
 
 
-def relative_to_pixel(value: float, size: int, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-        raise CuaError(f"{field} must be a finite number")
-    if not 0 <= float(value) <= 1000:
-        raise CuaError(f"{field} must be between 0 and 1000 in relative_1000 space")
-    return float(value) * (size - 1) / 1000
-
-
 def pixel_coordinate(value: float, size: int, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
         raise CuaError(f"{field} must be a finite number")
@@ -569,17 +621,13 @@ def pixel_coordinate(value: float, size: int, field: str) -> float:
     return float(value)
 
 
-def convert_point(record: SnapshotRecord, x: float, y: float, coordinate_space: str) -> tuple[float, float]:
+def convert_point(record: SnapshotRecord, x: float, y: float) -> tuple[float, float]:
     if not record.frame_valid or record.width is None or record.height is None:
         raise CuaError(
             "pixel coordinates are unavailable because the latest screenshot frame was not proven; "
             "re-observe on a visible ordinary window"
         )
-    if coordinate_space == "relative_1000":
-        return relative_to_pixel(x, record.width, "x"), relative_to_pixel(y, record.height, "y")
-    if coordinate_space == "pixel":
-        return pixel_coordinate(x, record.width, "x"), pixel_coordinate(y, record.height, "y")
-    raise CuaError(f"unsupported coordinate_space: {coordinate_space}")
+    return pixel_coordinate(x, record.width, "x"), pixel_coordinate(y, record.height, "y")
 
 
 def element_center_pixels(record: SnapshotRecord, element_token: str) -> tuple[float, float] | None:

@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-cua",
-  "version": "2.0.2",
-  "description": "Cross-platform desktop control through nine narrow, grounded tools backed by Cua Driver, with fresh-state verification after every action.",
+  "version": "2.1.0",
+  "description": "Profiled visual, accessibility, browser, and runtime control backed by Cua Driver, with fresh-state verification.",
   "skills": "./skill",
   "mcpServers": "./.mcp.json"
 }

@@ -158,10 +158,14 @@ error when `SERPER_API_KEY` is unavailable.
 Run `bash install.sh verify` or `<entry> --check-system` to see what the selected capability needs.
 Capability-specific prerequisites are documented in its Skill and cookbook.
 
-For `cua`, install Cua Driver with its official installer, grant the platform's desktop capture and
-accessibility permissions, then run `qwen-mm-plugins-cua --check-system`. The plugin exposes only
-nine action-specific tools; it neither installs the driver's optional Skill pack nor registers the
-driver's full MCP roster. See the [CUA cookbook](../../cookbooks/cua/usage.md).
+For `cua`, install Cua Driver 0.20.0+ with its official installer and start it in an interactive
+desktop session. The `ax` profile uses AX on macOS, UIA/MSAA on Windows, and AT-SPI 2 on Linux.
+macOS additionally requires Accessibility and Screen Recording grants; Linux needs AT-SPI and a
+supported X11/XWayland/Wayland session. Then run `qwen-mm-plugins-cua --check-system`. Set
+`QWEN_MM_CUA_TYPE=native`, `ax` (default), or `full` in the shared config and reload the MCP server.
+Even `full` registers only typed Browser and selected Runtime tools; it neither installs the
+driver's optional Skill pack nor exposes the administrative Driver roster. See the
+[CUA cookbook](../../cookbooks/cua/usage.md).
 
 ### Complete configuration
 

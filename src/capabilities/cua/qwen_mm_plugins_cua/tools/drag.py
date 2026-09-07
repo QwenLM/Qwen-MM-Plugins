@@ -10,13 +10,10 @@ from qwen_mm_plugins_cua.tools._actions import DeliveredActionArgs, execute
 
 
 class DragArgs(DeliveredActionArgs):
-    coordinate_space: Literal["pixel", "relative_1000"] = Field(
-        default="pixel", description="Coordinate convention for both endpoints."
-    )
-    from_x: float = Field(description="Drag start X.")
-    from_y: float = Field(description="Drag start Y.")
-    to_x: float = Field(description="Drag end X.")
-    to_y: float = Field(description="Drag end Y.")
+    from_x: float = Field(description="Absolute start X in the current screenshot PNG.")
+    from_y: float = Field(description="Absolute start Y in the current screenshot PNG.")
+    to_x: float = Field(description="Absolute end X in the current screenshot PNG.")
+    to_y: float = Field(description="Absolute end Y in the current screenshot PNG.")
     duration_ms: int = Field(default=500, ge=0, le=10000, description="Drag-path duration.")
     steps: int = Field(default=20, ge=1, le=200, description="Number of interpolated drag events.")
     button: Literal["left", "right", "middle"] = Field(default="left", description="Pointer button.")

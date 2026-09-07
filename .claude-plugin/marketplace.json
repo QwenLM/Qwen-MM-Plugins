@@ -97,7 +97,7 @@
         "path": "src/capabilities/cua",
         "ref": "support_cua"
       },
-      "description": "Grounded native desktop control through nine narrow, verified tools backed by Cua Driver 0.20.0+."
+      "description": "Profiled visual, accessibility, browser, and runtime control through verified tools backed by Cua Driver 0.20.0+."
     }
   ]
 }

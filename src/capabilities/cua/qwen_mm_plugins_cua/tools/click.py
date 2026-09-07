@@ -11,11 +11,8 @@ from qwen_mm_plugins_cua.tools._actions import DeliveredActionArgs, execute
 
 class ClickArgs(DeliveredActionArgs):
     element_token: str | None = Field(default=None, description="Preferred exact handle from the current state.")
-    coordinate_space: Literal["pixel", "relative_1000"] = Field(
-        default="pixel", description="Coordinate convention for x/y."
-    )
-    x: float | None = Field(default=None, description="Screenshot or relative target X.")
-    y: float | None = Field(default=None, description="Screenshot or relative target Y.")
+    x: float | None = Field(default=None, description="Absolute X in the current screenshot PNG.")
+    y: float | None = Field(default=None, description="Absolute Y in the current screenshot PNG.")
     button: Literal["left", "right", "middle"] = Field(default="left", description="Pointer button.")
     count: Literal[1, 2] = Field(default=1, description="Single or double click.")
     semantic_action: Literal["press", "show_menu", "pick", "confirm", "cancel", "open"] | None = Field(

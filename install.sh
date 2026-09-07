@@ -30,7 +30,7 @@ LOCAL_REPO_ROOT=''
 CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent cua)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.2 1.0.2 1.0.2 1.0.2 2.0.2)
+CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.2 1.0.2 1.0.2 1.0.2 2.1.0)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
@@ -39,7 +39,7 @@ CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "drive a running Blender: 3D modeling / materials / render (thin client)"
           "drive a running FreeCAD: parametric CAD / STEP·STL / FEM (thin client)"
           "step-by-step Chinese math/science tutorial videos (skill-only)"
-          "grounded native desktop control through narrow, verified CUA tools")
+          "profiled visual, AX, browser, and runtime control through verified CUA tools")
 # Skill-only capabilities have NO MCP server / pyproject extra / console entry: they install via
 # the marketplace like any plugin, but the uvx --check-system self-test doesn't apply to them.
 CAP_SKILL_ONLY=" edu-agent "
@@ -81,6 +81,7 @@ CONFIG_SPEC=(
   "QWEN_MM_NATIVE_MODE|0|runtime|1|1 returns MCP images; 0 sends images to the VL endpoint and returns captions"
   "QWEN_MM_MAX_TOTAL_FRAMES|0|runtime|600|max frames sampled from a video"
   "QWEN_MM_CUA_DRIVER_PATH|0|runtime||path to the cua-driver executable"
+  "QWEN_MM_CUA_TYPE|0|runtime|ax|CUA profile: native (primary-display pixels), ax (window + OS accessibility), or full (+ browser/runtime)"
   "OSS_AK|1|oss||OSS access key id"
   "OSS_SK|1|oss||OSS access key secret"
   "OSS_ENDPOINT|0|oss||OSS endpoint"

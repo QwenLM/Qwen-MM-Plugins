@@ -151,9 +151,13 @@ key 的后端：Serper、Tavily、Exa。设为 `serper`、`tavily` 或 `exa` 会
 运行 `bash install.sh verify` 或 `<entry> --check-system` 查看所选能力的具体要求。能力专属依赖
 记录在对应 Skill 和 cookbook 中。
 
-使用 `cua` 时，通过官方安装器安装 Cua Driver，授予系统的桌面捕获和辅助功能权限，然后运行
-`qwen-mm-plugins-cua --check-system`。插件只暴露 9 个窄工具，不会安装 Driver 的可选 Skill
-pack，也不会注册它的完整 MCP 工具列表。详见 [CUA cookbook](../../cookbooks/cua/usage.md)。
+使用 `cua` 时，通过官方安装器安装 Cua Driver 0.20.0+，并在交互式桌面会话中启动它。`ax`
+在 macOS 上使用 AX，在 Windows 上使用 UIA/MSAA，在 Linux 上使用 AT-SPI 2。macOS 还需要
+授予 Accessibility 和 Screen Recording 权限；Linux 需要 AT-SPI 和受支持的
+X11/XWayland/Wayland 会话。然后运行 `qwen-mm-plugins-cua --check-system`。在共享配置中设置
+`QWEN_MM_CUA_TYPE=native`、`ax`（默认）或 `full`，再重载 MCP server。即使是 `full` 也只注册
+类型化 Browser 工具和精选 Runtime 工具，不会安装 Driver 的可选 Skill pack，也不会暴露管理类工具。详见
+[CUA cookbook](../../cookbooks/cua/usage.md)。
 
 ### 完整配置
 

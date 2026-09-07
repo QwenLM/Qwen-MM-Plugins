@@ -12,11 +12,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from qwen_mm_plugins_cua.driver import (
-    DEFAULT_SESSION,
     SNAPSHOTS,
     CuaError,
     compare_snapshots,
     convert_point,
+    driver_result_refused,
     element_center_pixels,
     evaluate_condition,
     get_client,
@@ -82,23 +82,18 @@ def address_payload(
         return {"element_token": token}, "element_token"
     if has_point:
         require_fields(arguments, action, "x", "y")
-        x, y = convert_point(
-            record,
-            arguments["x"],
-            arguments["y"],
-            arguments.get("coordinate_space", "pixel"),
-        )
-        return {"x": x, "y": y}, arguments.get("coordinate_space", "pixel")
+        x, y = convert_point(record, arguments["x"], arguments["y"])
+        return {"x": x, "y": y}, "pixel"
     if allow_empty:
         return {}, "focused_target"
     raise CuaError(f"{action} requires element_token or x/y")
 
 
-def _base_payload(arguments: dict[str, Any], target, delivery_mode: str, *, delivery: bool = True) -> dict:
+def _base_payload(arguments: dict[str, Any], target, record, delivery_mode: str, *, delivery: bool = True) -> dict:
     payload: dict[str, Any] = {
         "pid": target.pid,
         "window_id": target.window_id,
-        "session": DEFAULT_SESSION,
+        "session": record.session,
     }
     if delivery:
         payload["delivery_mode"] = delivery_mode
@@ -109,7 +104,7 @@ def build_payload(
     action: str, arguments: dict[str, Any], target, record, delivery_mode: str
 ) -> tuple[str, dict[str, Any], str, int]:
     if action == "click":
-        payload = _base_payload(arguments, target, delivery_mode)
+        payload = _base_payload(arguments, target, record, delivery_mode)
         address, address_kind = address_payload(arguments, record, action)
         payload.update(address)
         count = arguments.get("count", 1)
@@ -123,14 +118,14 @@ def build_payload(
         return "click", payload, address_kind, 1
 
     if action == "type_text":
-        payload = _base_payload(arguments, target, delivery_mode)
+        payload = _base_payload(arguments, target, record, delivery_mode)
         address, address_kind = address_payload(arguments, record, action, allow_empty=True)
         payload.update(address)
         payload.update({"text": arguments["text"], "delay_ms": arguments.get("delay_ms", 30)})
         return "type_text", payload, address_kind, 1
 
     if action == "press_key":
-        payload = _base_payload(arguments, target, delivery_mode)
+        payload = _base_payload(arguments, target, record, delivery_mode)
         address, address_kind = address_payload(arguments, record, action, allow_empty=True)
         payload.update(address)
         modifiers = arguments.get("modifiers") or []
@@ -141,7 +136,7 @@ def build_payload(
         return "press_key", payload, address_kind, arguments.get("repeat", 1)
 
     if action == "scroll":
-        payload = _base_payload(arguments, target, delivery_mode)
+        payload = _base_payload(arguments, target, record, delivery_mode)
         address, address_kind = address_payload(arguments, record, action, allow_empty=True)
         payload.update(address)
         payload.update(
@@ -156,10 +151,9 @@ def build_payload(
     if action == "drag":
         if not record.frame_valid:
             raise CuaError("drag requires a proven screenshot frame")
-        payload = _base_payload(arguments, target, delivery_mode)
-        coordinate_space = arguments.get("coordinate_space", "pixel")
-        start = convert_point(record, arguments["from_x"], arguments["from_y"], coordinate_space)
-        end = convert_point(record, arguments["to_x"], arguments["to_y"], coordinate_space)
+        payload = _base_payload(arguments, target, record, delivery_mode)
+        start = convert_point(record, arguments["from_x"], arguments["from_y"])
+        end = convert_point(record, arguments["to_x"], arguments["to_y"])
         payload.update(
             {
                 "from_x": start[0],
@@ -173,10 +167,10 @@ def build_payload(
         )
         if arguments.get("modifiers") is not None:
             payload["modifier"] = arguments["modifiers"]
-        return "drag", payload, coordinate_space, 1
+        return "drag", payload, "pixel", 1
 
     if action == "set_value":
-        payload = _base_payload(arguments, target, delivery_mode, delivery=False)
+        payload = _base_payload(arguments, target, record, delivery_mode, delivery=False)
         address, address_kind = address_payload(arguments, record, action)
         if address_kind != "element_token":
             raise CuaError("set_value requires element_token")
@@ -207,14 +201,14 @@ def verification(expect: dict | None, before, after, state: dict) -> dict[str, A
     }
 
 
-def _observe_after(client, target):
+def _observe_after(client, target, session: str):
     return observe_target(
         client,
         target,
         include_screenshot=True,
         max_elements=600,
         max_depth=20,
-        session=DEFAULT_SESSION,
+        session=session,
     )
 
 
@@ -232,12 +226,19 @@ def _attempt(
         "address": address_kind,
     }
     try:
-        attempt["driver_result"] = client.call(tool, payload, timeout=45)
+        result = client.call(tool, payload, timeout=45)
+        attempt["driver_result"] = result
+        attempt["accepted"] = not driver_result_refused(result)
     except CuaError as exc:
         if not tolerate_driver_error:
             raise
         attempt["driver_error"] = str(exc)
+        attempt["accepted"] = False
     return attempt
+
+
+def _attempt_accepted(attempt: dict[str, Any]) -> bool:
+    return attempt.get("accepted") is True
 
 
 def _finite_number(value: Any, name: str) -> float:
@@ -305,7 +306,7 @@ def _global_pointer_attempt(client, target, before, current, point) -> tuple[dic
 
     activation = client.call(
         "bring_to_front",
-        {"pid": target.pid, "window_id": target.window_id, "session": DEFAULT_SESSION},
+        {"pid": target.pid, "window_id": target.window_id, "session": before.session},
         timeout=30,
     )
     exact_effect = activation.get("exact_window_effect")
@@ -332,7 +333,7 @@ def _global_pointer_attempt(client, target, before, current, point) -> tuple[dic
         screenshot_path = Path(temp_dir) / "desktop.png"
         desktop = client.call(
             "get_desktop_state",
-            {"screenshot_out_file": str(screenshot_path), "session": DEFAULT_SESSION},
+            {"screenshot_out_file": str(screenshot_path), "session": before.session},
             timeout=45,
         )
         screen_width = _finite_number(desktop.get("screen_width"), "desktop logical width")
@@ -348,13 +349,13 @@ def _global_pointer_attempt(client, target, before, current, point) -> tuple[dic
 
         move = client.call(
             "move_cursor",
-            {"scope": "desktop", "x": desktop_x, "y": desktop_y, "session": DEFAULT_SESSION},
+            {"scope": "desktop", "x": desktop_x, "y": desktop_y, "session": before.session},
             timeout=30,
         )
         if move.get("route") != "global_input":
             raise CuaError("global pointer fallback could not verify the cursor used global_input")
         time.sleep(0.1)
-        cursor = client.call("get_cursor_position", {}, timeout=15)
+        cursor = client.call("get_cursor_position", {"session": before.session}, timeout=15)
         cursor_x = _finite_number(cursor.get("x"), "cursor x")
         cursor_y = _finite_number(cursor.get("y"), "cursor y")
         if abs(cursor_x - screen_x) > 2.5 or abs(cursor_y - screen_y) > 2.5:
@@ -367,7 +368,7 @@ def _global_pointer_attempt(client, target, before, current, point) -> tuple[dic
                 "x": desktop_x,
                 "y": desktop_y,
                 "button": "left",
-                "session": DEFAULT_SESSION,
+                "session": before.session,
             },
             timeout=30,
         )
@@ -378,6 +379,7 @@ def _global_pointer_attempt(client, target, before, current, point) -> tuple[dic
         "delivery_mode": "foreground",
         "address": "desktop_global_pointer",
         "driver_result": result,
+        "accepted": route_verified and not driver_result_refused(result),
     }
     metadata = {
         "attempted": True,
@@ -395,6 +397,137 @@ def _global_pointer_attempt(client, target, before, current, point) -> tuple[dic
     return attempt, metadata
 
 
+def _execute_locked(action: str, arguments: dict[str, Any], client, target) -> list[dict[str, str]]:
+    supplied_snapshot = arguments.get("snapshot_id") or snapshot_id_from_token(arguments.get("element_token"))
+    before = SNAPSHOTS.consume(target, supplied_snapshot)
+    delivery = arguments.get("delivery", "auto")
+    initial_mode = "background" if delivery == "auto" else delivery
+    tool, payload, address_kind, repeat = build_payload(action, arguments, target, before, initial_mode)
+    tolerate_click_error = (
+        delivery == "auto"
+        and action == "click"
+        and arguments.get("count", 1) == 1
+        and arguments.get("retry_if_unverified", False)
+    )
+    attempts = [
+        _attempt(
+            client,
+            tool,
+            payload,
+            address_kind,
+            tolerate_driver_error=tolerate_click_error,
+        )
+        for _ in range(repeat)
+    ]
+    state, after = _observe_after(client, target, before.session)
+    checked = verification(arguments.get("expect"), before, after, state)
+    pointer_fallback: dict[str, Any] | None = None
+
+    needs_retry = checked.get("verified") is False if arguments.get("expect") else not checked["state_changed"]
+    can_retry = (
+        delivery == "auto"
+        and action == "click"
+        and arguments.get("count", 1) == 1
+        and arguments.get("retry_if_unverified", False)
+        and needs_retry
+    )
+    if can_retry:
+        point = None
+        if arguments.get("element_token"):
+            point = element_center_pixels(before, arguments["element_token"])
+        elif arguments.get("x") is not None and arguments.get("y") is not None:
+            point = convert_point(before, arguments["x"], arguments["y"])
+        if point is not None:
+            pixel_payload = {
+                "pid": target.pid,
+                "window_id": target.window_id,
+                "session": before.session,
+                "delivery_mode": "background",
+                "x": point[0],
+                "y": point[1],
+                "button": arguments.get("button", "left"),
+            }
+            if arguments.get("element_token"):
+                attempts.append(
+                    _attempt(
+                        client,
+                        "click",
+                        pixel_payload,
+                        "pixel_fallback",
+                        tolerate_driver_error=True,
+                    )
+                )
+                state, after = _observe_after(client, target, before.session)
+                checked = verification(arguments.get("expect"), before, after, state)
+            needs_foreground = (
+                checked.get("verified") is False if arguments.get("expect") else not checked["state_changed"]
+            )
+            if needs_foreground:
+                pixel_payload["delivery_mode"] = "foreground"
+                attempts.append(
+                    _attempt(
+                        client,
+                        "click",
+                        pixel_payload,
+                        "pixel_fallback",
+                        tolerate_driver_error=True,
+                    )
+                )
+                state, after = _observe_after(client, target, before.session)
+                checked = verification(arguments.get("expect"), before, after, state)
+
+            needs_global = checked.get("verified") is False if arguments.get("expect") else not checked["state_changed"]
+            if arguments.get("allow_global_pointer_fallback", True):
+                pointer_fallback = {"requested": True, "attempted": False}
+                if not needs_global:
+                    pointer_fallback["refused"] = "prior click already satisfied verification"
+                elif checked["state_changed"]:
+                    pointer_fallback["refused"] = (
+                        "prior click changed state; refusing to reuse its old coordinate for global input"
+                    )
+                else:
+                    try:
+                        pointer_attempt, pointer_metadata = _global_pointer_attempt(
+                            client, target, before, after, point
+                        )
+                        attempts.append(pointer_attempt)
+                        pointer_fallback.update(pointer_metadata)
+                        state, after = _observe_after(client, target, before.session)
+                        checked = verification(arguments.get("expect"), before, after, state)
+                    except CuaError as exc:
+                        pointer_fallback["refused"] = str(exc)
+
+    driver_accepted = any(_attempt_accepted(attempt) for attempt in attempts)
+    if arguments.get("expect"):
+        action_ok = driver_accepted and checked.get("verified") is True
+    elif arguments.get("retry_if_unverified", False):
+        action_ok = driver_accepted and checked["state_changed"] is True
+    else:
+        action_ok = all(_attempt_accepted(attempt) for attempt in attempts)
+    return state_content(
+        target,
+        state,
+        after,
+        ok=action_ok,
+        extra={
+            "interaction": {
+                "action": action,
+                "driver_accepted": driver_accepted,
+                "attempts": attempts,
+                "verification": checked,
+                "global_pointer_fallback": pointer_fallback,
+                "foreground_retry_available": (
+                    delivery == "auto"
+                    and action == "click"
+                    and arguments.get("count", 1) == 1
+                    and not arguments.get("retry_if_unverified", False)
+                    and not checked["state_changed"]
+                ),
+            }
+        },
+    )
+
+
 def execute(action: str, arguments: dict[str, Any]) -> list[dict[str, str]]:
     """Run one narrow action and always return a newly observed app state."""
     try:
@@ -407,131 +540,7 @@ def execute(action: str, arguments: dict[str, Any]) -> list[dict[str, str]]:
             window_id=arguments.get("window_id"),
             launch_if_needed=False,
         )
-        supplied_snapshot = arguments.get("snapshot_id") or snapshot_id_from_token(arguments.get("element_token"))
-        before = SNAPSHOTS.require(target, supplied_snapshot)
-        delivery = arguments.get("delivery", "auto")
-        initial_mode = "background" if delivery == "auto" else delivery
-        tool, payload, address_kind, repeat = build_payload(action, arguments, target, before, initial_mode)
-        tolerate_click_error = (
-            delivery == "auto"
-            and action == "click"
-            and arguments.get("count", 1) == 1
-            and arguments.get("retry_if_unverified", False)
-        )
-        attempts = [
-            _attempt(
-                client,
-                tool,
-                payload,
-                address_kind,
-                tolerate_driver_error=tolerate_click_error,
-            )
-            for _ in range(repeat)
-        ]
-        state, after = _observe_after(client, target)
-        checked = verification(arguments.get("expect"), before, after, state)
-        pointer_fallback: dict[str, Any] | None = None
-
-        needs_retry = checked.get("verified") is False if arguments.get("expect") else not checked["state_changed"]
-        can_retry = (
-            delivery == "auto"
-            and action == "click"
-            and arguments.get("count", 1) == 1
-            and arguments.get("retry_if_unverified", False)
-            and needs_retry
-        )
-        if can_retry:
-            point = None
-            if arguments.get("element_token"):
-                point = element_center_pixels(before, arguments["element_token"])
-            elif arguments.get("x") is not None and arguments.get("y") is not None:
-                point = convert_point(
-                    before,
-                    arguments["x"],
-                    arguments["y"],
-                    arguments.get("coordinate_space", "pixel"),
-                )
-            if point is not None:
-                pixel_payload = {
-                    "pid": target.pid,
-                    "window_id": target.window_id,
-                    "session": DEFAULT_SESSION,
-                    "delivery_mode": "background",
-                    "x": point[0],
-                    "y": point[1],
-                    "button": arguments.get("button", "left"),
-                }
-                if arguments.get("element_token"):
-                    attempts.append(
-                        _attempt(
-                            client,
-                            "click",
-                            pixel_payload,
-                            "pixel_fallback",
-                            tolerate_driver_error=True,
-                        )
-                    )
-                    state, after = _observe_after(client, target)
-                    checked = verification(arguments.get("expect"), before, after, state)
-                needs_foreground = (
-                    checked.get("verified") is False if arguments.get("expect") else not checked["state_changed"]
-                )
-                if needs_foreground:
-                    pixel_payload["delivery_mode"] = "foreground"
-                    attempts.append(
-                        _attempt(
-                            client,
-                            "click",
-                            pixel_payload,
-                            "pixel_fallback",
-                            tolerate_driver_error=True,
-                        )
-                    )
-                    state, after = _observe_after(client, target)
-                    checked = verification(arguments.get("expect"), before, after, state)
-
-                needs_global = (
-                    checked.get("verified") is False if arguments.get("expect") else not checked["state_changed"]
-                )
-                if arguments.get("allow_global_pointer_fallback", True):
-                    pointer_fallback = {"requested": True, "attempted": False}
-                    if not needs_global:
-                        pointer_fallback["refused"] = "prior click already satisfied verification"
-                    elif checked["state_changed"]:
-                        pointer_fallback["refused"] = (
-                            "prior click changed state; refusing to reuse its old coordinate for global input"
-                        )
-                    else:
-                        try:
-                            pointer_attempt, pointer_metadata = _global_pointer_attempt(
-                                client, target, before, after, point
-                            )
-                            attempts.append(pointer_attempt)
-                            pointer_fallback.update(pointer_metadata)
-                            state, after = _observe_after(client, target)
-                            checked = verification(arguments.get("expect"), before, after, state)
-                        except CuaError as exc:
-                            pointer_fallback["refused"] = str(exc)
-
-        return state_content(
-            target,
-            state,
-            after,
-            extra={
-                "interaction": {
-                    "action": action,
-                    "attempts": attempts,
-                    "verification": checked,
-                    "global_pointer_fallback": pointer_fallback,
-                    "foreground_retry_available": (
-                        delivery == "auto"
-                        and action == "click"
-                        and arguments.get("count", 1) == 1
-                        and not arguments.get("retry_if_unverified", False)
-                        and not checked["state_changed"]
-                    ),
-                }
-            },
-        )
+        with SNAPSHOTS.transaction(target):
+            return _execute_locked(action, arguments, client, target)
     except (CuaError, ValueError, KeyError) as exc:
         return text_error(str(exc))

@@ -14,11 +14,8 @@ class ScrollArgs(DeliveredActionArgs):
     amount: int = Field(default=3, ge=1, le=50, description="Wheel notches or key repetitions.")
     by: Literal["line", "page"] = Field(default="line", description="Scroll granularity.")
     element_token: str | None = Field(default=None, description="Optional exact scroll target.")
-    coordinate_space: Literal["pixel", "relative_1000"] = Field(
-        default="pixel", description="Coordinate convention for optional x/y target."
-    )
-    x: float | None = Field(default=None, description="Optional targeted-scroll X.")
-    y: float | None = Field(default=None, description="Optional targeted-scroll Y.")
+    x: float | None = Field(default=None, description="Optional absolute target X in the current screenshot PNG.")
+    y: float | None = Field(default=None, description="Optional absolute target Y in the current screenshot PNG.")
 
     @model_validator(mode="after")
     def validate_target(self):

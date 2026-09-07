@@ -221,6 +221,13 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "",
         "path to the cua-driver executable",
     ),
+    (
+        "QWEN_MM_CUA_TYPE",
+        False,
+        "Runtime paths & limits",
+        "ax",
+        "CUA profile: native (primary-display pixels), ax (window + OS accessibility), or full (+ browser/runtime)",
+    ),
     # OSS storage (serve large media by URL)
     ("OSS_AK", True, "OSS storage (serve large media by URL)", "", "OSS access key id"),
     ("OSS_SK", True, "OSS storage (serve large media by URL)", "", "OSS access key secret"),

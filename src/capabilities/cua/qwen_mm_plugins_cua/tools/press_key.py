@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import Field, model_validator
 
@@ -14,11 +14,8 @@ class PressKeyArgs(DeliveredActionArgs):
     modifiers: list[str] | None = Field(default=None, description="Optional cmd/shift/option/ctrl/fn modifiers.")
     repeat: int = Field(default=1, ge=1, le=50, description="Number of key presses.")
     element_token: str | None = Field(default=None, description="Optional exact element to focus first.")
-    coordinate_space: Literal["pixel", "relative_1000"] = Field(
-        default="pixel", description="Coordinate convention for optional x/y focus point."
-    )
-    x: float | None = Field(default=None, description="Optional focus X.")
-    y: float | None = Field(default=None, description="Optional focus Y.")
+    x: float | None = Field(default=None, description="Optional absolute focus X in the current screenshot PNG.")
+    y: float | None = Field(default=None, description="Optional absolute focus Y in the current screenshot PNG.")
 
     @model_validator(mode="after")
     def validate_target(self):
