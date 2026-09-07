@@ -196,8 +196,25 @@ model nothing about whether the command took effect.
 `/mhs/v1` is the contract above. New optional fields may be added within `v1`; anything that would
 break an existing adapter goes to `/mhs/v2`, and the host will let a registry entry pin `base_path`.
 
+## Checking your adapter
+
+Point the host's conformance checker at it. It exercises every read-only route and tells you precisely
+which part of this document you have not met:
+
+```bash
+python3 -m qwen_mm_plugins_mhs.verify http://127.0.0.1:8800
+```
+
+It validates through the host's own protocol code, so a PASS means the host agrees with you — not that
+a second implementation of the rules agrees. Exit status is non-zero when anything failed.
+
+It is **strictly read-only**: it never calls `write` and never calls `reset`, because on real hardware
+those move things or stop them. Those two are checked by declaration only, and the report says so. Test
+them yourself, deliberately, when it is safe.
+
 ## Checklist
 
+- [ ] `python3 -m qwen_mm_plugins_mhs.verify <url>` passes with no ✗ (and you have read the ! lines)
 - [ ] `GET /devices` lists every device with `device_id` and `capabilities`
 - [ ] `GET /devices/{id}` returns a `description` and per-capability `direction`
 - [ ] `safety_limits` declares every range that matters, with `hard` set deliberately

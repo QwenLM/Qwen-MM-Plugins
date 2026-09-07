@@ -11,11 +11,13 @@ importable package, since it is a template to copy), so it is loaded by path.
 from __future__ import annotations
 
 import base64
+import contextlib
 import importlib.util
 import json
 import os
 import socket
 import threading
+from http.server import BaseHTTPRequestHandler
 
 import pytest
 from conftest import REPO_ROOT
@@ -483,6 +485,195 @@ def test_bare_string_capability_shorthand_is_accepted():
 def test_blocks_must_be_a_list():
     with pytest.raises(protocol.ProtocolError):
         protocol.to_content_blocks({"type": "text"}, "dev")
+
+
+# ── the adapter conformance checker ──
+class _CannedHandler(BaseHTTPRequestHandler):
+    """Serves a fixed {(method, path): (status, payload)} map, for adapters that are wrong on purpose."""
+
+    routes: dict = {}
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        self._reply("GET")
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)
+        self._reply("POST")
+
+    def _reply(self, method):
+        status, payload = self.routes.get((method, self.path.split("?")[0]), (404, {"error": {"code": "nf"}}))
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+@contextlib.contextmanager
+def _canned_adapter(routes):
+    from http.server import ThreadingHTTPServer
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), type("H", (_CannedHandler,), {"routes": routes}))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _one_device(meta, read=None):
+    """Routes for a single device 'd' with the given metadata and optional read payload."""
+    routes = {
+        ("GET", "/mhs/v1/devices"): (200, {"devices": [{"device_id": "d", "capabilities": ["c"]}]}),
+        ("GET", "/mhs/v1/devices/d"): (200, meta),
+        ("GET", "/mhs/v1/devices/d/health"): (200, {"state": "online", "healthy": True}),
+    }
+    if read is not None:
+        routes[("POST", "/mhs/v1/devices/d/read/c")] = (200, read)
+    return routes
+
+
+def test_verifier_passes_the_shipped_mock_adapter(mock_adapter):
+    """The bundled template must be exemplary — it is what people copy."""
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    report = verifier.verify(mock_adapter["url"])
+    assert report.failed == 0, report.render()
+    assert report.warned == 0, report.render()
+    assert report.passed > 0
+
+
+def test_verifier_never_writes_or_resets(mock_adapter):
+    """Read-only is the whole safety premise: a checker must not actuate hardware to check it."""
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    module = mock_adapter["module"]
+    lamp = module.DEVICES["mock-lamp"]
+    camera = module.DEVICES["mock-camera"]
+    before = (lamp.on, lamp.brightness, dict(camera.settings))
+
+    report = verifier.verify(mock_adapter["url"])
+
+    assert (lamp.on, lamp.brightness, dict(camera.settings)) == before
+    rendered = report.render()
+    assert "NOT called" in rendered and "NOT sent" in rendered
+
+
+def test_verifier_reports_an_unreachable_adapter():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    report = verifier.verify(f"http://127.0.0.1:{_free_port()}", timeout=2)
+    assert report.failed >= 1
+    assert "unreachable" in report.render()
+
+
+def test_verifier_rejects_a_missing_devices_list():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    with _canned_adapter({("GET", "/mhs/v1/devices"): (200, {"stuff": []})}) as url:
+        report = verifier.verify(url)
+    assert report.failed >= 1
+    assert "no 'devices' list" in report.render()
+
+
+def test_verifier_flags_a_read_response_without_blocks():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    meta = {"description": "x", "capabilities": [{"name": "c", "direction": "read"}]}
+    with _canned_adapter(_one_device(meta, read={"value": 1})) as url:
+        report = verifier.verify(url)
+    assert report.failed >= 1
+    assert "no 'blocks' key" in report.render()
+
+
+def test_verifier_flags_a_malformed_image_block():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    meta = {"description": "x", "capabilities": [{"name": "c", "direction": "read"}]}
+    read = {"blocks": [{"type": "image", "data": "not!base64"}]}
+    with _canned_adapter(_one_device(meta, read=read)) as url:
+        report = verifier.verify(url)
+    assert report.failed >= 1
+    assert "could not be used" in report.render()
+
+
+def test_verifier_warns_when_direction_was_omitted_but_not_when_both_is_explicit():
+    """An honest bidirectional capability must not be nagged; a forgotten direction must be."""
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    read = {"blocks": [{"type": "value", "name": "v", "value": 1}]}
+
+    omitted = {"description": "x", "capabilities": [{"name": "c"}]}
+    with _canned_adapter(_one_device(omitted, read=read)) as url:
+        report = verifier.verify(url)
+    assert "no valid 'direction'" in report.render()
+
+    explicit = {"description": "x", "capabilities": [{"name": "c", "direction": "both"}]}
+    with _canned_adapter(_one_device(explicit, read=read)) as url:
+        report = verifier.verify(url)
+    assert "no valid 'direction'" not in report.render()
+
+
+def test_verifier_warns_about_a_writable_capability_with_no_limits():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    meta = {"description": "x", "capabilities": [{"name": "c", "direction": "write"}], "safety_limits": []}
+    with _canned_adapter(_one_device(meta)) as url:
+        report = verifier.verify(url)
+    assert report.warned >= 1
+    assert "no safety_limits" in report.render()
+
+
+def test_verifier_rejects_a_safety_limit_with_no_bound():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    meta = {
+        "description": "x",
+        "capabilities": [{"name": "c", "direction": "write"}],
+        "safety_limits": [{"parameter": "p", "unit": "mm"}],
+    }
+    with _canned_adapter(_one_device(meta)) as url:
+        report = verifier.verify(url)
+    assert report.failed >= 1
+    assert "neither 'min' nor 'max'" in report.render()
+
+
+def test_verifier_rejects_an_adapter_that_answers_for_a_nonexistent_device():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    meta = {"description": "x", "capabilities": [{"name": "c", "direction": "read"}]}
+    routes = _one_device(meta, read={"blocks": []})
+    # Answer 200 for anything, including the impossible device id the checker probes with.
+    routes[("GET", f"/mhs/v1/devices/{verifier._ABSENT_DEVICE}")] = (200, meta)
+    with _canned_adapter(routes) as url:
+        report = verifier.verify(url)
+    assert report.failed >= 1
+    assert "nonexistent device succeeded" in report.render()
+
+
+def test_verifier_warns_on_a_missing_description():
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    meta = {"capabilities": [{"name": "c", "direction": "read"}]}
+    with _canned_adapter(_one_device(meta, read={"blocks": [{"type": "text", "text": "hi"}]})) as url:
+        report = verifier.verify(url)
+    assert "no 'description'" in report.render()
+
+
+def test_verifier_exit_code_tracks_failures(mock_adapter):
+    from qwen_mm_plugins_mhs import verify as verifier
+
+    assert verifier.main([mock_adapter["url"]]) == 0
+    assert verifier.main([f"http://127.0.0.1:{_free_port()}", "--timeout", "2"]) == 1
 
 
 # ── packaging contract ──

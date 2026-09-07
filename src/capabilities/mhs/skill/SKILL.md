@@ -90,9 +90,18 @@ at runtime.
 2. Copy `references/mock_adapter.py` and replace the read/write bodies with real I/O for the device.
    Keep it outside this plugin's directory — an adapter belongs with its hardware.
 3. Run it in the background on a free port, and check it started before going further.
-4. Add it to `~/.qwen-mm-plugins/mhs-devices.json` (create the file if absent, and **preserve any
+4. **Check it against the protocol before registering it:**
+   ```bash
+   python3 -m qwen_mm_plugins_mhs.verify http://127.0.0.1:8800
+   ```
+   This is read-only — it never writes and never resets — and it names exactly what is wrong
+   (missing `blocks`, malformed image data, a forgotten `direction`, an unbounded writable parameter,
+   an error path that answers 200). Fix everything it reports as ✗ before going on; read the ! lines
+   too. Do not skip this because the adapter "looks right" — the failures it catches are the ones that
+   otherwise surface later as a tool error you cannot explain.
+5. Add it to `~/.qwen-mm-plugins/mhs-devices.json` (create the file if absent, and **preserve any
    adapters already listed** — do not overwrite someone else's registry).
-5. `mhs_discover` — the device is there. Then proceed with the normal loop.
+6. `mhs_discover` — the device is there. Then proceed with the normal loop.
 
 Rules for an adapter you wrote yourself, because you are now on both sides of the safety boundary:
 

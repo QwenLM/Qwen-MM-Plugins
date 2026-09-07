@@ -102,8 +102,8 @@ the model it may do this when the user has reachable hardware with no adapter fo
 This box has network interfaces but no MHS adapter. Write one and show me eth0's link state.
 ```
 
-The model reads the protocol spec, writes an adapter, starts it, adds it to the registry, and calls
-`mhs_discover`. A worked run against a real host NIC:
+The model reads the protocol spec, writes an adapter, starts it, **checks it against the protocol**,
+adds it to the registry, and calls `mhs_discover`. A worked run against a real host NIC:
 
 ```
 mhs_discover      → host/eth0, host/lo, host/dummy0   (device_type network_interface)
@@ -130,11 +130,22 @@ An adapter is a plain HTTP server answering six routes. Any language; no SDK.
    the complete contract.
 2. Copy [`mock_adapter.py`](../../src/capabilities/mhs/skill/references/mock_adapter.py) and replace
    the `do_read` / `do_write` / `do_health` / `do_reset` bodies with real I/O.
-3. Declare `safety_limits` honestly. The host enforces what you declare, so this is the cheapest
+3. Check it before trusting it:
+
+   ```bash
+   python3 -m qwen_mm_plugins_mhs.verify http://127.0.0.1:8800
+   ```
+
+   Read-only — it never writes and never resets — and it validates through the host's own protocol
+   module, so a PASS means the host agrees with your adapter rather than a second copy of the rules
+   agreeing. It reports missing `blocks` keys, malformed image payloads, forgotten `direction` fields,
+   writable parameters with no declared bound, and error paths that answer 200 instead of 404. Exit
+   status is non-zero on any failure, so it drops straight into CI.
+4. Declare `safety_limits` honestly. The host enforces what you declare, so this is the cheapest
    place to make an unsafe command impossible. Keep enforcing them in the adapter too — host-side
    checking exists so a bad guess costs a round trip, not a machine.
-4. Mark every write a person should intend with `requires_confirm: true`.
-5. Add a line to the registry file. Nothing in this plugin changes.
+5. Mark every write a person should intend with `requires_confirm: true`.
+6. Add a line to the registry file. Nothing in this plugin changes.
 
 An existing [open-mhs](https://github.com/tongriyaotxt/open-mhs) REST deployment is close to a
 drop-in: the routes match, under an added `/mhs/v1` prefix.
