@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>CUA Basic</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="CUA Basic home">
+        <span class="brand-mark">QB</span>
+        <span>
+          <strong>CUA Basic</strong>
+          <small>browser interaction lab</small>
+        </span>
+      </a>
+      <div class="run-meta" id="run-meta" hidden>
+        <span id="case-label"></span>
+        <span class="seed-pill" id="seed-label"></span>
+        <span class="status-pill" id="status-pill">In progress</span>
+      </div>
+    </header>
+
+    <main id="app" class="app-shell" aria-live="polite">
+      <section class="loading-card">
+        <span class="spinner" aria-hidden="true"></span>
+        <p>Preparing benchmark…</p>
+      </section>
+    </main>
+
+    <template id="case-shell-template">
+      <section class="case-layout">
+        <aside class="task-card">
+          <p class="eyebrow">Task</p>
+          <h1 id="case-title"></h1>
+          <p class="task-copy" id="task-copy"></p>
+          <div class="task-note">
+            Complete the task in the workspace. The page reports success only after the verifier
+            matches the required state.
+          </div>
+        </aside>
+        <section class="workspace-card">
+          <div class="workspace-heading">
+            <div>
+              <p class="eyebrow">Workspace</p>
+              <h2 id="workspace-title"></h2>
+            </div>
+            <div class="result-message" id="result-message" role="status">Ready</div>
+          </div>
+          <div id="workspace" class="workspace"></div>
+        </section>
+      </section>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -203,10 +203,11 @@ def test_registry_exposes_only_nine_narrow_tools():
     assert all(schema.get("additionalProperties") is False for schema in schemas.values())
 
 
-def _profile_registry(profile: str) -> dict:
+def _profile_registry(profile: str, coordinate_mode: str = "absolute") -> dict:
     repo = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
     env["QWEN_MM_CUA_TYPE"] = profile
+    env["QWEN_MM_CUA_COORDINATE_MODE"] = coordinate_mode
     env["PYTHONPATH"] = os.pathsep.join(
         [str(repo / "src"), str(repo / "src" / "capabilities" / "cua"), env.get("PYTHONPATH", "")]
     )
@@ -264,6 +265,18 @@ def test_full_profile_adds_curated_browser_and_runtime_tools():
     assert all(schema.get("additionalProperties") is False for schema in schemas.values())
 
 
+def test_relative_mode_tightens_only_screenshot_coordinate_schemas():
+    native = _profile_registry("native", "relative")
+    ax = _profile_registry("ax", "relative")
+    full = _profile_registry("full", "relative")
+
+    assert native["click"]["properties"]["x"]["maximum"] == 1000
+    assert native["drag"]["properties"]["to_y"]["maximum"] == 1000
+    assert ax["click"]["properties"]["x"]["maximum"] == 1000
+    assert ax["press_key"]["properties"]["y"]["maximum"] == 1000
+    assert "maximum" not in full["browser_click"]["properties"]["x"]
+
+
 def test_invalid_profile_fails_server_startup():
     repo = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
@@ -276,6 +289,20 @@ def test_invalid_profile_fails_server_startup():
 
     assert result.returncode != 0
     assert "invalid QWEN_MM_CUA_TYPE" in result.stderr
+
+
+def test_invalid_coordinate_mode_fails_server_startup():
+    repo = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["QWEN_MM_CUA_COORDINATE_MODE"] = "mixed"
+    env["PYTHONPATH"] = os.pathsep.join([str(repo / "src"), str(repo / "src" / "capabilities" / "cua")])
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import qwen_mm_plugins_cua"], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert "invalid QWEN_MM_CUA_COORDINATE_MODE" in result.stderr
 
 
 def test_wait_schemas_reject_missing_condition_inputs():
@@ -337,6 +364,46 @@ def test_native_profile_binds_absolute_coordinates_to_primary_desktop(monkeypatc
     assert "window_id" not in click_calls[0]
     assert result["interaction"]["driver_results"] == [{"route": "global_input"}]
     assert result["state"]["snapshot_id"] != snapshot_id
+
+
+def test_native_relative_mode_maps_normalized_coordinates_to_primary_desktop(monkeypatch):
+    class DesktopClient:
+        def __init__(self):
+            self.states = [_desktop_state(), _desktop_state("fresh-desktop-image")]
+            self.calls = []
+
+        def call(self, tool, arguments, *, timeout=None):
+            self.calls.append((tool, arguments, timeout))
+            if tool == "get_desktop_state":
+                return self.states.pop(0)
+            if tool == "click":
+                return {"route": "global_input"}
+            raise AssertionError(f"unexpected desktop tool: {tool}")
+
+    monkeypatch.setattr(driver, "CUA_COORDINATE_MODE", "relative")
+    fake = DesktopClient()
+    monkeypatch.setattr(driver, "_CLIENT", fake)
+    observed_blocks = native_desktop_state.handle({})
+    observed = _payload(observed_blocks)
+    snapshot_id = observed["state"]["snapshot_id"]
+
+    assert observed["coordinate_space"] == {
+        "name": "relative",
+        "mode": "relative",
+        "x_min": 0,
+        "x_max_inclusive": 1000,
+        "y_min": 0,
+        "y_max_inclusive": 1000,
+        "mapped_png_width": 1600,
+        "mapped_png_height": 1200,
+        "snapshot_binding": snapshot_id,
+        "rule": "Coordinates are valid only with this snapshot_id; re-observe after every action.",
+    }
+    assert "use relative x,y∈[0,1000]" in observed_blocks[-2]["text"]
+
+    _payload(native_click.handle({"snapshot_id": snapshot_id, "x": 500, "y": 250}))
+    click_call = next(args for tool, args, _ in fake.calls if tool == "click")
+    assert (click_call["x"], click_call["y"]) == pytest.approx((799.5, 299.75))
 
 
 def test_native_frontmost_keyboard_tools_use_fixed_desktop_target(monkeypatch):
@@ -593,6 +660,49 @@ def test_absolute_coordinates_bind_to_png_dimensions(monkeypatch):
 
     record = driver.SNAPSHOTS._by_id["s00000001"]
     assert driver.convert_point(record, 500, 250) == (500.0, 250.0)
+
+
+def test_ax_relative_mode_is_advertised_and_maps_to_png_dimensions(monkeypatch):
+    monkeypatch.setattr(driver, "CUA_COORDINATE_MODE", "relative")
+    fake = _install_fake(monkeypatch, _state(1), _state(2, label="Opened", screenshot="changed"))
+    observed = _payload(get_app_state.handle({"app": "Music"}))
+
+    assert observed["pixel_actions"]["coordinate_space"] == "relative"
+    assert observed["pixel_actions"]["coordinate_mode"] == "relative"
+    assert observed["coordinate_space"]["x_max_inclusive"] == 1000
+    assert observed["coordinate_space"]["mapped_png_width"] == 1600
+
+    result = _payload(
+        click.handle(
+            {
+                "app": "Music",
+                "snapshot_id": "s00000001",
+                "x": 500,
+                "y": 250,
+            }
+        )
+    )
+    click_call = next(args for tool, args in fake.calls if tool == "click")
+    assert (click_call["x"], click_call["y"]) == pytest.approx((799.5, 299.75))
+    assert result["interaction"]["attempts"][0]["address"] == "relative"
+
+
+def test_relative_mode_rejects_coordinates_outside_zero_to_one_thousand(monkeypatch):
+    monkeypatch.setattr(driver, "CUA_COORDINATE_MODE", "relative")
+    fake = _install_fake(monkeypatch, _state(1))
+    _payload(get_app_state.handle({"app": "Music"}))
+
+    blocks = click.handle(
+        {
+            "app": "Music",
+            "snapshot_id": "s00000001",
+            "x": 1001,
+            "y": 500,
+        }
+    )
+
+    assert "between 0 and 1000 in relative coordinate mode" in blocks[0]["text"]
+    assert not [tool for tool, _ in fake.calls if tool == "click"]
 
 
 def test_image_is_immediately_preceded_by_its_absolute_coordinate_frame(monkeypatch):
@@ -1038,7 +1148,7 @@ def test_wait_does_not_expose_coordinates_when_internal_comparison_image_is_hidd
             "y": 10,
         }
     )
-    assert "pixel coordinates are unavailable" in coordinate_attempt[0]["text"]
+    assert "screenshot coordinates are unavailable" in coordinate_attempt[0]["text"]
 
 
 def test_observation_retries_without_repeating_input(monkeypatch):

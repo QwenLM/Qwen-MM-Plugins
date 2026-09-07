@@ -151,11 +151,16 @@ key 的后端：Serper、Tavily、Exa。设为 `serper`、`tavily` 或 `exa` 会
 运行 `bash install.sh verify` 或 `<entry> --check-system` 查看所选能力的具体要求。能力专属依赖
 记录在对应 Skill 和 cookbook 中。
 
-使用 `cua` 时，通过官方安装器安装 Cua Driver 0.20.0+，并在交互式桌面会话中启动它。`ax`
-在 macOS 上使用 AX，在 Windows 上使用 UIA/MSAA，在 Linux 上使用 AT-SPI 2。macOS 还需要
+使用 `cua` 时，安装 Cua Driver 0.20.0+，并在交互式桌面会话中启动它。当前集成分支及其
+完整源码构建命令见 [CUA cookbook](../../cookbooks/cua/usage.md)；正式发布版使用 Driver 的
+官方安装器。`ax` 在 macOS 上使用 AX，在 Windows 上使用 UIA/MSAA，在 Linux 上使用
+AT-SPI 2。macOS 还需要
 授予 Accessibility 和 Screen Recording 权限；Linux 需要 AT-SPI 和受支持的
 X11/XWayland/Wayland 会话。然后运行 `qwen-mm-plugins-cua --check-system`。在共享配置中设置
-`QWEN_MM_CUA_TYPE=native`、`ax`（默认）或 `full`，再重载 MCP server。即使是 `full` 也只注册
+`QWEN_MM_CUA_TYPE=native`、`ax`（默认）或 `full`。修改后使用客户端的 plugin/MCP reload
+功能或新建会话即可生效。截图坐标默认使用编码 PNG 的绝对像素；设置
+`QWEN_MM_CUA_COORDINATE_MODE=relative` 后，Native 和 AX 工具会
+统一使用 0 到 1000 的归一化坐标。即使是 `full` 也只注册
 类型化 Browser 工具和精选 Runtime 工具，不会安装 Driver 的可选 Skill pack，也不会暴露管理类工具。详见
 [CUA cookbook](../../cookbooks/cua/usage.md)。
 

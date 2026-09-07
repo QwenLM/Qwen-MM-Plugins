@@ -16,7 +16,7 @@ class GetDesktopStateArgs(StrictArgs):
 TOOL: dict[str, Any] = {
     "name": "get_desktop_state",
     "description": (
-        "Return a fresh screenshot of the primary display with its authoritative absolute pixel frame. "
+        "Return a fresh screenshot of the primary display with its authoritative coordinate_space. "
         "Call before every native action; arbitrary display selection is not supported by Driver 0.20."
     ),
     "args": GetDesktopStateArgs,

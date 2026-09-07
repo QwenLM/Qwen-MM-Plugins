@@ -171,9 +171,18 @@ def test_rewrite_plugin_sources_localizes_catalog_and_mcp(tmp_path):
         checkout / "src/capabilities/core/.claude-plugin/plugin.json",
         checkout / "src/capabilities/core/.mcp.json",
     ):
-        args = next(iter(json.loads(path.read_text())["mcpServers"].values()))["args"]
-        assert args[0] == "--refresh"
-        assert f"qwen-mm-plugins[core] @ {checkout.as_uri()}" in args
+        server = next(iter(json.loads(path.read_text())["mcpServers"].values()))
+        assert server["command"] == "uv"
+        assert server["args"] == [
+            "run",
+            "--isolated",
+            "--frozen",
+            "--project",
+            str(checkout),
+            "--extra",
+            "core",
+            "qwen-mm-plugins-core",
+        ]
 
     result = subprocess.run(
         [
@@ -191,6 +200,7 @@ def test_rewrite_plugin_sources_localizes_catalog_and_mcp(tmp_path):
     restored = (checkout / "src/capabilities/core/.mcp.json").read_text()
     assert "@qwen-mm-plugins-core-v1.0.1" in restored
     assert "--refresh" not in restored
+    assert '"command": "uvx"' in restored
 
 
 def test_rewrite_plugin_sources_restores_explicit_development_ref(tmp_path):
@@ -280,6 +290,7 @@ def test_local_restore_cli_restores_all_published_refs(tmp_path):
     manifest = (checkout / "src/capabilities/core/.mcp.json").read_text()
     assert "@qwen-mm-plugins-core-v1.0.1" in manifest
     assert "--refresh" not in manifest
+    assert '"command": "uvx"' in manifest
 
 
 def test_local_checkout_root_comes_from_install_script_not_cwd(tmp_path):
@@ -367,7 +378,7 @@ do_verify
         ("qoder", "qodercli plugins install qwen-mm-plugins-core@qwen-mm-plugins"),
         ("openclaw", "openclaw plugins install qwen-mm-plugins-core --marketplace"),
         ("qwen-code", "qwen extensions install"),
-        ("gemini", "gemini mcp add -s user qwen-mm-plugins-core uvx --refresh --from"),
+        ("gemini", "gemini mcp add -s user qwen-mm-plugins-core uv run --isolated --frozen --project"),
     ],
 )
 def test_local_install_uses_each_harness_native_command(tmp_path, harness, expected):

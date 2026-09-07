@@ -18,7 +18,7 @@ class ScrollArgs(PointArgs):
 
 TOOL: dict[str, Any] = {
     "name": "scroll",
-    "description": "Scroll at an absolute pixel in the current primary-display PNG.",
+    "description": "Scroll at one point in the current primary-display coordinate_space.",
     "args": ScrollArgs,
 }
 

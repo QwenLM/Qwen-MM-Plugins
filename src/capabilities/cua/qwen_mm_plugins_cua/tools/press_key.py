@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import Field, model_validator
 
+from qwen_mm_plugins_cua.mode import COORDINATE_MAX_INCLUSIVE
 from qwen_mm_plugins_cua.tools._actions import DeliveredActionArgs, execute
 
 
@@ -14,8 +15,18 @@ class PressKeyArgs(DeliveredActionArgs):
     modifiers: list[str] | None = Field(default=None, description="Optional cmd/shift/option/ctrl/fn modifiers.")
     repeat: int = Field(default=1, ge=1, le=50, description="Number of key presses.")
     element_token: str | None = Field(default=None, description="Optional exact element to focus first.")
-    x: float | None = Field(default=None, description="Optional absolute focus X in the current screenshot PNG.")
-    y: float | None = Field(default=None, description="Optional absolute focus Y in the current screenshot PNG.")
+    x: float | None = Field(
+        default=None,
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="Optional focus X in the current state's coordinate_space.",
+    )
+    y: float | None = Field(
+        default=None,
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="Optional focus Y in the current state's coordinate_space.",
+    )
 
     @model_validator(mode="after")
     def validate_target(self):

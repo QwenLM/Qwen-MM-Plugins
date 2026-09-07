@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from qwen_mm_plugins_cua.mode import COORDINATE_MAX_INCLUSIVE
 from qwen_mm_plugins_cua.tools._actions import StrictArgs
 
 
@@ -24,5 +25,13 @@ class SnapshotArgs(StrictArgs):
 
 
 class PointArgs(SnapshotArgs):
-    x: float = Field(ge=0, description="Absolute X in the original primary-display PNG.")
-    y: float = Field(ge=0, description="Absolute Y in the original primary-display PNG.")
+    x: float = Field(
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="X in the coordinate_space returned by get_desktop_state.",
+    )
+    y: float = Field(
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="Y in the coordinate_space returned by get_desktop_state.",
+    )

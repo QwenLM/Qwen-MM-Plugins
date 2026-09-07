@@ -228,6 +228,13 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "ax",
         "CUA profile: native (primary-display pixels), ax (window + OS accessibility), or full (+ browser/runtime)",
     ),
+    (
+        "QWEN_MM_CUA_COORDINATE_MODE",
+        False,
+        "Runtime paths & limits",
+        "absolute",
+        "CUA screenshot coordinates: absolute PNG pixels or relative 0-1000 units (native and AX tools)",
+    ),
     # OSS storage (serve large media by URL)
     ("OSS_AK", True, "OSS storage (serve large media by URL)", "", "OSS access key id"),
     ("OSS_SK", True, "OSS storage (serve large media by URL)", "", "OSS access key secret"),

@@ -16,6 +16,7 @@ from qwen_mm_plugins_cua.driver import (
     CuaError,
     compare_snapshots,
     convert_point,
+    coordinate_space_name,
     driver_result_refused,
     element_center_pixels,
     evaluate_condition,
@@ -83,7 +84,7 @@ def address_payload(
     if has_point:
         require_fields(arguments, action, "x", "y")
         x, y = convert_point(record, arguments["x"], arguments["y"])
-        return {"x": x, "y": y}, "pixel"
+        return {"x": x, "y": y}, coordinate_space_name()
     if allow_empty:
         return {}, "focused_target"
     raise CuaError(f"{action} requires element_token or x/y")
@@ -167,7 +168,7 @@ def build_payload(
         )
         if arguments.get("modifiers") is not None:
             payload["modifier"] = arguments["modifiers"]
-        return "drag", payload, "pixel", 1
+        return "drag", payload, coordinate_space_name(), 1
 
     if action == "set_value":
         payload = _base_payload(arguments, target, record, delivery_mode, delivery=False)

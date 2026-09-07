@@ -158,11 +158,16 @@ error when `SERPER_API_KEY` is unavailable.
 Run `bash install.sh verify` or `<entry> --check-system` to see what the selected capability needs.
 Capability-specific prerequisites are documented in its Skill and cookbook.
 
-For `cua`, install Cua Driver 0.20.0+ with its official installer and start it in an interactive
-desktop session. The `ax` profile uses AX on macOS, UIA/MSAA on Windows, and AT-SPI 2 on Linux.
+For `cua`, install Cua Driver 0.20.0+ and start it in an interactive desktop session. The current
+integration branch and its exact source-build commands are documented in the
+[CUA cookbook](../../cookbooks/cua/usage.md); published releases use the official Driver installer.
+The `ax` profile uses AX on macOS, UIA/MSAA on Windows, and AT-SPI 2 on Linux.
 macOS additionally requires Accessibility and Screen Recording grants; Linux needs AT-SPI and a
 supported X11/XWayland/Wayland session. Then run `qwen-mm-plugins-cua --check-system`. Set
-`QWEN_MM_CUA_TYPE=native`, `ax` (default), or `full` in the shared config and reload the MCP server.
+`QWEN_MM_CUA_TYPE=native`, `ax` (default), or `full` in the shared config. Apply a change with the
+client's plugin/MCP reload action or by starting a new session.
+Screenshot coordinates default to encoded-PNG pixels; set `QWEN_MM_CUA_COORDINATE_MODE=relative`
+and reload to use normalized coordinates from 0 to 1000 in Native and AX tools.
 Even `full` registers only typed Browser and selected Runtime tools; it neither installs the
 driver's optional Skill pack nor exposes the administrative Driver roster. See the
 [CUA cookbook](../../cookbooks/cua/usage.md).

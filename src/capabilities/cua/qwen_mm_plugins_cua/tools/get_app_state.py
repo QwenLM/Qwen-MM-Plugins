@@ -29,7 +29,7 @@ TOOL: dict[str, Any] = {
     "name": "get_app_state",
     "description": (
         "Return a fresh screenshot plus accessibility state for one exact app window. Call before "
-        "an action and use only the returned snapshot. Pixel and relative coordinates are bound to the "
+        "an action and use only the returned snapshot. The configured screenshot coordinates are bound to the "
         "returned snapshot_id; pathological narrow helper surfaces are rejected."
     ),
     "args": GetAppStateArgs,

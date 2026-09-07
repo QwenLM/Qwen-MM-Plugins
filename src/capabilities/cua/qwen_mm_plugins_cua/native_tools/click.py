@@ -24,7 +24,7 @@ class ClickArgs(PointArgs):
 
 TOOL: dict[str, Any] = {
     "name": "click",
-    "description": "Click an absolute pixel in the current primary-display PNG and return a fresh screenshot.",
+    "description": "Click one point in the current primary-display coordinate_space and return a fresh screenshot.",
     "args": ClickArgs,
 }
 

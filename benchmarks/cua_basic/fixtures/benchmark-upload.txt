@@ -1,0 +1,3 @@
+CUA Basic upload fixture
+case=10
+payload=qwen-mm-plugins-cua

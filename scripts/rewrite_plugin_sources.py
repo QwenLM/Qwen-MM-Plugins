@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
 
 REPO_URL = "https://github.com/QwenLM/Qwen-MM-Plugins.git"
@@ -55,28 +54,29 @@ def _rewrite_marketplace(
 
 def _rewrite_mcp(path: Path, cap: str, source: str, *, refresh: bool) -> bool:
     original = path.read_text()
-    pattern = re.compile(rf"(qwen-mm-plugins\[{re.escape(cap)}\] @ )[^\"\r\n]+")
-    rendered, count = pattern.subn(rf"\g<1>{source}", original)
-    if count == 0:
-        raise ValueError(f"no qwen-mm-plugins[{cap}] source found")
-
-    if refresh and '"--refresh"' not in rendered:
-        source_pos = rendered.index(f"qwen-mm-plugins[{cap}] @ ")
-        args_start = rendered.rfind("[", 0, source_pos)
-        if args_start < 0:
-            raise ValueError("could not locate MCP args array")
-        following = rendered[args_start + 1 :]
-        newline = re.match(r"(\r?\n)([ \t]*)", following)
-        insertion = f'{newline.group(1)}{newline.group(2)}"--refresh",' if newline else '"--refresh", '
-        rendered = rendered[: args_start + 1] + insertion + following
-    elif not refresh:
-        rendered = re.sub(r'(?m)^[ \t]*"--refresh",[ \t]*\r?\n', "", rendered)
-        rendered = re.sub(r'"--refresh",[ \t]*', "", rendered)
-
-    if rendered == original:
-        return False
-    path.write_text(rendered)
-    return True
+    data = json.loads(original)
+    server_name = f"qwen-mm-plugins-{cap}"
+    server = data.get("mcpServers", {}).get(server_name)
+    if not isinstance(server, dict):
+        raise ValueError(f"no {server_name} MCP server found")
+    if refresh:
+        # An isolated project run installs the checkout as editable and reuses dependency caches,
+        # avoiding uvx's persistent stale tool environment without sharing one mutable project venv.
+        server["command"] = "uv"
+        server["args"] = [
+            "run",
+            "--isolated",
+            "--frozen",
+            "--project",
+            source,
+            "--extra",
+            cap,
+            server_name,
+        ]
+    else:
+        server["command"] = "uvx"
+        server["args"] = ["--from", f"qwen-mm-plugins[{cap}] @ {source}", server_name]
+    return _write_if_changed(path, data, original)
 
 
 def main() -> int:
@@ -125,7 +125,7 @@ def main() -> int:
                     (
                         f"git+{REPO_URL}@{source_refs.get(cap, f'qwen-mm-plugins-{cap}-v{versions[cap]}')}"
                         if args.restore
-                        else repo.as_uri()
+                        else str(repo)
                     ),
                     refresh=args.refresh,
                 )

@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
+from qwen_mm_plugins_cua.mode import COORDINATE_MAX_INCLUSIVE
 from qwen_mm_plugins_cua.tools._actions import DeliveredActionArgs, execute
 
 
@@ -14,8 +15,18 @@ class ScrollArgs(DeliveredActionArgs):
     amount: int = Field(default=3, ge=1, le=50, description="Wheel notches or key repetitions.")
     by: Literal["line", "page"] = Field(default="line", description="Scroll granularity.")
     element_token: str | None = Field(default=None, description="Optional exact scroll target.")
-    x: float | None = Field(default=None, description="Optional absolute target X in the current screenshot PNG.")
-    y: float | None = Field(default=None, description="Optional absolute target Y in the current screenshot PNG.")
+    x: float | None = Field(
+        default=None,
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="Optional X in the current state's coordinate_space.",
+    )
+    y: float | None = Field(
+        default=None,
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="Optional Y in the current state's coordinate_space.",
+    )
 
     @model_validator(mode="after")
     def validate_target(self):

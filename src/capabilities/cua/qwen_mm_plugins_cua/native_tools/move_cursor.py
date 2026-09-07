@@ -14,7 +14,7 @@ class MoveCursorArgs(PointArgs):
 
 TOOL: dict[str, Any] = {
     "name": "move_cursor",
-    "description": "Move the pointer to an absolute pixel for hover interactions, then return a fresh screenshot.",
+    "description": "Move the pointer to a point in the current coordinate_space, then return a fresh screenshot.",
     "args": MoveCursorArgs,
 }
 

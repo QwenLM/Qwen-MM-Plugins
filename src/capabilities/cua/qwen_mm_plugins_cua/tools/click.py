@@ -6,13 +6,24 @@ from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
+from qwen_mm_plugins_cua.mode import COORDINATE_MAX_INCLUSIVE
 from qwen_mm_plugins_cua.tools._actions import DeliveredActionArgs, execute
 
 
 class ClickArgs(DeliveredActionArgs):
     element_token: str | None = Field(default=None, description="Preferred exact handle from the current state.")
-    x: float | None = Field(default=None, description="Absolute X in the current screenshot PNG.")
-    y: float | None = Field(default=None, description="Absolute Y in the current screenshot PNG.")
+    x: float | None = Field(
+        default=None,
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="X in the current state's coordinate_space.",
+    )
+    y: float | None = Field(
+        default=None,
+        ge=0,
+        le=COORDINATE_MAX_INCLUSIVE,
+        description="Y in the current state's coordinate_space.",
+    )
     button: Literal["left", "right", "middle"] = Field(default="left", description="Pointer button.")
     count: Literal[1, 2] = Field(default=1, description="Single or double click.")
     semantic_action: Literal["press", "show_menu", "pick", "confirm", "cancel", "open"] | None = Field(

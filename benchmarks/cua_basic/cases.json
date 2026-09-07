@@ -1,0 +1,82 @@
+[
+  {
+    "id": "01",
+    "slug": "visual-target",
+    "title": "Visual target",
+    "category": "visual",
+    "max_actions": 8,
+    "description": "Click a seeded target in a custom-drawn canvas with no element-level semantics."
+  },
+  {
+    "id": "02",
+    "slug": "semantic-disambiguation",
+    "title": "Semantic disambiguation",
+    "category": "ax",
+    "max_actions": 8,
+    "description": "Choose one of two identically labelled controls using its surrounding panel."
+  },
+  {
+    "id": "03",
+    "slug": "order-search",
+    "title": "Order search",
+    "category": "ax",
+    "max_actions": 12,
+    "description": "Search a seeded order table and open the exact matching record."
+  },
+  {
+    "id": "04",
+    "slug": "structured-form",
+    "title": "Structured form",
+    "category": "ax",
+    "max_actions": 15,
+    "description": "Create a user with exact text, select, and checkbox values."
+  },
+  {
+    "id": "05",
+    "slug": "preferences",
+    "title": "Preferences",
+    "category": "ax",
+    "max_actions": 12,
+    "description": "Update a select and two switches to a seeded target configuration."
+  },
+  {
+    "id": "06",
+    "slug": "scroll-select",
+    "title": "Scroll and select",
+    "category": "visual",
+    "max_actions": 15,
+    "description": "Find and select a seeded item initially outside a scroll container's viewport."
+  },
+  {
+    "id": "07",
+    "slug": "drag-drop",
+    "title": "Drag and drop",
+    "category": "visual",
+    "max_actions": 12,
+    "description": "Move a seeded card between Kanban columns using a real pointer drag."
+  },
+  {
+    "id": "08",
+    "slug": "wait-dialog",
+    "title": "Wait and dialog",
+    "category": "recovery",
+    "max_actions": 10,
+    "description": "Start one delayed operation, wait for a modal, and choose the requested outcome exactly once."
+  },
+  {
+    "id": "09",
+    "slug": "cross-tab-code",
+    "title": "Cross-tab code",
+    "category": "browser",
+    "max_actions": 15,
+    "description": "Open a new tab, read a seeded code, return to the original tab, and submit it."
+  },
+  {
+    "id": "10",
+    "slug": "file-roundtrip",
+    "title": "File roundtrip",
+    "category": "browser",
+    "max_actions": 18,
+    "description": "Upload the provided fixture, start processing, wait, and download the generated result."
+  }
+]

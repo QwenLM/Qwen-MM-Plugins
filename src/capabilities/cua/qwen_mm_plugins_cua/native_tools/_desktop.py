@@ -15,9 +15,11 @@ from qwen_mm_plugins_cua.driver import (
     SCREENSHOT_KEY,
     CuaError,
     _perceptual_hash,
+    coordinate_contract,
+    coordinate_instruction,
+    coordinate_to_pixel,
     driver_result_refused,
     get_client,
-    pixel_coordinate,
 )
 from shared.content import image, text, text_error
 
@@ -104,6 +106,7 @@ def desktop_content(
     screenshot = state[SCREENSHOT_KEY]
     public_state = {key: value for key, value in state.items() if key != SCREENSHOT_KEY}
     public_state["snapshot_id"] = snapshot.snapshot_id
+    coordinate_space = coordinate_contract(snapshot.width, snapshot.height, snapshot.snapshot_id)
     payload: dict[str, Any] = {
         "ok": ok,
         "target": DESKTOP_TARGET,
@@ -114,35 +117,22 @@ def desktop_content(
             "snapshot_binding": snapshot.snapshot_id,
             "authoritative_for_coordinates": True,
         },
-        "coordinate_space": {
-            "name": "pixel",
-            "x_min": 0,
-            "x_max_exclusive": snapshot.width,
-            "y_min": 0,
-            "y_max_exclusive": snapshot.height,
-            "snapshot_binding": snapshot.snapshot_id,
-            "rule": "Coordinates are valid only with this snapshot_id; re-observe after every action.",
-        },
+        "coordinate_space": coordinate_space,
         "state": public_state,
     }
     if extra:
         payload.update(extra)
     return [
         text(json.dumps(payload, ensure_ascii=False, indent=2)),
-        text(
-            f"Authoritative encoded-PNG metadata for {snapshot.snapshot_id}: "
-            f"H×W={snapshot.height}×{snapshot.width} px; use absolute "
-            f"x∈[0,{snapshot.width}), y∈[0,{snapshot.height}). Do not infer coordinates from "
-            "client- or model-resized rendered dimensions."
-        ),
+        text(coordinate_instruction(snapshot.width, snapshot.height, snapshot.snapshot_id)),
         image(screenshot, state.get("screenshot_mime_type", "image/png")),
     ]
 
 
 def desktop_point(snapshot: DesktopSnapshot, x: float, y: float) -> tuple[float, float]:
     return (
-        pixel_coordinate(x, snapshot.width, "x"),
-        pixel_coordinate(y, snapshot.height, "y"),
+        coordinate_to_pixel(x, snapshot.width, "x"),
+        coordinate_to_pixel(y, snapshot.height, "y"),
     )
 
 

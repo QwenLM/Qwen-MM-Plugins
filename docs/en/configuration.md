@@ -71,6 +71,7 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 | `QWEN_MM_MAX_TOTAL_FRAMES` | 600 | max frames sampled from a video |
 | `QWEN_MM_CUA_DRIVER_PATH` | — | path to the cua-driver executable |
 | `QWEN_MM_CUA_TYPE` | ax | CUA profile: native (primary-display pixels), ax (window + OS accessibility), or full (+ browser/runtime) |
+| `QWEN_MM_CUA_COORDINATE_MODE` | absolute | CUA screenshot coordinates: absolute PNG pixels or relative 0-1000 units (native and AX tools) |
 
 ### OSS storage (serve large media by URL)
 

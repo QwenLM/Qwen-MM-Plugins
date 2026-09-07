@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-cua",
   "displayName": "Qwen MM Plugins CUA",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Profiled visual, accessibility, browser, and runtime control backed by Cua Driver, with fresh-state verification.",
   "skills": "./skill",
   "mcp": ".mcp.json"

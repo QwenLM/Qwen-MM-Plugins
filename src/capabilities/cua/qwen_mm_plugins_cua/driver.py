@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
+from qwen_mm_plugins_cua.mode import CUA_COORDINATE_MODE
 from shared.content import image, text
 from shared.env import get_env
 
@@ -61,18 +62,26 @@ def resolve_driver_binary() -> str:
             return str(path)
         raise CuaError(f"QWEN_MM_CUA_DRIVER_PATH is not executable: {path}")
 
-    if found := shutil.which("cua-driver"):
-        return found
-    candidates = [Path.home() / ".local" / "bin" / "cua-driver"]
+    for binary_name in ("cua-driver", "cua-driver-local"):
+        if found := shutil.which(binary_name):
+            return found
+    candidates = [
+        Path.home() / ".local" / "bin" / "cua-driver",
+        Path.home() / ".local" / "bin" / "cua-driver-local",
+    ]
     if sys.platform == "darwin":
-        candidates.append(Path("/Applications/CuaDriver.app/Contents/MacOS/cua-driver"))
+        candidates.extend(
+            [
+                Path("/Applications/CuaDriver.app/Contents/MacOS/cua-driver"),
+                Path("/Applications/CuaDriverLocal.app/Contents/MacOS/cua-driver-local"),
+            ]
+        )
     for path in candidates:
         if path.is_file() and path.stat().st_mode & 0o111:
             return str(path)
     raise CuaError(
-        "cua-driver was not found. Install it with "
-        '`/bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"` or set '
-        "QWEN_MM_CUA_DRIVER_PATH."
+        "Cua Driver was not found. Install the matching Driver build described in the CUA "
+        "cookbook or set QWEN_MM_CUA_DRIVER_PATH."
     )
 
 
@@ -497,6 +506,11 @@ def state_content(
 ) -> list[dict[str, str]]:
     screenshot = state.get(SCREENSHOT_KEY)
     public_state = {key: value for key, value in state.items() if key != SCREENSHOT_KEY}
+    coordinate_space = (
+        coordinate_contract(record.width, record.height, record.snapshot_id)
+        if record.frame_valid and record.width is not None and record.height is not None
+        else None
+    )
     payload: dict[str, Any] = {
         "ok": ok,
         "app": {key: target.app.get(key) for key in ("name", "bundle_id", "pid", "active", "running")},
@@ -504,12 +518,15 @@ def state_content(
         "window_selection": target.selection,
         "pixel_actions": {
             "available": record.frame_valid,
-            "coordinate_space": "pixel" if record.frame_valid else None,
+            "coordinate_space": coordinate_space["name"] if coordinate_space else None,
+            "coordinate_mode": CUA_COORDINATE_MODE,
             "snapshot_binding": record.snapshot_id,
             "rule": "Coordinates are valid only with this snapshot_id; re-observe after every action.",
         },
         "state": public_state,
     }
+    if coordinate_space:
+        payload["coordinate_space"] = coordinate_space
     if isinstance(screenshot, str) and record.width is not None and record.height is not None:
         payload["image_metadata"] = {
             "format": "png",
@@ -523,16 +540,9 @@ def state_content(
     blocks = [text(json.dumps(payload, ensure_ascii=False, indent=2))]
     if isinstance(screenshot, str):
         if record.frame_valid and record.width is not None and record.height is not None:
-            blocks.append(
-                text(
-                    f"Authoritative encoded-PNG metadata for {record.snapshot_id}: "
-                    f"H×W={record.height}×{record.width} px; use absolute "
-                    f"x∈[0,{record.width}), y∈[0,{record.height}). A client or model pipeline may "
-                    "resize the displayed image; do not infer coordinates from its rendered dimensions."
-                )
-            )
+            blocks.append(text(coordinate_instruction(record.width, record.height, record.snapshot_id)))
         else:
-            blocks.append(text("Screenshot coordinate frame is unproven; do not use pixel coordinates."))
+            blocks.append(text("Screenshot coordinate frame is unproven; do not use screenshot coordinates."))
         blocks.append(image(screenshot, state.get("screenshot_mime_type", "image/png")))
     return blocks
 
@@ -621,13 +631,70 @@ def pixel_coordinate(value: float, size: int, field: str) -> float:
     return float(value)
 
 
+def relative_coordinate(value: float, size: int, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        raise CuaError(f"{field} must be a finite number")
+    if not 0 <= float(value) <= 1000:
+        raise CuaError(f"{field} must be between 0 and 1000 in relative coordinate mode")
+    return float(value) * (size - 1) / 1000
+
+
+def coordinate_space_name() -> str:
+    return "relative" if CUA_COORDINATE_MODE == "relative" else "pixel"
+
+
+def coordinate_contract(width: int, height: int, snapshot_id: str) -> dict[str, Any]:
+    common: dict[str, Any] = {
+        "name": coordinate_space_name(),
+        "mode": CUA_COORDINATE_MODE,
+        "snapshot_binding": snapshot_id,
+        "rule": "Coordinates are valid only with this snapshot_id; re-observe after every action.",
+    }
+    if CUA_COORDINATE_MODE == "relative":
+        return {
+            **common,
+            "x_min": 0,
+            "x_max_inclusive": 1000,
+            "y_min": 0,
+            "y_max_inclusive": 1000,
+            "mapped_png_width": width,
+            "mapped_png_height": height,
+        }
+    return {
+        **common,
+        "x_min": 0,
+        "x_max_exclusive": width,
+        "y_min": 0,
+        "y_max_exclusive": height,
+    }
+
+
+def coordinate_instruction(width: int, height: int, snapshot_id: str) -> str:
+    prefix = f"Authoritative encoded-PNG metadata for {snapshot_id}: H×W={height}×{width} px; "
+    if CUA_COORDINATE_MODE == "relative":
+        return (
+            prefix + "use relative x,y∈[0,1000]. The server maps that normalized frame to this PNG; "
+            "client- or model-side image resizing does not change the coordinate range."
+        )
+    return (
+        prefix + f"use absolute x∈[0,{width}), y∈[0,{height}). A client or model pipeline may resize "
+        "the displayed image; do not infer coordinates from its rendered dimensions."
+    )
+
+
+def coordinate_to_pixel(value: float, size: int, field: str) -> float:
+    if CUA_COORDINATE_MODE == "relative":
+        return relative_coordinate(value, size, field)
+    return pixel_coordinate(value, size, field)
+
+
 def convert_point(record: SnapshotRecord, x: float, y: float) -> tuple[float, float]:
     if not record.frame_valid or record.width is None or record.height is None:
         raise CuaError(
-            "pixel coordinates are unavailable because the latest screenshot frame was not proven; "
+            "screenshot coordinates are unavailable because the latest screenshot frame was not proven; "
             "re-observe on a visible ordinary window"
         )
-    return pixel_coordinate(x, record.width, "x"), pixel_coordinate(y, record.height, "y")
+    return coordinate_to_pixel(x, record.width, "x"), coordinate_to_pixel(y, record.height, "y")
 
 
 def element_center_pixels(record: SnapshotRecord, element_token: str) -> tuple[float, float] | None:

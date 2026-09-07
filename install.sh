@@ -30,7 +30,7 @@ LOCAL_REPO_ROOT=''
 CAP_ITEMS=(core api search video-memory video-edit blender freecad edu-agent cua)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.2 1.0.2 1.0.2 1.0.2 2.1.0)
+CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.2 1.0.2 1.0.2 1.0.2 2.2.0)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
@@ -82,6 +82,7 @@ CONFIG_SPEC=(
   "QWEN_MM_MAX_TOTAL_FRAMES|0|runtime|600|max frames sampled from a video"
   "QWEN_MM_CUA_DRIVER_PATH|0|runtime||path to the cua-driver executable"
   "QWEN_MM_CUA_TYPE|0|runtime|ax|CUA profile: native (primary-display pixels), ax (window + OS accessibility), or full (+ browser/runtime)"
+  "QWEN_MM_CUA_COORDINATE_MODE|0|runtime|absolute|CUA screenshot coordinates: absolute PNG pixels or relative 0-1000 units (native and AX tools)"
   "OSS_AK|1|oss||OSS access key id"
   "OSS_SK|1|oss||OSS access key secret"
   "OSS_ENDPOINT|0|oss||OSS endpoint"
@@ -640,8 +641,8 @@ rewrite_plugin_sources() {
   fi
 }
 
-# Switch selected catalog entries to checkout-relative paths, point MCP package specs at
-# file://<repo>, and force uvx to refresh so a reconnect observes the current checkout.
+# Switch selected catalog entries to checkout-relative paths and run MCP entry points from an
+# isolated uv project environment so a reconnect observes the current checkout without sharing one venv.
 localize_plugin_sources() {
   local plugin cap root
   local -a caps=()
@@ -711,6 +712,15 @@ uvx_cap() {
   local -a flags=()
   while [ $# -gt 0 ] && [ "$1" != "--" ]; do flags+=("$1"); shift; done
   [ "${1:-}" = "--" ] && shift
+  if is_local_repo "$REPO_URL"; then
+    local root=${LOCAL_REPO_ROOT:-${REPO_URL#file://}}
+    root=$(cd "$root" 2>/dev/null && pwd -P) || return 1
+    printf '  %b$ uv run --isolated --frozen --project "%s" --extra %s qwen-mm-plugins-%s%s%b\n' \
+      "$CD" "$root" "$cap" "$cap" "${*:+ $*}" "$C0"
+    [ "$QMP_DRY" = 1 ] && return 0
+    uv run --isolated --frozen --project "$root" --extra "$cap" "qwen-mm-plugins-${cap}" "$@"
+    return
+  fi
   local disp=""; [ ${#flags[@]} -gt 0 ] && disp="${flags[*]} "
   local edisp=""; [ $# -gt 0 ] && edisp=" $*"
   printf '  %b$ uvx %s--from "%s" qwen-mm-plugins-%s%s%b\n' "$CD" "$disp" "$(cap_spec "$cap")" "$cap" "$edisp" "$C0"
@@ -866,7 +876,9 @@ install_for() {  # install_for <harness> <plugin...>
         cap=${p#qwen-mm-plugins-}
         if ! is_skill_only "$cap"; then
           if is_local_repo "$REPO_URL"; then
-            run_cmd "$bin" mcp add -s user "$p" uvx --refresh --from "$(cap_spec "$cap")" "$p" || failed=1
+            local local_root=${LOCAL_REPO_ROOT:-${REPO_URL#file://}}
+            local_root=$(cd "$local_root" 2>/dev/null && pwd -P) || return 1
+            run_cmd "$bin" mcp add -s user "$p" uv run --isolated --frozen --project "$local_root" --extra "$cap" "$p" || failed=1
           else
             run_cmd "$bin" mcp add -s user "$p" uvx --from "$(cap_spec "$cap")" "$p" || failed=1
           fi
