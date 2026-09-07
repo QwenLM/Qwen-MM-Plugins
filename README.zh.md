@@ -42,6 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 | `core` | 面向 VL / Omni agentic 模型。原生读取图片和视频，并可视化文档、代码、数据、3D 文件与 NIfTI 影像。全部在本机完成，不需要 API key。 | [Cookbook](cookbooks/core/usage.md) |
 | `api` | 面向任意模型（含纯文本模型）。用 DashScope key 或本地 endpoint 调用多模态模型 API：VL 的 `vision_chat` / `ocr` / `grounding`，Omni 的 `omni_av_*` / `omni_asr*` / `omni_music_caption`，另有 `transcribe_audio` 与 `segmentation`。 | [Cookbook](cookbooks/api/usage.md) |
 | `search` | 面向任意模型。网页搜索、页面抽取和反向图像搜索，需要 Serper、Exa 或 Tavily key。 | [Cookbook](cookbooks/search/usage.md) |
+| `mhs` | 面向任意模型。通过 Model Hardware Standard adapter 操作真实硬件——摄像头、传感器、灯、机械臂、实验设备；主机侧强制执行安全限位，并提供紧急停止。adapter 由硬件方自己运行，不需要云端 key。 | [Cookbook](cookbooks/mhs/usage.md) |
 
 **Qwen VL 系列模型**（例如 **Qwen3.8-Max**、**Qwen3.7-Plus**）：
 

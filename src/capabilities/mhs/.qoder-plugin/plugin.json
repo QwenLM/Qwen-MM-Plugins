@@ -1,0 +1,8 @@
+{
+  "name": "qwen-mm-plugins-mhs",
+  "displayName": "Qwen MM Plugins MHS",
+  "version": "1.0.0",
+  "description": "Operate physical hardware through Model Hardware Standard adapters: discover devices, read sensors and camera frames, send commands with host-side safety-limit enforcement, check health, and emergency-stop \u2014 as MCP tools. Adapters are run by the hardware's owner.",
+  "skills": "./skill",
+  "mcp": ".mcp.json"
+}

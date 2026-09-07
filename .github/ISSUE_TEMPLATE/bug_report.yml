@@ -37,12 +37,15 @@ body:
       label: Capability
       options:
         - core
+        - api
+        - search
         - video-memory
         - omni-memory
         - video-edit
         - blender
         - freecad
         - edu-agent
+        - mhs
         - installer or packaging
         - other
 

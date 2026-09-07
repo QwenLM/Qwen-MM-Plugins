@@ -34,4 +34,5 @@ known-first-party = [
     "qwen_mm_plugins_example",
     "qwen_mm_plugins_blender",
     "qwen_mm_plugins_freecad",
+    "qwen_mm_plugins_mhs",
 ]

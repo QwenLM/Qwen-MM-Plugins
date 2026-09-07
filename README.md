@@ -45,6 +45,7 @@ than routing them through a separate API or ad-hoc shell commands.
 | `core` | For VL/Omni agentic models. Reads images and video natively, and visualizes documents, code, data, 3D files and NIfTI volumes. All on your machine, no API key. | [Cookbook](cookbooks/core/usage.md) |
 | `api` | For any model, including text-only ones. Calls the multimodal model APIs with a DashScope key or local endpoint: VL `vision_chat` / `ocr` / `grounding`, Omni `omni_av_*` / `omni_asr*` / `omni_music_caption`, plus `transcribe_audio` and `segmentation`. | [Cookbook](cookbooks/api/usage.md) |
 | `search` | For any model. Web search, page extraction and reverse-image search, with a Serper, Exa or Tavily key. | [Cookbook](cookbooks/search/usage.md) |
+| `mhs` | For any model. Operates real hardware — cameras, sensors, lamps, arms, lab equipment — through Model Hardware Standard adapters, with host-side safety-limit enforcement and an emergency stop. Adapters are run by the hardware's owner; no cloud key. | [Cookbook](cookbooks/mhs/usage.md) |
 
 **Qwen VL series model** (e.g. **Qwen3.8-Max**, **Qwen3.7-Plus**):
 

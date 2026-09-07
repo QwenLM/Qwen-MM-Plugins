@@ -86,6 +86,27 @@ Copy `src/capabilities/example/` to `src/capabilities/<yourname>/`, rename `qwen
    the three harness manifests from an existing capability; server capabilities also carry
    `.mcp.json`. Run `scripts/check_manifests.py`, then follow
    [Plugin releases](releasing.md) for the first tag.
+6. Register the capability everywhere else it is enumerated by hand. `scripts/check_manifests.py`
+   does not cover these, so they are the ones that get missed:
+   - `pyproject.toml` — add the extra to the `all` profile as well as declaring it.
+   - `install.sh` — `CAP_ITEMS`, `CAP_VERSIONS`, `CAP_DESC` are three **positional** arrays that must
+     stay the same length and order (`tests/test_install_sh.py` enforces the version array against
+     `plugin-versions.json`); add to `CAP_SKILL_ONLY` only for a Skill-only capability. Everything
+     downstream derives from these, so there is nothing else to add in that script.
+   - `ruff.toml` — `[lint.isort] known-first-party`, or import grouping becomes non-deterministic.
+   - `README.md` / `README.zh.md` — the capability tables, which are **split by model family**; pick
+     the right section.
+   - `docs/en/manual_harnesses.md` / `docs/zh/manual_harnesses.md` — the explicit `<cap>` list.
+   - `cookbooks/<cap>/usage.md` — every published capability has one, the README links it, and
+     `scripts/tag_plugin_release.py` includes it in the release commit range.
+   - `.github/ISSUE_TEMPLATE/bug_report.yml` — the Capability dropdown.
+   - `.github/workflows/ci.yml` — only if your tests need a package not already in the `--with` list,
+     or you ship shell scripts needing `bash -n`.
+
+   Adding config variables is a separate, heavier step: `shared.env.CONFIG_FIELDS` is mirrored by
+   `install.sh:CONFIG_SPEC` and generates `docs/en/configuration.md`, and touching it is a *shared*
+   change that per `CLAUDE.md` requires bumping every capability. Prefer a capability-private variable
+   read via `get_env` with its default defined in your own package, documented in your SKILL.md.
 
 `__main__.py` is **copied verbatim** from `src/capabilities/example/` — it infers the import name from the directory name and contains no per-server literals.
 A skill-only capability omits `mcpServers` and `.mcp.json`, but keeps the three harness manifests.

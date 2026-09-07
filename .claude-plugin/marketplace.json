@@ -98,6 +98,16 @@
         "ref": "qwen-mm-plugins-freecad-v1.0.2"
       },
       "description": "FreeCAD parametric CAD: create/edit objects, execute Python, named-view screenshots, parts library, and CalculiX FEM as MCP tools + a skill. Needs a running FreeCAD + addon."
+    },
+    {
+      "name": "qwen-mm-plugins-mhs",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
+        "path": "src/capabilities/mhs",
+        "ref": "qwen-mm-plugins-mhs-v1.0.0"
+      },
+      "description": "Operate physical hardware through Model Hardware Standard adapters: discover devices, read sensors and camera frames, send commands with host-side safety-limit enforcement, check health, and emergency-stop — as MCP tools. Adapters are run by the hardware's owner."
     }
   ]
 }

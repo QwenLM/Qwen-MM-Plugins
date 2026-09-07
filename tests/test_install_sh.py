@@ -559,8 +559,29 @@ def test_capability_rows_never_wrap_at_narrow_terminal_widths(width):
     result = _bash(f"term_cols() {{ printf {width}; }}; load_caps core; _multi_rows 0")
     assert result.returncode == 0, result.stderr
     lines = [line.replace("\x1b[2K", "") for line in result.stdout.splitlines()]
-    assert len(lines) == 9
+    # One row per capability, derived from the catalog so adding one doesn't fail here spuriously.
+    expected = _bash('printf "%s" "${#CAP_ITEMS[@]}"')
+    assert len(lines) == int(expected.stdout)
     assert all(len(line) < width for line in lines), result.stdout
+
+
+def test_numbered_fallback_reaches_double_digit_capabilities():
+    """The non-TTY picker must reach every capability.
+
+    It matched only `[1-9]`, so once the catalog passed nine entries the tenth was silently
+    "ignored" and could never be selected without a TTY (CI, piped installs).
+    """
+    script = """
+load_caps none
+last=$(( ${#MP_ITEMS[@]} - 1 ))
+_tty_ui() { return 1; }
+exec 3< <(printf '%s\\n\\n' "$(( last + 1 ))")
+multi_pick "pick" >/dev/null 2>&1
+printf 'selected=%s\\n' "${MP_SEL[$last]}"
+"""
+    result = _bash(script)
+    assert result.returncode == 0, result.stderr
+    assert "selected=1" in result.stdout, result.stdout
 
 
 def test_installer_version_index_matches_release_index():

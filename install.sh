@@ -27,10 +27,10 @@ QMP_DRY=0
 LOCAL_REPO_ROOT=''
 
 # ── capability catalog — the ONE place capabilities are declared; every menu iterates this ──
-CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent)
+CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent mhs)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.0 1.0.2 1.0.2 1.0.2 1.0.2)
+CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.0 1.0.2 1.0.2 1.0.2 1.0.2 1.0.0)
 CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
           "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
@@ -39,7 +39,8 @@ CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
           "video-edit + image/video/audio generation"
           "drive a running Blender: 3D modeling / materials / render (thin client)"
           "drive a running FreeCAD: parametric CAD / STEP·STL / FEM (thin client)"
-          "step-by-step Chinese math/science tutorial videos (skill-only)")
+          "step-by-step Chinese math/science tutorial videos (skill-only)"
+          "operate real hardware via Model Hardware Standard adapters (thin client)")
 # Skill-only capabilities have NO MCP server / pyproject extra / console entry: they install via
 # the marketplace like any plugin, but the uvx --check-system self-test doesn't apply to them.
 CAP_SKILL_ONLY=" edu-agent "
@@ -1143,28 +1144,31 @@ menu_pick() {
 
 # _multi_rows <cur> — render MP_ITEMS/MP_DESC/MP_SEL/MP_DIS (cur=-1 → num mode: no pointer / no clear)
 _multi_rows() {
-  local cur=$1 i box ptr num body clr='' cols desc_w name_w desc name
+  local cur=$1 i box ptr num body clr='' cols desc_w name_w desc name num_w
   [ "$cur" != -1 ] && clr='\033[2K'
-  cols=$(term_cols); desc_w=$(( cols - 26 ))
+  # Index column is as wide as the largest index, so ten-plus capabilities stay aligned and inside
+  # the width budget instead of every row growing by a column.
+  num_w=${#MP_ITEMS[@]}; num_w=${#num_w}
+  cols=$(term_cols); desc_w=$(( cols - 25 - num_w ))
   for ((i = 0; i < ${#MP_ITEMS[@]}; i++)); do
     num=$((i + 1)); [ "$i" = "$cur" ] && ptr="${CB}${CC}❯${C0}" || ptr=' '
-    if [ "$cols" -lt 27 ]; then
+    if [ "$cols" -lt $(( 26 + num_w )) ]; then
       # At very small widths omit the description and spend the remaining columns on the name.
-      name_w=$(( cols - 12 )); [ "$name_w" -lt 1 ] && name_w=1
+      name_w=$(( cols - 11 - num_w )); [ "$name_w" -lt 1 ] && name_w=1
       name=$(_fit "${MP_ITEMS[$i]}" "$name_w")
       if [ "${MP_DIS[$i]}" = 1 ]; then
-        body=$(printf '%b[-] %d) %s%b' "$CD" "$num" "$name" "$C0")
+        body=$(printf '%b[-] %*d) %s%b' "$CD" "$num_w" "$num" "$name" "$C0")
       else
         [ "${MP_SEL[$i]}" = 1 ] && box="${CG}[✓]${C0}" || box='[ ]'
-        body=$(printf '%s %d) %s' "$box" "$num" "$name")
+        body=$(printf '%s %*d) %s' "$box" "$num_w" "$num" "$name")
       fi
     else
       desc=$(_fit "${MP_DESC[$i]}" "$desc_w")
       if [ "${MP_DIS[$i]}" = 1 ]; then
-        body=$(printf '%b[-] %d) %-13s %s%b' "$CD" "$num" "${MP_ITEMS[$i]}" "$desc" "$C0")
+        body=$(printf '%b[-] %*d) %-13s %s%b' "$CD" "$num_w" "$num" "${MP_ITEMS[$i]}" "$desc" "$C0")
       else
         [ "${MP_SEL[$i]}" = 1 ] && box="${CG}[✓]${C0}" || box='[ ]'
-        body=$(printf '%s %d) %-13s %b%s%b' "$box" "$num" "${MP_ITEMS[$i]}" "$CD" "$desc" "$C0")
+        body=$(printf '%s %*d) %-13s %b%s%b' "$box" "$num_w" "$num" "${MP_ITEMS[$i]}" "$CD" "$desc" "$C0")
       fi
     fi
     printf '%b  %s %s\n' "$clr" "$ptr" "$body"
@@ -1203,10 +1207,12 @@ multi_pick() {
       [ -z "$ans" ] && break
       for tok in $ans; do
         case "$tok" in
-          [1-9]) i=$((tok - 1))
-                 if [ "$i" -ge "$n" ]; then warn "ignored: $tok"
-                 elif [ "${MP_DIS[$i]}" = 1 ]; then warn "${MP_ITEMS[$i]} locked — skipped"
-                 else MP_SEL[$i]=$(( 1 - ${MP_SEL[$i]} )); fi ;;
+          # Two digits, not one: with ten capabilities a single-digit pattern silently dropped "10".
+          [1-9]|[1-9][0-9])
+            i=$((tok - 1))
+            if [ "$i" -ge "$n" ]; then warn "ignored: $tok"
+            elif [ "${MP_DIS[$i]}" = 1 ]; then warn "${MP_ITEMS[$i]} locked — skipped"
+            else MP_SEL[$i]=$(( 1 - ${MP_SEL[$i]} )); fi ;;
           *) warn "ignored: $tok" ;;
         esac
       done

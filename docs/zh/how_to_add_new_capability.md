@@ -84,6 +84,23 @@ claude plugin install qwen-mm-plugins-<你的能力>@qwen-mm-plugins
    （CodeBuddy 与 WorkBuddy 也读取该文件）中加入固定到对应 tag 的 `git-subdir` entry。从现有
    能力复制三套 harness manifest；有 server 的能力还需 `.mcp.json`。运行
    `scripts/check_manifests.py`，再按[插件发布](releasing.md)打首个 tag。
+6. 其余需要手工登记能力名的地方。`scripts/check_manifests.py` 检查不到这些，所以它们最容易漏:
+   - `pyproject.toml` —— 除了声明 extra，还要把它加进 `all` profile。
+   - `install.sh` —— `CAP_ITEMS`、`CAP_VERSIONS`、`CAP_DESC` 是三个**按下标对应**的数组，长度和顺序
+     必须一致（`tests/test_install_sh.py` 会把版本数组和 `plugin-versions.json` 对齐校验）；只有纯
+     skill 能力才加进 `CAP_SKILL_ONLY`。脚本其余部分都由这三个数组推导，无需再改。
+   - `ruff.toml` —— `[lint.isort] known-first-party`，否则 import 分组不确定。
+   - `README.md` / `README.zh.md` —— 能力表格**按模型系列分成了多张**，注意放对区块。
+   - `docs/en/manual_harnesses.md` / `docs/zh/manual_harnesses.md` —— 显式列出的 `<cap>` 清单。
+   - `cookbooks/<cap>/usage.md` —— 每个已发布能力都有一份，README 会链接它，
+     `scripts/tag_plugin_release.py` 也会把它纳入发布提交范围。
+   - `.github/ISSUE_TEMPLATE/bug_report.yml` —— Capability 下拉列表。
+   - `.github/workflows/ci.yml` —— 仅当测试需要 `--with` 列表里没有的包，或你新增了需要 `bash -n`
+     的 shell 脚本时。
+
+   新增配置项是另一件更重的事: `shared.env.CONFIG_FIELDS` 由 `install.sh:CONFIG_SPEC` 镜像、并生成
+   `docs/en/configuration.md`；按 `CLAUDE.md`，改动它属于 shared 变更，需要为每个能力都升版本。
+   优先用能力私有的变量——通过 `get_env` 读取、默认值定义在自己的包里、在自己的 SKILL.md 中说明。
 
 `__main__.py` 从 `src/capabilities/example/` **原样复制**——它从目录名推断 import 名，没有任何 per-server 字面量。
 纯 skill 能力不写 `mcpServers`、也没有 `.mcp.json`，但仍保留三套 harness manifest。
