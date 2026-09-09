@@ -984,6 +984,7 @@ def test_coordinate_retry_does_not_repeat_the_same_background_pixel(monkeypatch)
 
 
 def test_global_pointer_fallback_refuses_an_off_space_window(monkeypatch):
+    monkeypatch.setattr("qwen_mm_plugins_cua.tools._actions.sys.platform", "darwin")
     fake = _install_fake(monkeypatch, _state(1), _state(2), _state(3), _state(4))
     off_space = {**MAIN_WINDOW, "on_current_space": False}
 
