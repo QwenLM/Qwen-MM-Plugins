@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A complete MHS-HTTP/1 adapter in one stdlib-only file — copy this to front real hardware.
+"""Two simulated devices on the shared stdlib MHS-HTTP/1 server.
 
 Serves two fake devices so the qwen-mm-plugins-mhs tools can be exercised end to end with no
 hardware:
@@ -20,22 +20,23 @@ Then point the host at it — ~/.qwen-mm-plugins/mhs-devices.json:
 
 There are deliberately no third-party imports: an adapter usually runs on the constrained box that
 is wired to the hardware, and `python3 mock_adapter.py` should be the whole install step. To adapt it,
-replace the bodies of `do_read` / `do_write` / `do_health` / `do_reset` in DEVICES with real I/O and
-keep the declared metadata honest — the host enforces the limits you declare here.
+copy this file with adapter_server.py, then replace read/write/health/reset with real I/O.
+Validate parameters at the device boundary and keep metadata consistent with those checks.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
-import json
 import struct
-import sys
+import threading
 import zlib
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-BASE_PATH = "/mhs/v1"
+from adapter_server import BASE_PATH, AdapterServer, MhsError
+
+CAMERA_DEFAULTS = {"exposure": 40, "gain": 0, "width": 96, "height": 64}
+CAMERA_RANGES = {"exposure": (1, 100), "gain": (0, 4096), "width": (8, 512), "height": (8, 512)}
 
 
 # ── a minimal PNG encoder, so "read frame" can return a real image with no imaging library ──
@@ -67,24 +68,15 @@ def synthetic_frame(width: int, height: int, exposure: int, gain: int) -> bytes:
     return encode_png(width, height, rows)
 
 
-class MhsError(Exception):
-    """Reply with an MHS error object: {"error": {"code", "message"}} plus an HTTP status."""
-
-    def __init__(self, status: int, code: str, message: str):
-        super().__init__(message)
-        self.status = status
-        self.code = code
-
-
 # ── device models ──
 class MockCamera:
     device_id = "mock-camera"
     device_type = "camera"
-    supports_reset = True
 
     def __init__(self) -> None:
-        self.settings = {"exposure": 40, "gain": 0, "width": 96, "height": 64}
+        self.settings = dict(CAMERA_DEFAULTS)
         self.state = "online"
+        self.lock = threading.RLock()
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -127,7 +119,9 @@ class MockCamera:
                     "description": "Current exposure/gain/resolution; write any subset to change them.",
                     "params": {
                         "exposure": {"type": "integer", "description": "Exposure in ms (1-100)."},
-                        "gain": {"type": "integer", "description": "Analog gain in dB (0-32)."},
+                        "gain": {"type": "integer", "description": "Analog gain in dB (0-4096); recommended 0-32."},
+                        "width": {"type": "integer", "description": "Frame width in pixels (8-512)."},
+                        "height": {"type": "integer", "description": "Frame height in pixels (8-512)."},
                     },
                 },
                 {
@@ -141,8 +135,8 @@ class MockCamera:
             "safety_limits": [
                 {
                     "parameter": "exposure",
-                    "min": 1,
-                    "max": 100,
+                    "min": CAMERA_RANGES["exposure"][0],
+                    "max": CAMERA_RANGES["exposure"][1],
                     "unit": "ms",
                     "hard": True,
                     "description": "Outside this range the sensor saturates or stalls the pipeline.",
@@ -155,14 +149,22 @@ class MockCamera:
                     "hard": False,
                     "description": "Above 32 dB the image is dominated by noise, but it will not damage anything.",
                 },
+                *[
+                    {"parameter": name, "min": low, "max": high, "unit": "px", "hard": True}
+                    for name in ("width", "height")
+                    for low, high in [CAMERA_RANGES[name]]
+                ],
             ],
         }
 
-    def do_read(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
+    def read(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
         if capability == "frame":
-            width = _clamp_int(params.get("width", self.settings["width"]), 8, 512)
-            height = _clamp_int(params.get("height", self.settings["height"]), 8, 512)
-            png = synthetic_frame(width, height, self.settings["exposure"], self.settings["gain"])
+            _only(params, {"width", "height"})
+            with self.lock:
+                settings = dict(self.settings)
+            width = _integer("width", params.get("width", settings["width"]), *CAMERA_RANGES["width"])
+            height = _integer("height", params.get("height", settings["height"]), *CAMERA_RANGES["height"])
+            png = synthetic_frame(width, height, settings["exposure"], settings["gain"])
             return {
                 "blocks": [
                     {
@@ -172,39 +174,42 @@ class MockCamera:
                     },
                     {
                         "type": "text",
-                        "text": f"{width}x{height} frame at exposure={self.settings['exposure']}ms "
-                        f"gain={self.settings['gain']}dB",
+                        "text": f"{width}x{height} frame at exposure={settings['exposure']}ms "
+                        f"gain={settings['gain']}dB",
                     },
                 ]
             }
         if capability == "settings":
+            _only(params, set())
+            with self.lock:
+                settings = dict(self.settings)
             return {
-                "blocks": [
-                    {"type": "value", "name": name, "value": value} for name, value in sorted(self.settings.items())
-                ]
+                "blocks": [{"type": "value", "name": name, "value": value} for name, value in sorted(settings.items())]
             }
         if capability == "temperature":
-            reading = 31.5 + self.settings["gain"] * 0.25
+            _only(params, set())
+            with self.lock:
+                reading = 31.5 + self.settings["gain"] * 0.25
             return {"blocks": [{"type": "value", "name": "temperature", "value": round(reading, 2), "unit": "C"}]}
         raise MhsError(404, "unknown_capability", f"{self.device_id} cannot read {capability!r}")
 
-    def do_write(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
+    def write(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
         if capability != "settings":
             raise MhsError(404, "unknown_capability", f"{self.device_id} cannot write {capability!r}")
-        changed = {}
-        for name in ("exposure", "gain", "width", "height"):
-            if name in params:
-                self.settings[name] = _clamp_int(params[name], 0, 4096)
-                changed[name] = self.settings[name]
-        if not changed:
+        _only(params, set(CAMERA_RANGES))
+        if not params:
             raise MhsError(400, "no_parameters", "write 'settings' needs at least one of exposure/gain/width/height")
+        # Validate the whole request before changing any setting.
+        changed = {name: _integer(name, value, *CAMERA_RANGES[name]) for name, value in params.items()}
+        with self.lock:
+            self.settings.update(changed)
         return {
             "ok": True,
             "state": self.state,
             "blocks": [{"type": "text", "text": f"applied {changed}"}],
         }
 
-    def do_health(self) -> dict[str, Any]:
+    def health(self) -> dict[str, Any]:
         return {
             "state": self.state,
             "healthy": self.state == "online",
@@ -215,21 +220,25 @@ class MockCamera:
             ],
         }
 
-    def do_reset(self, mode: str) -> dict[str, Any]:
-        self.settings.update({"exposure": 40, "gain": 0})
-        self.state = "online"
+    def reset(self, params: dict[str, Any]) -> dict[str, Any]:
+        _only(params, {"mode"})
+        if params.get("mode", "soft") not in ("soft", "estop"):
+            raise MhsError(400, "bad_parameter", "reset mode must be soft or estop")
+        with self.lock:
+            self.settings = dict(CAMERA_DEFAULTS)
+            self.state = "online"
         return {"ok": True, "state": self.state}
 
 
 class MockLamp:
     device_id = "mock-lamp"
     device_type = "smart_light"
-    supports_reset = False  # legal: reset is optional in MHS
 
     def __init__(self) -> None:
         self.on = False
         self.brightness = 50
         self.state = "online"
+        self.lock = threading.RLock()
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -275,136 +284,55 @@ class MockLamp:
             ],
         }
 
-    def do_read(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
+    def read(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
+        _only(params, set())
         if capability == "power":
-            return {"blocks": [{"type": "value", "name": "on", "value": self.on}]}
+            with self.lock:
+                return {"blocks": [{"type": "value", "name": "on", "value": self.on}]}
         if capability == "brightness":
-            return {"blocks": [{"type": "value", "name": "level", "value": self.brightness, "unit": "%"}]}
+            with self.lock:
+                return {"blocks": [{"type": "value", "name": "level", "value": self.brightness, "unit": "%"}]}
         raise MhsError(404, "unknown_capability", f"{self.device_id} cannot read {capability!r}")
 
-    def do_write(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
+    def write(self, capability: str, params: dict[str, Any]) -> dict[str, Any]:
         if capability == "power":
-            self.on = bool(params.get("on"))
-            return {"ok": True, "state": self.state, "blocks": [{"type": "text", "text": f"lamp on={self.on}"}]}
+            _only(params, {"on"})
+            if not isinstance(params.get("on"), bool):
+                raise MhsError(400, "bad_parameter", "on must be a boolean")
+            with self.lock:
+                self.on = params["on"]
+                return {"ok": True, "state": self.state, "blocks": [{"type": "text", "text": f"lamp on={self.on}"}]}
         if capability == "brightness":
-            self.brightness = _clamp_int(params.get("level", self.brightness), 0, 100)
+            _only(params, {"level"})
+            brightness = _integer("level", params.get("level"), 0, 100)
+            with self.lock:
+                self.brightness = brightness
             return {
                 "ok": True,
                 "state": self.state,
-                "blocks": [{"type": "value", "name": "level", "value": self.brightness, "unit": "%"}],
+                "blocks": [{"type": "value", "name": "level", "value": brightness, "unit": "%"}],
             }
         raise MhsError(404, "unknown_capability", f"{self.device_id} cannot write {capability!r}")
 
-    def do_health(self) -> dict[str, Any]:
+    def health(self) -> dict[str, Any]:
         return {"state": self.state, "healthy": True, "detail": "simulated lamp responding", "checks": []}
 
-    def do_reset(self, mode: str) -> dict[str, Any]:
-        raise MhsError(405, "reset_unsupported", f"{self.device_id} does not implement reset")
+
+def _integer(name: str, value: object, low: int, high: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise MhsError(400, "bad_parameter", f"{name} must be an integer within [{low}, {high}]")
+    return value
 
 
-def _clamp_int(value: object, low: int, high: int) -> int:
-    try:
-        number = int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        raise MhsError(400, "bad_parameter", f"expected an integer, got {value!r}") from None
-    return max(low, min(high, number))
-
-
-DEVICES: dict[str, Any] = {d.device_id: d for d in (MockCamera(), MockLamp())}
-
-
-# ── HTTP plumbing ──
-class Handler(BaseHTTPRequestHandler):
-    server_version = "mhs-mock-adapter/1"
-    token: str | None = None
-    verbose: bool = False
-
-    def log_message(self, fmt: str, *args: Any) -> None:
-        if self.verbose:
-            sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
-
-    # -- request routing --
-    def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's required name
-        self._dispatch("GET")
-
-    def do_POST(self) -> None:  # noqa: N802
-        self._dispatch("POST")
-
-    def _dispatch(self, method: str) -> None:
-        try:
-            self._check_auth()
-            self._send(200, self._route(method, self._segments(), self._body()))
-        except MhsError as exc:
-            self._send(exc.status, {"error": {"code": exc.code, "message": str(exc)}})
-        except Exception as exc:  # noqa: BLE001 — an adapter must answer, not hang up
-            self._send(500, {"error": {"code": "internal", "message": f"{type(exc).__name__}: {exc}"}})
-
-    def _segments(self) -> list[str]:
-        path = self.path.split("?", 1)[0]
-        if not path.startswith(BASE_PATH + "/"):
-            raise MhsError(404, "not_found", f"unknown path {path!r}; this adapter serves {BASE_PATH}/…")
-        from urllib.parse import unquote
-
-        return [unquote(s) for s in path[len(BASE_PATH) + 1 :].split("/") if s]
-
-    def _body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0:
-            return {}
-        raw = self.rfile.read(length)
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise MhsError(400, "bad_json", f"request body is not JSON: {exc}") from None
-        if not isinstance(payload, dict):
-            raise MhsError(400, "bad_json", "request body must be a JSON object")
-        return payload
-
-    def _check_auth(self) -> None:
-        if not self.token:
-            return
-        if self.headers.get("Authorization") != f"Bearer {self.token}":
-            raise MhsError(401, "unauthorized", "missing or wrong bearer token")
-
-    def _route(self, method: str, seg: list[str], body: dict[str, Any]) -> dict[str, Any]:
-        if seg == ["devices"] and method == "GET":
-            return {"devices": [d.summary() for d in DEVICES.values()]}
-        if not seg or seg[0] != "devices" or len(seg) < 2:
-            raise MhsError(404, "not_found", f"unknown path {self.path!r}")
-
-        device = DEVICES.get(seg[1])
-        if device is None:
-            known = ", ".join(DEVICES) or "none"
-            raise MhsError(404, "unknown_device", f"no device {seg[1]!r}; this adapter has: {known}")
-        rest = seg[2:]
-
-        if not rest and method == "GET":
-            return device.meta()
-        if rest == ["health"] and method == "GET":
-            return device.do_health()
-        if rest == ["reset"] and method == "POST":
-            if not device.supports_reset:
-                raise MhsError(405, "reset_unsupported", f"{device.device_id} does not implement reset")
-            return device.do_reset(body.get("mode", "soft"))
-        if len(rest) == 2 and rest[0] == "read" and method == "POST":
-            return device.do_read(rest[1], body)
-        if len(rest) == 2 and rest[0] == "write" and method == "POST":
-            return device.do_write(rest[1], body)
-        raise MhsError(404, "not_found", f"unknown path {self.path!r} for {method}")
-
-    def _send(self, status: int, payload: dict[str, Any]) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+def _only(params: dict[str, Any], allowed: set[str]) -> None:
+    unknown = set(params) - allowed
+    if unknown:
+        raise MhsError(400, "bad_parameter", f"Unknown parameters: {', '.join(sorted(unknown))}")
 
 
 def build_server(host: str = "127.0.0.1", port: int = 0, token: str | None = None, verbose: bool = False):
-    """Create (but do not serve) a mock adapter. port=0 picks a free one — handy in tests."""
-    handler = type("BoundHandler", (Handler,), {"token": token, "verbose": verbose})
-    return ThreadingHTTPServer((host, port), handler)
+    """Create isolated device instances; port=0 picks a free port for tests."""
+    return AdapterServer((host, port), [MockCamera(), MockLamp()], token=token, verbose=verbose)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -417,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
 
     server = build_server(args.host, args.port, args.token, args.verbose)
     host, port = server.server_address[:2]
-    print(f"mock MHS adapter on http://{host}:{port}{BASE_PATH}  devices: {', '.join(DEVICES)}", flush=True)
+    print(f"mock MHS adapter on http://{host}:{port}{BASE_PATH}  devices: {', '.join(server.devices)}", flush=True)
     print(f'register it with: {{"adapters": [{{"name": "mock", "url": "http://{host}:{port}"}}]}}', flush=True)
     try:
         server.serve_forever()

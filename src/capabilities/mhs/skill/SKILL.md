@@ -77,7 +77,8 @@ It serves a simulated camera (with a hard limit on exposure and a soft limit on 
 Nothing about a new device belongs in this plugin. An adapter is a plain HTTP server — any language —
 and it is registered by one line in the registry file. The full contract is
 [`references/adapter_protocol.md`](references/adapter_protocol.md), and
-[`references/mock_adapter.py`](references/mock_adapter.py) is a working one to copy.
+[`references/mock_adapter.py`](references/mock_adapter.py) contains working device implementations.
+Its shared stdlib HTTP layer is [`references/adapter_server.py`](references/adapter_server.py).
 
 ### You can write the adapter yourself
 
@@ -87,7 +88,9 @@ needs restarting: the registry file is re-read on every call, and devices are di
 at runtime.
 
 1. Read `references/adapter_protocol.md`. Do not guess the shapes from these tool descriptions.
-2. Copy `references/mock_adapter.py` and replace the read/write bodies with real I/O for the device.
+2. Copy `references/mock_adapter.py` together with `references/adapter_server.py` and replace the
+   device's `read`/`write`/`health`/optional `reset` methods with real I/O. Keep HTTP routing in the
+   shared server; keep parameter validation, resource lifecycle, and cancellation in the device.
    Keep it outside this plugin's directory — an adapter belongs with its hardware.
 3. Run it in the background on a free port, and check it started before going further.
 4. **Check it against the protocol before registering it:**

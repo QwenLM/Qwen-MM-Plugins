@@ -41,7 +41,9 @@ EXPECTED_TOOLS = {
 def _load_mock_adapter():
     spec = importlib.util.spec_from_file_location("mhs_mock_adapter", _MOCK_ADAPTER)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.syspath_prepend(os.path.dirname(_MOCK_ADAPTER))
+        spec.loader.exec_module(module)
     return module
 
 
@@ -83,7 +85,7 @@ def mock_adapter():
     thread.start()
     host, port = server.server_address[:2]
     try:
-        yield {"module": module, "url": f"http://{host}:{port}"}
+        yield {"module": module, "server": server, "url": f"http://{host}:{port}"}
     finally:
         server.shutdown()
         server.server_close()
@@ -556,9 +558,9 @@ def test_verifier_never_writes_or_resets(mock_adapter):
     """Read-only is the whole safety premise: a checker must not actuate hardware to check it."""
     from qwen_mm_plugins_mhs import verify as verifier
 
-    module = mock_adapter["module"]
-    lamp = module.DEVICES["mock-lamp"]
-    camera = module.DEVICES["mock-camera"]
+    devices = mock_adapter["server"].devices
+    lamp = devices["mock-lamp"]
+    camera = devices["mock-camera"]
     before = (lamp.on, lamp.brightness, dict(camera.settings))
 
     report = verifier.verify(mock_adapter["url"])

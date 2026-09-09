@@ -3,9 +3,40 @@
 This is the whole contract between the `qwen-mm-plugins-mhs` host and an adapter. If your service
 answers these requests, a model can operate your hardware; nothing needs to be added to the plugin.
 
-An adapter is owned and run by whoever owns the hardware. It is a plain HTTP server — any language,
-no SDK. [`mock_adapter.py`](mock_adapter.py) is a complete one in a single stdlib-only Python file;
-copy it and replace the read/write bodies.
+An adapter is owned and run by whoever owns the hardware. It is a plain HTTP server in any language.
+For Python, copy [`adapter_server.py`](adapter_server.py) with [`mock_adapter.py`](mock_adapter.py).
+Both use only the standard library. The server handles HTTP/JSON and routing; the example contains
+the device implementations that you replace with hardware I/O.
+
+## Python device interface
+
+Create one object per device and pass the objects to
+`AdapterServer(("127.0.0.1", 8800), devices)`. Each server owns its registry and device instances;
+creating a second server must not share mutable device state through module globals.
+
+| Device method | Responsibility |
+|---|---|
+| `summary()` | Device ID/type, current state, and capability names for discovery |
+| `meta()` | Identity, capabilities, parameter descriptions, and limits |
+| `health()` | Fresh health observation; no commands |
+| `read(capability, params)` | Validate a read and return observation blocks |
+| `write(capability, params)` | Validate the full request before changing state; execute and report feedback |
+| `reset(params)` | Optional recovery/stop; accepts `mode: soft` or `mode: estop` |
+
+Raise `MhsError(http_status, code, message)` for an expected device or parameter error. The server
+returns the protocol error object; it does not retry writes or invent device cleanup. Devices own
+their operation locks, cancellation, hardware resource lifecycle, and stop behavior.
+
+Keep the hardware SDK behind the device object so that contract tests can supply a fake SDK. A
+larger adapter can use separate SDK, state, and device modules while keeping exactly this interface.
+Metadata and validation must describe the same accepted parameters: reject unknown names, invalid
+types, and hard-limit violations rather than silently converting or clamping them. A soft limit
+remains advisory, and read overrides must not change persistent settings.
+
+The Python server bounds request bodies to 64 KiB, accepts JSON objects with finite numbers,
+supports an optional bearer token, and returns a structured error for unsupported resets. Its
+per-connection timeout bounds request reads, not the duration of a device operation. Other adapter
+implementations need not use this helper; the HTTP contract below remains unchanged.
 
 ## Registering an adapter
 
