@@ -1,12 +1,7 @@
-"""HTTP+JSON transport to an MHS adapter — the one place this host touches the network.
+"""HTTP + MessagePack transport to an MHS adapter.
 
-Built on stdlib urllib so the capability needs no Python dependencies at all: an MHS host often runs
-on the same constrained box as the hardware. Every failure mode an adapter can present (unreachable,
-timeout, HTTP error, non-JSON body, absurdly large body) comes back as one AdapterError carrying a
-message fit to hand to the model.
-
-Keeping all of it behind request_json is also the seam a second transport (gRPC, stdio) would slot
-into later without touching the tools.
+Requests, responses, and errors are MessagePack maps; images carry raw bytes. There is no codec
+negotiation, JSON fallback, redirect following, or automatic retry of hardware commands.
 
 Named http_client rather than transport on purpose: mcp_framework reads an optional `transport`
 attribute off the server package as a transport factory, so a module of that name shadows it and
@@ -15,12 +10,14 @@ crashes the server at startup.
 
 from __future__ import annotations
 
-import json
 import socket
 import urllib.error
 import urllib.parse
 import urllib.request
+from http.client import HTTPException
 from typing import Any
+
+import msgpack
 
 from shared.env import MAX_RESPONSE_BYTES
 
@@ -29,6 +26,7 @@ from .config import Adapter
 # A tool result cannot exceed MAX_RESPONSE_BYTES anyway, so refusing a larger adapter body early
 # keeps a misbehaving (or hostile) adapter from ballooning this process's memory.
 MAX_BODY_BYTES = MAX_RESPONSE_BYTES
+CONTENT_TYPE = "application/msgpack"
 
 _USER_AGENT = "qwen-mm-plugins-mhs/1"
 
@@ -42,11 +40,15 @@ class AdapterError(Exception):
         self.code = code
 
 
-# Adapters address hardware, which is normally on the LAN or loopback. An ambient HTTP_PROXY /
-# http_proxy would otherwise silently route those requests through a proxy that cannot reach the
-# device — a confusing failure that looks like broken hardware. urllib installs proxy handling by
-# default, so build an opener that explicitly has none.
-_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect must not turn one hardware operation into another HTTP request."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+# Hardware is on loopback/LAN; ambient proxy settings must not reroute it.
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
 def segment(value: str) -> str:
@@ -59,9 +61,9 @@ def segment(value: str) -> str:
 
 
 def _headers(adapter: Adapter, *, has_body: bool) -> dict[str, str]:
-    headers = {"Accept": "application/json", "User-Agent": _USER_AGENT}
+    headers = {"Accept": CONTENT_TYPE, "User-Agent": _USER_AGENT}
     if has_body:
-        headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = CONTENT_TYPE
     token = adapter.token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -78,65 +80,72 @@ def _read_capped(fh: Any, where: str) -> bytes:
     return body
 
 
-def _decode(body: bytes, where: str) -> dict[str, Any]:
-    if not body.strip():
-        return {}
+def _decode(body: bytes, where: str, content_type: str) -> dict[str, Any]:
+    if content_type.partition(";")[0].strip().lower() != CONTENT_TYPE:
+        raise AdapterError(f"{where} returned Content-Type {content_type!r}, expected {CONTENT_TYPE}")
     try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        preview = body[:200].decode("utf-8", "replace")
-        raise AdapterError(f"{where} did not return JSON ({exc}); body starts: {preview!r}") from None
+        payload = msgpack.unpackb(
+            body,
+            raw=False,
+            strict_map_key=True,
+            max_str_len=MAX_BODY_BYTES,
+            max_bin_len=MAX_BODY_BYTES,
+            max_array_len=min(MAX_BODY_BYTES, 100_000),
+            max_map_len=min(MAX_BODY_BYTES, 100_000),
+            max_ext_len=0,
+        )
+    except (ValueError, msgpack.UnpackException) as exc:
+        raise AdapterError(f"{where} did not return a valid MessagePack body ({exc})") from None
     if not isinstance(payload, dict):
-        raise AdapterError(f"{where} returned a JSON {type(payload).__name__}, expected an object")
+        raise AdapterError(f"{where} returned a MessagePack {type(payload).__name__}, expected a map")
     return payload
 
 
-def _error_from_response(status: int, body: bytes, where: str) -> AdapterError:
+def _error_from_response(status: int, body: bytes, where: str, content_type: str) -> AdapterError:
     """Turn an HTTP error body into an AdapterError, preferring the protocol's error object."""
     code = None
     detail = ""
     try:
-        payload = json.loads(body.decode("utf-8"))
-        error = payload.get("error") if isinstance(payload, dict) else None
+        error = _decode(body, where, content_type).get("error")
         if isinstance(error, dict):
             code = error.get("code") if isinstance(error.get("code"), str) else None
             message = error.get("message")
             detail = message if isinstance(message, str) else ""
-    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
-        detail = body[:200].decode("utf-8", "replace")
+    except AdapterError as exc:
+        detail = str(exc)
     suffix = f": {detail}" if detail else ""
     label = f" [{code}]" if code else ""
     return AdapterError(f"{where} returned HTTP {status}{label}{suffix}", status=status, code=code)
 
 
-def request_json(
+def request(
     adapter: Adapter,
     method: str,
     path: str,
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Call one MHS protocol path on `adapter` and return the decoded JSON object.
-
-    `payload` is sent as a JSON body (POST); pass None for a bodyless GET. Raises AdapterError,
-    never a urllib exception, so callers have exactly one thing to catch.
-    """
+    """Call one path once. Pass a map for POST or None for a bodyless GET; raise AdapterError."""
     url = adapter.endpoint(path)
     where = f"adapter {adapter.name!r} ({method} {url})"
-    data = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
+    try:
+        data = None if payload is None else msgpack.packb(payload, use_bin_type=True)
+    except (ValueError, TypeError, OverflowError) as exc:
+        raise AdapterError(f"{where} cannot encode request as MessagePack: {exc}") from None
+    http_request = urllib.request.Request(
         url, data=data, method=method, headers=_headers(adapter, has_body=data is not None)
     )
 
     try:
-        with _opener.open(request, timeout=adapter.timeout) as response:
-            return _decode(_read_capped(response, where), where)
+        with _opener.open(http_request, timeout=adapter.timeout) as response:
+            return _decode(_read_capped(response, where), where, response.headers.get("Content-Type", ""))
     except urllib.error.HTTPError as exc:
         # HTTPError is itself a response object, so the error body is readable here.
-        try:
-            body = _read_capped(exc, where)
-        except (AdapterError, OSError):
-            body = b""
-        raise _error_from_response(exc.code, body, where) from None
+        with exc:
+            try:
+                body = _read_capped(exc, where)
+            except (AdapterError, OSError, HTTPException):
+                body = b""
+        raise _error_from_response(exc.code, body, where, exc.headers.get("Content-Type", "")) from None
     except socket.timeout:
         raise AdapterError(f"{where} timed out after {adapter.timeout:g}s") from None
     except urllib.error.URLError as exc:
@@ -144,5 +153,5 @@ def request_json(
         if isinstance(reason, socket.timeout):
             raise AdapterError(f"{where} timed out after {adapter.timeout:g}s") from None
         raise AdapterError(f"{where} is unreachable: {reason}") from None
-    except OSError as exc:
+    except (OSError, HTTPException) as exc:
         raise AdapterError(f"{where} failed: {exc}") from None

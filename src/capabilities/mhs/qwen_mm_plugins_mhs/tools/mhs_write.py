@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from shared.content import text
 
 from ..errors import guarded
-from ..http_client import request_json, segment
+from ..http_client import request, segment
 from ..protocol import check_write, to_content_blocks
 from ..registry import meta_of
 
@@ -69,7 +69,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         return [text(f"Error: {problem}")]
 
     where = f"{meta['device_id']} write {capability!r}"
-    payload = request_json(
+    payload = request(
         adapter,
         "POST",
         f"/devices/{segment(local_id)}/write/{segment(capability)}",

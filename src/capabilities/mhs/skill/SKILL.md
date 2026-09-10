@@ -66,6 +66,7 @@ If that file is missing, the tools say so and show the shape to create. `QWEN_MM
 No hardware to hand? Run the bundled mock adapter and point the registry at it:
 
 ```bash
+python3 -m pip install "msgpack>=1.1,<2"
 python3 references/mock_adapter.py --port 8800
 ```
 
@@ -78,7 +79,7 @@ Nothing about a new device belongs in this plugin. An adapter is a plain HTTP se
 and it is registered by one line in the registry file. The full contract is
 [`references/adapter_protocol.md`](references/adapter_protocol.md), and
 [`references/mock_adapter.py`](references/mock_adapter.py) contains working device implementations.
-Its shared stdlib HTTP layer is [`references/adapter_server.py`](references/adapter_server.py).
+Its shared HTTP + MessagePack layer is [`references/adapter_server.py`](references/adapter_server.py).
 
 ### You can write the adapter yourself
 
@@ -92,7 +93,8 @@ at runtime.
    device's `read`/`write`/`health`/optional `reset` methods with real I/O. Keep HTTP routing in the
    shared server; keep parameter validation, resource lifecycle, and cancellation in the device.
    Keep it outside this plugin's directory — an adapter belongs with its hardware.
-3. Run it in the background on a free port, and check it started before going further.
+3. Install `msgpack>=1.1,<2` in the adapter environment. Return image `data` as raw bytes.
+   Run it in the background on a free port, and check it started before going further.
 4. **Check it against the protocol before registering it:**
    ```bash
    python3 -m qwen_mm_plugins_mhs.verify http://127.0.0.1:8800

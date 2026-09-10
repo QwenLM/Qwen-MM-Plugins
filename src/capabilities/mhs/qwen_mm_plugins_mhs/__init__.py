@@ -6,7 +6,7 @@ behind an *adapter*. Adapters belong to the hardware, not to this plugin — who
 writes and runs its adapter. This package is the host side: it keeps the device registry, enforces
 the safety limits an adapter declares, and exposes the fixed tool surface.
 
-Adapters speak MHS-HTTP/1 (plain HTTP + JSON, see skill/references/adapter_protocol.md) and are
+Adapters speak MHS-HTTP/1 (HTTP + MessagePack, see skill/references/adapter_protocol.md) and are
 listed in ~/.qwen-mm-plugins/mhs-devices.json. Adding a new class of hardware means writing an
 adapter and adding a line to that file; it never means changing this package.
 """
@@ -17,7 +17,7 @@ from mcp_framework import build_registry
 
 SPECS, get_handler, list_tools = build_registry(__name__, ["tools"])
 
-# The host is a thin HTTP client on the stdlib — no system binaries, no Python extras. Real
+# The host uses stdlib HTTP and msgpack, with no system binaries. Real
 # readiness is whether the configured adapters answer, which only the tools can tell (--check-system
 # cannot probe another host); mhs_health_check is the check that matters.
 SYSTEM_DEPS: list[dict] = []

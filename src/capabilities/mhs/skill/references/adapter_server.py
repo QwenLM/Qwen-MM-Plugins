@@ -1,8 +1,8 @@
-"""Stdlib MHS-HTTP/1 server: copy beside a hardware-specific device implementation.
+"""MHS-HTTP/1 server: install msgpack and copy beside a device implementation.
 
 Devices implement summary(), meta(), health(), read(capability, params), and
 write(capability, params). An optional reset(params) handles soft/estop requests.
-This module owns only HTTP, JSON, authentication, and device routing. Parameter
+This module owns only HTTP, MessagePack, authentication, and device routing. Parameter
 validation, execution, cancellation, and resource cleanup belong to the device.
 """
 
@@ -17,8 +17,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
 
+import msgpack
+
 BASE_PATH = "/mhs/v1"
 MAX_REQUEST_BYTES = 65536
+CONTENT_TYPE = "application/msgpack"
 
 
 class MhsError(Exception):
@@ -44,15 +47,23 @@ def text_result(ok: bool, state: str, **values: Any) -> dict[str, Any]:
     return {"ok": ok, "state": state, "blocks": [block]}
 
 
-def _reject_constant(value: str) -> None:
-    raise ValueError(f"Non-finite JSON number: {value}")
-
-
-def _finite_float(value: str) -> float:
-    number = float(value)
-    if not math.isfinite(number):
-        _reject_constant(value)
-    return number
+def _validate(value: Any, depth: int = 0) -> None:
+    """Keep the wire data finite, string-keyed, and bounded in nesting; never coerce parameters."""
+    if depth > 64:
+        raise ValueError("MessagePack nesting exceeds 64 levels")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("MessagePack map keys must be strings")
+            _validate(item, depth + 1)
+    elif isinstance(value, list):
+        for item in value:
+            _validate(item, depth + 1)
+    elif isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("MessagePack numbers must be finite")
+    elif value is not None and not isinstance(value, (str, bytes, bool, int)):
+        raise ValueError(f"Unsupported MessagePack value: {type(value).__name__}")
 
 
 class AdapterServer(ThreadingHTTPServer):
@@ -118,30 +129,42 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {"error": {"code": "internal", "message": f"{type(exc).__name__}: {exc}"}})
 
     def _body(self) -> dict[str, Any]:
+        if self.headers.get_content_type() != CONTENT_TYPE:
+            raise MhsError(415, "unsupported_media_type", f"Use Content-Type: {CONTENT_TYPE}")
         if self.headers.get("Transfer-Encoding"):
-            raise MhsError(400, "bad_json", "Use Content-Length; chunked requests are not supported")
+            raise MhsError(400, "bad_messagepack", "Use Content-Length; chunked requests are not supported")
         lengths = self.headers.get_all("Content-Length", [])
         if len(lengths) > 1:
-            raise MhsError(400, "bad_json", "Multiple Content-Length headers")
+            raise MhsError(400, "bad_messagepack", "Multiple Content-Length headers")
         try:
             length = int(lengths[0]) if lengths else 0
         except ValueError:
-            raise MhsError(400, "bad_json", "Invalid Content-Length") from None
+            raise MhsError(400, "bad_messagepack", "Invalid Content-Length") from None
         if length < 0:
-            raise MhsError(400, "bad_json", "Content-Length must not be negative")
+            raise MhsError(400, "bad_messagepack", "Content-Length must not be negative")
         if length > MAX_REQUEST_BYTES:
             raise MhsError(413, "body_too_large", f"Request body exceeds {MAX_REQUEST_BYTES} bytes")
         if not length:
             return {}
         raw = self.rfile.read(length)
         if len(raw) != length:
-            raise MhsError(400, "bad_json", "Incomplete request body")
+            raise MhsError(400, "bad_messagepack", "Incomplete request body")
         try:
-            body = json.loads(raw, parse_constant=_reject_constant, parse_float=_finite_float)
-        except (ValueError, UnicodeError) as exc:
-            raise MhsError(400, "bad_json", f"Request body is not valid JSON: {exc}") from None
+            body = msgpack.unpackb(
+                raw,
+                raw=False,
+                strict_map_key=True,
+                max_str_len=MAX_REQUEST_BYTES,
+                max_bin_len=MAX_REQUEST_BYTES,
+                max_array_len=MAX_REQUEST_BYTES,
+                max_map_len=MAX_REQUEST_BYTES,
+                max_ext_len=0,
+            )
+            _validate(body)
+        except (ValueError, msgpack.UnpackException) as exc:
+            raise MhsError(400, "bad_messagepack", f"Request body is not valid MessagePack: {exc}") from None
         if not isinstance(body, dict):
-            raise MhsError(400, "bad_json", "Request body must be a JSON object")
+            raise MhsError(400, "bad_messagepack", "Request body must be a MessagePack map")
         return body
 
     def _route(self, method: str) -> dict[str, Any]:
@@ -177,10 +200,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, status: int, payload: dict[str, Any]) -> None:
         if not isinstance(payload, dict):
-            raise TypeError("Device response must be a JSON object")
-        body = json.dumps(payload, allow_nan=False).encode("utf-8")
+            raise TypeError("Device response must be a MessagePack map")
+        _validate(payload)
+        body = msgpack.packb(payload, use_bin_type=True)
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", CONTENT_TYPE)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

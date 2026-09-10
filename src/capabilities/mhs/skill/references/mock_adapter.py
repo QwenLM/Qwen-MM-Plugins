@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two simulated devices on the shared stdlib MHS-HTTP/1 server.
+"""Two simulated devices on the shared HTTP + MessagePack MHS-HTTP/1 server.
 
 Serves two fake devices so the qwen-mm-plugins-mhs tools can be exercised end to end with no
 hardware:
@@ -12,22 +12,21 @@ hardware:
 Writing `settings` changes what `frame` returns, so the read→write→read loop is visibly real.
 
 Run it:
+    python3 -m pip install "msgpack>=1.1,<2"
     python3 mock_adapter.py --port 8800
     python3 mock_adapter.py --port 8800 --token s3cret   # require Authorization: Bearer s3cret
 
 Then point the host at it — ~/.qwen-mm-plugins/mhs-devices.json:
     {"adapters": [{"name": "mock", "url": "http://127.0.0.1:8800"}]}
 
-There are deliberately no third-party imports: an adapter usually runs on the constrained box that
-is wired to the hardware, and `python3 mock_adapter.py` should be the whole install step. To adapt it,
-copy this file with adapter_server.py, then replace read/write/health/reset with real I/O.
+The server uses stdlib HTTP and msgpack. Copy this file with adapter_server.py, then replace
+read/write/health/reset with real I/O.
 Validate parameters at the device boundary and keep metadata consistent with those checks.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import struct
 import threading
 import zlib
@@ -169,7 +168,7 @@ class MockCamera:
                 "blocks": [
                     {
                         "type": "image",
-                        "data": base64.b64encode(png).decode("ascii"),
+                        "data": png,
                         "mimeType": "image/png",
                     },
                     {

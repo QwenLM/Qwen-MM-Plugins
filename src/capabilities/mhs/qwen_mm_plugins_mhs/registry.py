@@ -18,7 +18,7 @@ from typing import Any
 from shared.env import get_env
 
 from .config import Adapter, load_adapters
-from .http_client import AdapterError, request_json, segment
+from .http_client import AdapterError, request, segment
 from .protocol import normalize_device_summary, normalize_meta
 
 
@@ -77,7 +77,7 @@ def devices_of(adapter: Adapter, *, refresh: bool = False) -> list[dict[str, Any
         cached = _cache.get(key)
         if cached is not None:
             return cached
-    payload = request_json(adapter, "GET", "/devices")
+    payload = request(adapter, "GET", "/devices")
     raw = payload.get("devices")
     if not isinstance(raw, list):
         raise AdapterError(f"adapter {adapter.name!r} did not return a 'devices' list")
@@ -145,6 +145,6 @@ def meta_of(device_id: str, *, refresh: bool = False) -> tuple[Adapter, str, dic
         cached = _cache.get(key)
         if cached is not None:
             return adapter, local_id, cached
-    meta = normalize_meta(request_json(adapter, "GET", f"/devices/{segment(local_id)}"), qualified)
+    meta = normalize_meta(request(adapter, "GET", f"/devices/{segment(local_id)}"), qualified)
     _cache.put(key, meta)
     return adapter, local_id, meta

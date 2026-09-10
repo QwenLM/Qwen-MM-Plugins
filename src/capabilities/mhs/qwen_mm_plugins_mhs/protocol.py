@@ -14,8 +14,6 @@ round trip instead of a machine.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import os
 from typing import Any
 
@@ -57,7 +55,7 @@ def normalize_device_summary(raw: object, adapter_name: str) -> dict[str, Any] |
 def normalize_meta(raw: object, qualified_id: str) -> dict[str, Any]:
     """GET /devices/{id} → a DeviceMeta with every field present and the right type."""
     if not isinstance(raw, dict):
-        raise ProtocolError(f"metadata for {qualified_id} is not a JSON object")
+        raise ProtocolError(f"metadata for {qualified_id} is not a map")
     return {
         "device_id": qualified_id,
         "device_type": _as_str(raw.get("device_type"), "unknown"),
@@ -274,16 +272,12 @@ def _render_image(entry: dict[str, Any], where: str) -> dict[str, Any]:
         mime = "image/jpeg"
 
     data = entry.get("data")
-    if isinstance(data, str) and data:
-        try:
-            # Validate rather than trust: an invalid base64 payload would otherwise reach the
-            # harness and fail there, where the cause is much harder to see.
-            decoded = base64.b64decode(data, validate=True)
-        except (binascii.Error, ValueError):
-            return text(f"[{where} sent an image block whose data is not valid base64]")
-        if len(decoded) > MAX_BODY_BYTES:
-            return text(f"[{where} sent an image of {len(decoded)} bytes, over the {MAX_BODY_BYTES}-byte limit]")
+    if isinstance(data, bytes) and data:
+        if len(data) > MAX_BODY_BYTES:
+            return text(f"[{where} sent an image of {len(data)} bytes, over the {MAX_BODY_BYTES}-byte limit]")
         return image(data, mime)
+    if data is not None:
+        return text(f"[{where} sent an image block whose data is not non-empty binary bytes]")
 
     path = entry.get("path")
     if isinstance(path, str) and path:

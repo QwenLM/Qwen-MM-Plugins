@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from .config import DEFAULT_BASE_PATH, DEFAULT_TIMEOUT, Adapter
-from .http_client import AdapterError, request_json, segment
+from .http_client import AdapterError, request, segment
 from .protocol import ProtocolError, normalize_device_summary, normalize_meta, to_content_blocks
 
 # A device that reports one of these is legible to the model; anything else still works but reads as
@@ -73,7 +73,7 @@ class Report:
 def _check_device_list(adapter: Adapter, report: Report) -> list[dict[str, Any]]:
     report.section("GET /devices")
     try:
-        payload = request_json(adapter, "GET", "/devices")
+        payload = request(adapter, "GET", "/devices")
     except AdapterError as exc:
         report.fail(f"unreachable: {exc}", "Is the adapter running, and is the URL right?")
         return []
@@ -111,7 +111,7 @@ def _check_device_list(adapter: Adapter, report: Report) -> list[dict[str, Any]]
 def _check_meta(adapter: Adapter, device: str, report: Report) -> dict[str, Any] | None:
     report.section(f"GET /devices/{device}")
     try:
-        raw = request_json(adapter, "GET", f"/devices/{segment(device)}")
+        raw = request(adapter, "GET", f"/devices/{segment(device)}")
     except AdapterError as exc:
         report.fail(f"metadata unavailable: {exc}")
         return None
@@ -206,7 +206,7 @@ def _check_limits(meta: dict[str, Any], report: Report) -> None:
 def _check_health(adapter: Adapter, device: str, report: Report) -> None:
     report.section(f"GET /devices/{device}/health")
     try:
-        payload = request_json(adapter, "GET", f"/devices/{segment(device)}/health")
+        payload = request(adapter, "GET", f"/devices/{segment(device)}/health")
     except AdapterError as exc:
         report.fail(f"health unavailable: {exc}", "Health is how the model checks a device before retrying.")
         return
@@ -229,7 +229,7 @@ def _check_reads(adapter: Adapter, device: str, meta: dict[str, Any], report: Re
     report.section(f"POST /devices/{device}/read/<capability>  ({len(readable)} readable)")
     for name in readable:
         try:
-            payload = request_json(adapter, "POST", f"/devices/{segment(device)}/read/{segment(name)}", {})
+            payload = request(adapter, "POST", f"/devices/{segment(device)}/read/{segment(name)}", {})
         except AdapterError as exc:
             report.fail(f"read {name!r} failed: {exc}")
             continue
@@ -252,7 +252,7 @@ def _check_reads(adapter: Adapter, device: str, meta: dict[str, Any], report: Re
         if degraded:
             report.fail(
                 f"read {name!r}: a block could not be used — {degraded[0]['text']}",
-                "Most often a malformed image block (bad base64, or a path this host cannot see).",
+                "Most often a malformed image block (non-binary data, or a path this host cannot see).",
             )
         else:
             report.ok(f"read {name!r} → {len(blocks)} block(s) [{kinds}]")
@@ -261,7 +261,7 @@ def _check_reads(adapter: Adapter, device: str, meta: dict[str, Any], report: Re
 def _check_error_contract(adapter: Adapter, report: Report) -> None:
     report.section("error handling (no hardware touched)")
     try:
-        request_json(adapter, "GET", f"/devices/{_ABSENT_DEVICE}")
+        request(adapter, "GET", f"/devices/{_ABSENT_DEVICE}")
     except AdapterError as exc:
         if exc.status == 404:
             report.ok(f"unknown device → HTTP 404{f' [{exc.code}]' if exc.code else ''}")

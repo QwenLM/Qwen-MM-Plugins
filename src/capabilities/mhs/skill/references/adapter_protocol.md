@@ -5,8 +5,8 @@ answers these requests, a model can operate your hardware; nothing needs to be a
 
 An adapter is owned and run by whoever owns the hardware. It is a plain HTTP server in any language.
 For Python, copy [`adapter_server.py`](adapter_server.py) with [`mock_adapter.py`](mock_adapter.py).
-Both use only the standard library. The server handles HTTP/JSON and routing; the example contains
-the device implementations that you replace with hardware I/O.
+Install `msgpack>=1.1,<2`. The server handles stdlib HTTP, MessagePack, and routing; the example
+contains the device implementations that you replace with hardware I/O.
 
 ## Python device interface
 
@@ -33,7 +33,7 @@ Metadata and validation must describe the same accepted parameters: reject unkno
 types, and hard-limit violations rather than silently converting or clamping them. A soft limit
 remains advisory, and read overrides must not change persistent settings.
 
-The Python server bounds request bodies to 64 KiB, accepts JSON objects with finite numbers,
+The Python server bounds request bodies to 64 KiB, accepts string-keyed MessagePack maps with finite numbers,
 supports an optional bearer token, and returns a structured error for unsupported resets. Its
 per-connection timeout bounds request reads, not the duration of a device operation. Other adapter
 implementations need not use this helper; the HTTP contract below remains unchanged.
@@ -65,8 +65,18 @@ an ambient `HTTP_PROXY` cannot silently intercept traffic meant for the LAN.
 
 ## Endpoints
 
-All paths are relative to `<url><base_path>`, i.e. `http://host:8800/mhs/v1`. Every response is a
-JSON object. Request bodies are JSON objects; `GET` requests have no body.
+All paths are relative to `<url><base_path>`, i.e. `http://host:8800/mhs/v1`.
+Requests and responses (including errors) use **`Content-Type: application/msgpack`**. Bodies are
+MessagePack maps; `GET` requests have no body. In Python, use
+`msgpack.packb(payload, use_bin_type=True)` and `msgpack.unpackb(body, raw=False)`.
+Map keys are strings, binary values use MessagePack `bin`, and numbers must be finite. Do not use
+extension types. The Python adapter limits nesting to 64 levels and request bodies to 64 KiB;
+the host caps response bodies at 15 MiB and each decoded array/map at 100,000 entries.
+There is one encoding, with no negotiation or JSON fallback. Update host and adapter together.
+The host sends each request once and does not follow redirects; a failed write may already have run.
+
+The examples below use JSON notation to show map fields; it is not the wire encoding.
+The registry file remains JSON, and the external MCP boundary still uses MCP's own format.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -78,9 +88,6 @@ JSON object. Request bodies are JSON objects; `GET` requests have no body.
 | POST | `/devices/{device_id}/reset` | Recover or stop — **optional** |
 
 Path segments are URL-encoded by the host, so device ids and capability names may contain spaces.
-
-These paths intentionally match [open-mhs](https://github.com/tongriyaotxt/open-mhs)'s REST server
-under an added `/mhs/v1` prefix, so an existing open-mhs deployment is close to a drop-in adapter.
 
 ### GET /devices
 
@@ -159,7 +166,7 @@ Request body is the params object (`{}` when there are none). Respond with resul
 { "blocks": [
     { "type": "value", "name": "temperature", "value": 31.5, "unit": "C" },
     { "type": "text",  "text": "sensor stable" },
-    { "type": "image", "data": "<base64>", "mimeType": "image/png" }
+    { "type": "image", "data": "<MessagePack bin: PNG bytes>", "mimeType": "image/png" }
 ] }
 ```
 
@@ -167,7 +174,11 @@ Request body is the params object (`{}` when there are none). Respond with resul
 |---|---|---|
 | `value` | `name`, `value`, `unit?` | A scalar reading. |
 | `text` | `text` | Free-form prose. |
-| `image` | `data` (base64) **or** `path`, `mimeType?` | Reaches the model as a viewable image. `mimeType` defaults to `image/jpeg`. |
+| `image` | `data` (non-empty binary bytes) **or** `path`, `mimeType?` | Reaches the model as a viewable image. `mimeType` defaults to `image/jpeg`. |
+
+`blocks` can contain zero, one, or many images mixed with text and values. In Python, set image
+`data` directly to `jpeg_bytes` or `png_bytes`, never a Base64 string. The host converts bytes to
+Base64 once when constructing the MCP image block.
 
 Use `path` only when the adapter shares a filesystem with the host (the localhost case); the host
 reads the file itself. An unrecognized block type is passed through as text rather than dropped, so a

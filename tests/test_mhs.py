@@ -1,7 +1,7 @@
 """Tests for the mhs MCP server (a Model Hardware Standard host).
 
 The end-to-end cases run the bundled mock adapter over real HTTP on an ephemeral port, so the
-protocol is exercised for real — request routing, JSON shapes, base64 image transport, HTTP error
+protocol is exercised for real — request routing, MessagePack maps, binary image transport, HTTP error
 codes — while staying offline and credential-free.
 
 conftest auto-discovers qwen_mm_plugins_mhs; the mock adapter ships beside the Skill (not as an
@@ -19,6 +19,7 @@ import socket
 import threading
 from http.server import BaseHTTPRequestHandler
 
+import msgpack
 import pytest
 from conftest import REPO_ROOT
 
@@ -442,13 +443,13 @@ def test_configured_auth_with_an_unset_token_env_is_reported_not_sent(tmp_path, 
 
 
 # ── untrusted adapter output ──
-def test_invalid_base64_image_degrades_to_text_instead_of_reaching_the_harness():
+def test_string_image_data_is_refused_instead_of_reaching_the_harness():
     blocks = protocol.to_content_blocks([{"type": "image", "data": "not!base64", "mimeType": "image/png"}], "dev")
-    assert blocks[0]["type"] == "text" and "not valid base64" in blocks[0]["text"]
+    assert blocks[0]["type"] == "text" and "not non-empty binary bytes" in blocks[0]["text"]
 
 
 def test_oversized_image_is_refused_as_text():
-    huge = base64.b64encode(b"\x00" * (protocol.MAX_BODY_BYTES + 10)).decode("ascii")
+    huge = b"\x00" * (protocol.MAX_BODY_BYTES + 10)
     blocks = protocol.to_content_blocks([{"type": "image", "data": huge}], "dev")
     assert blocks[0]["type"] == "text" and "over the" in blocks[0]["text"]
 
@@ -509,9 +510,9 @@ class _CannedHandler(BaseHTTPRequestHandler):
 
     def _reply(self, method):
         status, payload = self.routes.get((method, self.path.split("?")[0]), (404, {"error": {"code": "nf"}}))
-        body = json.dumps(payload).encode()
+        body = msgpack.packb(payload, use_bin_type=True)
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/msgpack")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -680,7 +681,7 @@ def test_verifier_exit_code_tracks_failures(mock_adapter):
 
 # ── packaging contract ──
 def test_capability_declares_no_system_dependencies():
-    """A stdlib HTTP client needs none; --check-system must not imply otherwise."""
+    """HTTP and MessagePack need no system applications; --check-system must not imply otherwise."""
     assert mhs.SYSTEM_DEPS == []
 
 
@@ -708,6 +709,26 @@ def test_server_starts_over_stdio_and_lists_its_tools():
 
     server_dir = os.path.join(_CAP_DIR, "qwen_mm_plugins_mhs")
     assert set(mcp_call(server_dir, action)) == EXPECTED_TOOLS
+
+
+def test_binary_camera_images_reach_real_mcp_client(live, monkeypatch):
+    from conftest import mcp_call
+
+    camera = live["server"].devices["mock-camera"]
+    frame = camera.read("frame", {})["blocks"][0]
+    assert isinstance(frame["data"], bytes)
+    monkeypatch.setattr(camera, "read", lambda *_: {"blocks": [frame, {"type": "text", "text": "two views"}, frame]})
+
+    async def action(session):
+        return await session.call_tool("mhs_read", {"device_id": "mock/mock-camera", "capability": "frame"})
+
+    result = mcp_call(os.path.join(_CAP_DIR, "qwen_mm_plugins_mhs"), action)
+    assert not result.isError
+    assert [block.type for block in result.content] == ["image", "text", "image"]
+    assert result.content[1].text == "two views"
+    for block in (result.content[0], result.content[2]):
+        assert block.mimeType == "image/png"
+        assert base64.b64decode(block.data) == frame["data"]
 
 
 def test_package_does_not_shadow_a_framework_hook():

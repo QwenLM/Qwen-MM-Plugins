@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from shared.content import json_text, text
 
 from ..errors import guarded
-from ..http_client import AdapterError, request_json, segment
+from ..http_client import AdapterError, request, segment
 from ..registry import all_devices, resolve
 
 
@@ -40,7 +40,7 @@ TOOL: dict[str, Any] = {
 
 def _check_one(device_id: str) -> dict[str, Any]:
     adapter, local_id = resolve(device_id)
-    payload = request_json(adapter, "GET", f"/devices/{segment(local_id)}/health")
+    payload = request(adapter, "GET", f"/devices/{segment(local_id)}/health")
     return {
         "device_id": f"{adapter.name}/{local_id}",
         "state": payload.get("state", "unknown"),

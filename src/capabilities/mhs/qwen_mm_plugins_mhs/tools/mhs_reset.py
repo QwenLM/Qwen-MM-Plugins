@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from shared.content import text
 
 from ..errors import guarded
-from ..http_client import AdapterError, request_json, segment
+from ..http_client import AdapterError, request, segment
 from ..registry import invalidate, resolve
 
 
@@ -53,7 +53,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     qualified = f"{adapter.name}/{local_id}"
 
     try:
-        payload = request_json(adapter, "POST", f"/devices/{segment(local_id)}/reset", {"mode": mode})
+        payload = request(adapter, "POST", f"/devices/{segment(local_id)}/reset", {"mode": mode})
     except AdapterError as exc:
         if exc.status in _UNSUPPORTED:
             return [

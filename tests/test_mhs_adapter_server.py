@@ -1,10 +1,10 @@
 """The copyable adapter must enforce its own contract, even without the MHS host."""
 
-import json
 import threading
 from http.client import HTTPConnection
 from urllib.parse import quote
 
+import msgpack
 import pytest
 from test_mhs import _load_mock_adapter
 
@@ -25,11 +25,16 @@ def example():
 
 def request(server, path, payload=None, *, raw=None, headers=None, method="POST"):
     connection = HTTPConnection(*server.server_address, timeout=3)
-    body = json.dumps(payload or {}).encode() if raw is None else raw
+    body = msgpack.packb(payload or {}, use_bin_type=True) if raw is None else raw
     try:
-        connection.request(method, "/mhs/v1" + path, body=body if method == "POST" else None, headers=headers or {})
+        connection.request(
+            method,
+            "/mhs/v1" + path,
+            body=body if method == "POST" else None,
+            headers={"Content-Type": "application/msgpack", **(headers or {})},
+        )
         response = connection.getresponse()
-        return response.status, json.loads(response.read())
+        return response.status, msgpack.unpackb(response.read(), raw=False)
     finally:
         connection.close()
 
@@ -86,14 +91,29 @@ def test_invalid_parameters_are_errors_not_silent_conversions(example, path, par
 
 
 @pytest.mark.parametrize(
-    "raw", [b"[1]", b"null", b'{"exposure": NaN}', b'{"exposure": Infinity}', b'{"exposure": 1e999}', b"{", b"\xff"]
+    "raw",
+    [
+        b"\x91\x01",
+        b"\xc0",
+        b"\xc1",
+        b"\x81",
+        b"\x80\x80",
+        b"{}",
+        msgpack.packb({"exposure": float("nan")}),
+        msgpack.packb({"exposure": float("inf")}),
+        msgpack.packb({"exposure": {"nested": float("inf")}}),
+        msgpack.packb({1: "value"}),
+        msgpack.packb({b"exposure": 40}),
+        msgpack.packb({"exposure": msgpack.ExtType(1, b"")}),
+        b"\x81\xa8exposure\xdd\xff\xff\xff\xff",
+    ],
 )
-def test_malformed_json_does_not_reach_device(example, raw):
+def test_malformed_messagepack_does_not_reach_device(example, raw):
     _, server = example
     camera = server.devices["mock-camera"]
     before = dict(camera.settings)
     status, body = request(server, "/devices/mock-camera/write/settings", raw=raw)
-    assert status == 400 and body["error"]["code"] == "bad_json"
+    assert status == 400 and body["error"]["code"] == "bad_messagepack"
     assert camera.settings == before
 
 
@@ -113,6 +133,25 @@ def test_each_server_owns_fresh_devices(example):
         assert first.devices["mock-camera"].settings["exposure"] != 95
     finally:
         second.server_close()
+
+
+@pytest.mark.parametrize("content_type", ["application/json", "application/octet-stream", "text/plain"])
+def test_only_messagepack_is_accepted_and_rejection_does_not_mutate_device(example, content_type):
+    _, server = example
+    camera = server.devices["mock-camera"]
+    before = dict(camera.settings)
+    status, body = request(
+        server, "/devices/mock-camera/write/settings", {"exposure": 75}, headers={"Content-Type": content_type}
+    )
+    assert status == 415 and body["error"]["code"] == "unsupported_media_type"
+    assert camera.settings == before
+
+
+def test_deeply_nested_parameters_are_rejected_before_device_io(example):
+    _, server = example
+    raw = b"\x81\xa8exposure" + b"\x91" * 70 + b"\xc0"
+    status, body = request(server, "/devices/mock-camera/write/settings", raw=raw)
+    assert status == 400 and "nesting" in body["error"]["message"]
 
 
 @pytest.mark.parametrize("response", [None, [], {"value": float("inf")}])

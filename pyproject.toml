@@ -64,7 +64,7 @@ video-memory = ["numpy<3", "requests"]        # long-video graph-memory server
 omni-memory = ["numpy<3"]                     # long-video audio-visual memory server (openai client is a base dep)
 video-edit = ["dashscope>=1.25.16", "requests"]  # image/video/audio generation server
 example = []                                   # template capability — uses the base OpenAI client
-mhs = []                                       # Model Hardware Standard host (stdlib urllib client; adapters are external)
+mhs = ["msgpack>=1.1,<2"]                      # Model Hardware Standard host (HTTP + MessagePack; adapters are external)
 oss = ["oss2"]                                 # optional: upload large media to OSS for a signed URL (memory-build clip upload, api oversized-video upload)
 blender = []                                   # Blender live-session MCP client (stdlib socket; needs a running Blender + addon)
 freecad = []                                   # FreeCAD live-session MCP client (stdlib xml-rpc; needs a running FreeCAD + addon)
