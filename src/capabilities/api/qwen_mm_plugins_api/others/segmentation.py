@@ -7,29 +7,29 @@ import json
 import os
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.env import get_env
 
 
 class SegmentationArgs(BaseModel):
-    image_path: str = Field(description="Absolute path to the image file")
-    prompt: str = Field(description="What to segment (e.g., 'the cat', 'blue car', 'all people')")
-    server: Optional[str] = Field(default=None, description="SAM3 server URL (defaults to SAM3_SERVER_URL env var)")
+    image_path: str
+    prompt: str
+    server: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "segmentation",
-    "description": (
-        "Segment objects in an image using a SAM3 server. "
-        "Provide a text prompt describing what to segment. "
-        "Returns mask metadata and a visualization image with masks overlaid."
-    ),
-    "args": SegmentationArgs,
-}
+TOOL = {"name": "segmentation", "args": SegmentationArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Segment objects in an image using a SAM3 server. Provide a text prompt describing what to
+    segment. Returns mask metadata and a visualization image with masks overlaid.
+
+    Args:
+        image_path: Absolute path to the image file
+        prompt: What to segment (e.g., 'the cat', 'blue car', 'all people')
+        server: SAM3 server URL (defaults to SAM3_SERVER_URL env var)
+    """
     from shared.content import image, require_dep, require_file, text, text_error
 
     image_path = arguments.get("image_path", "")

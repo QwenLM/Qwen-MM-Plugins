@@ -11,17 +11,13 @@ class SketchfabStatusArgs(BaseModel):
     pass
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_sketchfab_status",
-    "description": (
-        "Check if Sketchfab integration is enabled in Blender. "
-        "Returns a message indicating whether Sketchfab features are available."
-    ),
-    "args": SketchfabStatusArgs,
-}
+TOOL = {"name": "get_sketchfab_status", "args": SketchfabStatusArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Check if Sketchfab integration is enabled in Blender. Returns a message indicating whether
+    Sketchfab features are available.
+    """
     from qwen_mm_plugins_blender.loader import get_connection
 
     try:

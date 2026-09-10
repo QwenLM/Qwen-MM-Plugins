@@ -38,6 +38,7 @@ jobs:
           --with pytest
           --with "mcp>=1,<2"
           --with "anyio>=4,<5"
+          --with "docstring-parser>=0.18,<0.19"
           --with "pydantic>=2"
           --with "pillow<12"
           --with "numpy<3"

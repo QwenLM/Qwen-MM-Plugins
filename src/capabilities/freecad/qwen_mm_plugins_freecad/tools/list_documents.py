@@ -11,14 +11,11 @@ class ListDocumentsArgs(BaseModel):
     pass
 
 
-TOOL: dict[str, Any] = {
-    "name": "list_documents",
-    "description": "Get the list of open documents in FreeCAD. Returns a list of document names.",
-    "args": ListDocumentsArgs,
-}
+TOOL = {"name": "list_documents", "args": ListDocumentsArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get the list of open documents in FreeCAD. Returns a list of document names."""
     from qwen_mm_plugins_freecad._responses import json_response, text_response
     from qwen_mm_plugins_freecad.loader import get_connection
 

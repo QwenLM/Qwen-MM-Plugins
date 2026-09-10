@@ -19,6 +19,7 @@ Live reachability (does the real API answer?) lives in test_api_reachability.py.
 """
 
 import base64
+import io
 import json
 import os
 import sys
@@ -55,7 +56,10 @@ def _is_error(blocks) -> bool:
 
 @pytest.mark.parametrize("module", [vision_chat, ocr, grounding])
 def test_vl_model_schema_documents_env_override(module):
-    description = module.TOOL["args"].model_fields["model"].description
+    from qwen_mm_plugins_api import SPECS
+
+    tool = next(spec for spec in SPECS if spec.handle is module.handle)
+    description = tool.input_schema["properties"]["model"]["description"]
     assert "QWEN_MM_API_VL_MODEL" in description
 
 
@@ -298,6 +302,28 @@ def test_vision_chat_model_precedence(monkeypatch):
     assert explicit_payload["request"]["model"] == "explicit-vl"
 
 
+@pytest.mark.parametrize("base_url", [oa.DEFAULT_DASHSCOPE_BASE_URL, "https://openrouter.ai/api/v1"])
+def test_vision_chat_preview_contains_sampled_images(monkeypatch, sample_video, base_url):
+    from shared import oss
+
+    monkeypatch.setattr(oss, "is_upload_configured", lambda: False)
+    blocks = vision_chat.handle(
+        {
+            "base_url": base_url,
+            "videos": [sample_video],
+            "video_max_frames": 4,
+            "dry_run": True,
+        }
+    )
+    payload = json.loads(blocks[0]["text"])
+    parts = payload["request"]["messages"][0]["content"]
+    assert not any(part["type"] == "video" for part in parts)
+    images = [part for part in parts if part["type"] == "image_url"]
+    assert len(images) == 4
+    assert all(part["image_url"]["url"].startswith("<base64 image") for part in images)
+    assert "fps" in parts[0]["text"]
+
+
 def test_encode_video_source_uploads_to_oss_when_configured(monkeypatch):
     """Unified OSS trigger: a local video is uploaded and passed by URL when OSS is configured —
     no local frame extraction (so this needs neither ffmpeg nor a real file)."""
@@ -448,6 +474,49 @@ def test_grounding_maps_boxes_and_draws(monkeypatch, sample_image):
     assert result["detections"][0]["bbox_pixel"] == [48, 0, 96, 64]
     # return_img=True with a detection → an image block is appended
     assert any(b["type"] == "image" for b in blocks)
+
+
+def test_grounding_request_and_crop_share_display_coordinates(monkeypatch, rotated_image, tmp_path):
+    from PIL import Image
+
+    from qwen_mm_plugins_core.producers import crop
+
+    box = [500, 0, 1000, 300]
+
+    def fake_call(**kwargs):
+        # Inspect the actual uploaded pixels, without applying EXIF in the fake endpoint.
+        url = kwargs["messages"][0]["content"][0]["image_url"]["url"]
+        with Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))) as sent:
+            assert sent.size == (120, 320)
+            assert sent.getexif().get(274, 1) == 1
+            assert sent.crop((60, 0, 120, 96)).convert("L").getextrema()[1] > 128
+        return _chat_response(json.dumps([{"label": "white square", "bbox_2d": box}]))
+
+    monkeypatch.setattr(oa, "call_openai_chat", fake_call)
+    blocks = grounding.handle({"image_path": rotated_image, "prompt": "white square", "return_img": True})
+    assert not _is_error(blocks)
+    result = json.loads(blocks[0]["text"])
+    assert result["image_size"] == {"width": 120, "height": 320}
+    detection = result["detections"][0]
+    assert detection["bbox_pixel"] == [60, 0, 120, 96]
+    out = tmp_path / "grounded-crop.png"
+    crop.handle({"image_path": rotated_image, "box": detection["bbox_normalized"], "output_path": str(out)})
+    with Image.open(out) as cropped:
+        assert cropped.size == (60, 96)
+        assert cropped.convert("L").getextrema()[1] > 128
+
+
+def test_image_search_crops_display_coordinates(rotated_image):
+    from PIL import Image
+
+    path = image_search._crop_bbox(rotated_image, [500, 0, 1000, 300])
+    try:
+        with Image.open(path) as cropped:
+            assert cropped.size == (60, 96)
+            assert cropped.convert("L").getextrema()[1] > 128
+            assert cropped.getexif().get(274, 1) == 1
+    finally:
+        os.unlink(path)
 
 
 def test_web_search_formats_serper_docs(monkeypatch):
@@ -630,3 +699,16 @@ def test_segmentation_returns_error_on_non_connection_failure(monkeypatch, sampl
     monkeypatch.setattr(requests, "post", _boom)
     out = segmentation.handle({"image_path": sample_image, "server": "http://sam3.invalid"})
     assert _is_error(out)
+
+
+def test_grounding_draws_boxes_with_reversed_corners(monkeypatch, sample_image):
+    pytest.importorskip("openai")
+    model_json = '[{"label": "cat", "bbox_2d": [800, 100, 200, 400]}]'
+    monkeypatch.setattr(oa, "call_openai_chat", lambda **kwargs: _chat_response(model_json))
+
+    blocks = grounding.handle({"image_path": sample_image, "prompt": "cat", "return_img": True})
+
+    assert not _is_error(blocks)
+    result = json.loads(blocks[0]["text"])
+    assert result["detections"][0]["label"] == "cat"
+    assert any(block["type"] == "image" for block in blocks)

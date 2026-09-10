@@ -1,8 +1,8 @@
 {
   "name": "qwen-mm-plugins-api",
   "displayName": "Qwen MM Plugins API",
-  "version": "1.0.5",
-  "description": "Cloud APIs for understanding media, by model family: VL (vision chat, OCR, grounding), Omni A/V (timestamped captioning, ASR / multi-speaker diarization, temporal grounding, event counting), plus ASR and segmentation (SAM3) as MCP tools; currently supports DashScope.",
+  "version": "1.1.0",
+  "description": "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription.",
   "skills": "./skill",
   "mcp": ".mcp.json"
 }

@@ -37,7 +37,7 @@ Skill 与 MCP server 使用同一个已发布 tag，安装后确认 MCP 工具�
 ## 直接注册 Skill + MCP
 
 对于下文直接注册 Skill + MCP 的 harness，请将 `<cap>` 替换为 `core`、`api`、`search`、
-`video-memory`、`video-edit`、`blender` 或 `freecad`。`edu-agent` 是纯 Skill。Skill 与 MCP
+`video-memory`、`omni-memory`、`video-edit`、`blender` 或 `freecad`。`edu-agent` 是纯 Skill。Skill 与 MCP
 命令必须使用同一个不可变 tag：
 
 ```text

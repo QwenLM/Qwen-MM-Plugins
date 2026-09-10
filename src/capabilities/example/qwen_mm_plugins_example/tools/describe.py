@@ -14,33 +14,37 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.api_openai import DEFAULT_MODEL, call_openai_chat, encode_image_source, resolve_openai_endpoint
 from shared.content import require_dep, require_file, text, text_error
 
 
 class DescribeArgs(BaseModel):
-    prompt: str = Field(description="What to ask the model (e.g. 'Describe this image', or any question).")
-    image_path: str | None = Field(default=None, description="Optional local image file to attach to the prompt.")
-    model: str | None = Field(default=None, description="Model id override (else the shared default).")
-    api_key: str | None = Field(default=None, description="Override DASHSCOPE_API_KEY (else environment / config).")
-    base_url: str | None = Field(default=None, description="Override the OpenAI-compatible base URL.")
-    dry_run: bool = Field(default=False, description="Return the request that WOULD be sent, without calling the API.")
+    prompt: str
+    image_path: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+    dry_run: bool = False
 
 
-TOOL: dict[str, Any] = {
-    "name": "describe",
-    "description": (
-        "Ask an OpenAI-compatible chat model a question, optionally about a local image. "
-        "Demonstrates an API-calling tool whose endpoint/key are resolved via shared.env. "
-        "Set dry_run=true to see the request without a key or network call."
-    ),
-    "args": DescribeArgs,
-}
+TOOL = {"name": "describe", "args": DescribeArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Ask an OpenAI-compatible chat model a question, optionally about a local image. Demonstrates an
+    API-calling tool whose endpoint/key are resolved via shared.env. Set dry_run=true to see the
+    request without a key or network call.
+
+    Args:
+        prompt: What to ask the model (e.g. 'Describe this image', or any question).
+        image_path: Optional local image file to attach to the prompt.
+        model: Model id override (else the shared default).
+        api_key: Override DASHSCOPE_API_KEY (else environment / config).
+        base_url: Override the OpenAI-compatible base URL.
+        dry_run: Return the request that WOULD be sent, without calling the API.
+    """
     prompt = arguments.get("prompt", "")
     image_path = arguments.get("image_path")
     model = arguments.get("model") or DEFAULT_MODEL

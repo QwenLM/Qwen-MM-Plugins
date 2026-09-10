@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "qwen-mm-plugins-omni-memory": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "qwen-mm-plugins[omni-memory] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-omni-memory-v1.1.0",
+        "qwen-mm-plugins-omni-memory"
+      ]
+    }
+  }
+}

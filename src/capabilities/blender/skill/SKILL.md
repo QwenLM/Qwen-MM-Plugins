@@ -3,6 +3,8 @@ name: qwen-mm-plugins-blender
 description: Use whenever a task involves building or editing a 3D scene or asset in Blender — modeling, characters/people, architecture/interiors, terrain/landscapes, props, materials, lighting, or rendering. Covers discovering installed add-ons, using generators, importing and REFINING ready-made assets, and matching the result to the spec. Requires a running Blender instance with the blender-mcp addon (see Prerequisite).
 ---
 
+# Blender 3D Creation
+
 You build 3D content in Blender by writing Python (via the `execute_blender_code` tool) against a **running** Blender instance. Quality bar: the result must actually match the request — not a rough pile of primitives, and not a bare unedited import.
 
 ## Prerequisite: a live Blender + addon (started for you on first use)

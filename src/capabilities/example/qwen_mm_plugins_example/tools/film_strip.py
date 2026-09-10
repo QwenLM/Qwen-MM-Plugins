@@ -5,29 +5,29 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import image, require_dep, text
 
 
 class FilmStripArgs(BaseModel):
-    frames: int = Field(default=3, description="Number of frames to generate (1-8).")
-    size: int = Field(default=96, description="Frame side length in pixels (32-256).")
+    frames: int = 3
+    size: int = 96
 
 
-TOOL: dict[str, Any] = {
-    "name": "make_film_strip",
-    "description": (
-        "Generate N synthetic video frames and return them as image blocks (plus a text summary). "
-        "Demonstrates the multi-frame return shape real video tools use."
-    ),
-    "args": FilmStripArgs,
-}
+TOOL = {"name": "make_film_strip", "args": FilmStripArgs}
 
 _COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#eab308"]
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Generate N synthetic video frames and return them as image blocks (plus a text summary).
+    Demonstrates the multi-frame return shape real video tools use.
+
+    Args:
+        frames: Number of frames to generate (1-8).
+        size: Frame side length in pixels (32-256).
+    """
     if err := require_dep("PIL", "pillow"):
         return err
     from PIL import Image, ImageDraw

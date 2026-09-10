@@ -4,24 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class CreateDocumentArgs(BaseModel):
-    name: str = Field(description="The name of the document to create.")
+    name: str
 
 
-TOOL: dict[str, Any] = {
-    "name": "create_document",
-    "description": (
-        "Create a new document in FreeCAD. Returns a message indicating the success or "
-        "failure of the document creation."
-    ),
-    "args": CreateDocumentArgs,
-}
+TOOL = {"name": "create_document", "args": CreateDocumentArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Create a new document in FreeCAD. Returns a message indicating the success or failure of the
+    document creation.
+
+    Args:
+        name: The name of the document to create.
+    """
     from qwen_mm_plugins_freecad._responses import text_response
     from qwen_mm_plugins_freecad.loader import get_connection
 

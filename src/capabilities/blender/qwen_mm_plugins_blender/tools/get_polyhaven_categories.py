@@ -4,24 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class PolyhavenCategoriesArgs(BaseModel):
-    asset_type: str = Field(
-        default="hdris",
-        description="The type of asset to get categories for (hdris, textures, models, all).",
-    )
+    asset_type: str = "hdris"
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_polyhaven_categories",
-    "description": "Get a list of categories for a specific asset type on Polyhaven.",
-    "args": PolyhavenCategoriesArgs,
-}
+TOOL = {"name": "get_polyhaven_categories", "args": PolyhavenCategoriesArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get a list of categories for a specific asset type on Polyhaven.
+
+    Args:
+        asset_type: The type of asset to get categories for (hdris, textures, models, all).
+    """
     from qwen_mm_plugins_blender.loader import get_connection, refresh_polyhaven
 
     asset_type = arguments.get("asset_type", "hdris")

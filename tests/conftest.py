@@ -96,6 +96,24 @@ def sample_image(tmp_path_factory) -> str:
 
 
 @pytest.fixture(scope="session")
+def rotated_image(tmp_path_factory) -> str:
+    """A 320x120 JPEG with a 40x40 white square at the stored top-left, tagged EXIF Orientation 6
+    - the shape a portrait phone photo has on disk: sideways stored pixels plus an orientation
+    flag. Every viewer shows a 120x320 portrait frame with the square at the top-right."""
+    from PIL import Image
+
+    path = tmp_path_factory.mktemp("media") / "rotated.jpg"
+    image = Image.new("RGB", (320, 120), (0, 0, 0))
+    for x in range(8, 48):
+        for y in range(8, 48):
+            image.putpixel((x, y), (255, 255, 255))
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    image.save(path, format="JPEG", exif=exif.tobytes(), quality=95)
+    return str(path)
+
+
+@pytest.fixture(scope="session")
 def sample_video(tmp_path_factory) -> str:
     """A 6s, 160×120, 10fps test-pattern MP4 (requires ffmpeg)."""
     if not HAS_FFMPEG:

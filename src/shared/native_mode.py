@@ -12,8 +12,7 @@ log = logging.getLogger(__name__)
 
 _BATCH_SIZE = 8
 _MAX_TOKENS = 32 * 1024
-_MISSING_KEY = "QWEN_MM_NATIVE_MODE=0 requires a non-empty DASHSCOPE_API_KEY."
-_CAPTION_FAILED = "caption generation failed; check DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, and QWEN_MM_API_VL_MODEL."
+_CAPTION_FAILED = "caption generation failed; check the endpoint URL, API key, and QWEN_MM_API_VL_MODEL."
 _PROMPT = """Describe each input image for a text-only language model.
 
 For every image, preserve the information needed to reason about it: faithfully transcribe visible
@@ -43,10 +42,6 @@ def adapt_content_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from shared.api_openai import resolve_openai_endpoint, resolve_vl_model
 
     base_url, api_key = resolve_openai_endpoint({})
-    api_key = api_key.strip()
-    if api_key in ("", "EMPTY"):
-        return _replace_images(blocks, positions, [None] * len(positions), _MISSING_KEY)
-
     images = [blocks[index] for index in positions]
     model = resolve_vl_model()
     captions: list[str | None] = []

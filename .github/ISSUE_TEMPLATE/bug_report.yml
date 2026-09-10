@@ -38,6 +38,7 @@ body:
       options:
         - core
         - video-memory
+        - omni-memory
         - video-edit
         - blender
         - freecad

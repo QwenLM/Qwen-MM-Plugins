@@ -21,18 +21,14 @@ class ConfigProbeArgs(BaseModel):
     """No arguments — reports the capability's resolved configuration."""
 
 
-TOOL: dict[str, Any] = {
-    "name": "config_probe",
-    "description": (
-        "Report resolved configuration via shared.env.get_env "
-        "(precedence: environment > ~/.qwen-mm-plugins/config > default). "
-        "Demonstrates reading env/config from an MCP tool without leaking secrets."
-    ),
-    "args": ConfigProbeArgs,
-}
+TOOL = {"name": "config_probe", "args": ConfigProbeArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Report resolved configuration via shared.env.get_env (precedence: environment > ~/.qwen-mm-
+    plugins/config > default). Demonstrates reading env/config from an MCP tool without leaking
+    secrets.
+    """
     greeting = get_env("QWEN_MM_EXAMPLE_GREETING", _DEFAULT_GREETING)
     has_key = bool(get_env("DASHSCOPE_API_KEY"))
     lines = [

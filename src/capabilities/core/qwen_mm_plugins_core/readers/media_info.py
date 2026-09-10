@@ -8,39 +8,20 @@ stream, chapters), with the raw ffprobe JSON available on request.
 from __future__ import annotations
 
 import json
-from typing import Annotated, Any
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import require_file, text, text_error
 from shared.video import probe_media
 
 
 class MediaInfoArgs(BaseModel):
-    path: Annotated[str, Field(description="Absolute path to the media file (video or audio)")]
-    raw: Annotated[
-        bool,
-        Field(
-            description=(
-                "Also return the raw ffprobe JSON (format + streams + chapters) "
-                "for fields not covered by the summary. Default: false"
-            ),
-        ),
-    ] = False
+    path: str
+    raw: bool = False
 
 
-TOOL: dict[str, Any] = {
-    "name": "media_info",
-    "description": (
-        "Read full metadata from a video/audio file via ffprobe: container format, duration, file "
-        "size, overall bitrate, chapters, and every stream — video (codec/profile, resolution, "
-        "aspect ratio, fps, pixel format, bitrate, frame count, rotation, color space), audio "
-        "(codec, sample rate, channels/layout, bitrate), subtitles, and per-stream "
-        "language/disposition. Use this before any editing/clipping task to learn the source "
-        "properties; it reads only metadata, so it is fast even on huge files."
-    ),
-    "args": MediaInfoArgs,
-}
+TOOL = {"name": "media_info", "args": MediaInfoArgs}
 
 
 def _num(v: Any) -> float:
@@ -172,6 +153,18 @@ def _describe_other(s: dict) -> str:
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Read full metadata from a video/audio file via ffprobe: container format, duration, file size,
+    overall bitrate, chapters, and every stream — video (codec/profile, resolution, aspect ratio,
+    fps, pixel format, bitrate, frame count, rotation, color space), audio (codec, sample rate,
+    channels/layout, bitrate), subtitles, and per-stream language/disposition. Use this before any
+    editing/clipping task to learn the source properties; it reads only metadata, so it is fast even
+    on huge files.
+
+    Args:
+        path: Absolute path to the media file (video or audio)
+        raw: Also return the raw ffprobe JSON (format + streams + chapters) for fields not covered
+            by the summary. Default: false
+    """
     path = arguments.get("path", "")
     if err := require_file(path):
         return err

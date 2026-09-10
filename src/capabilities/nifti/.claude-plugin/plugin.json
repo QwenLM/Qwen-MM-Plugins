@@ -1,0 +1,18 @@
+{
+  "name": "qwen-mm-plugins-nifti",
+  "version": "1.0.0",
+  "description": "Inspect NIfTI volumes with configurable slices, shared intensity ranges, and window presets.",
+  "skills": [
+    "./skill"
+  ],
+  "mcpServers": {
+    "qwen-mm-plugins-nifti": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "qwen-mm-plugins[nifti] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-nifti-v1.0.0",
+        "qwen-mm-plugins-nifti"
+      ]
+    }
+  }
+}

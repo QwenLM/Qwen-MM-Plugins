@@ -11,9 +11,13 @@ import base64
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from shared.env import DEFAULT_DASHSCOPE_BASE_URL, get_env
+
+if TYPE_CHECKING:
+    from PIL.Image import Image
 
 log = logging.getLogger(__name__)
 
@@ -71,24 +75,61 @@ _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 # handled outside the transient retry loop so the request changes before it is sent again.
 _OPTIONAL_FIELD_REJECTION_STATUS = frozenset({400, 422})
 
+_API_KEY_ENV_BY_HOST: dict[str, str] = {
+    "dashscope.aliyuncs.com": "DASHSCOPE_API_KEY",
+    "dashscope-intl.aliyuncs.com": "DASHSCOPE_API_KEY",
+    "api.orcarouter.ai": "ORCAROUTER_API_KEY",
+    "openrouter.ai": "OPENROUTER_API_KEY",
+}
+
 
 def resolve_openai_endpoint(arguments: dict[str, Any]) -> tuple[str, str]:
     """Resolve (base_url, api_key) for an OpenAI-compatible call.
 
-    Precedence: explicit argument → DashScope env → default. api_key falls back to
-    "EMPTY" so local/self-hosted servers that ignore auth still work.
+    URL precedence: explicit argument → DASHSCOPE_BASE_URL → default. An explicit
+    api_key wins; otherwise use the host's API key environment variable. Unlisted hosts
+    and missing keys fall back to "EMPTY" for local servers.
     """
     base_url = arguments.get("base_url") or get_env("DASHSCOPE_BASE_URL") or DEFAULT_DASHSCOPE_BASE_URL
-    api_key = arguments.get("api_key") or get_env("DASHSCOPE_API_KEY") or "EMPTY"
+    key_env = _API_KEY_ENV_BY_HOST.get(urlsplit(base_url).hostname or "")
+    api_key = arguments.get("api_key") or (get_env(key_env) if key_env else None) or "EMPTY"
     return base_url, api_key
+
+
+def expand_video_frames(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Send sampled video frames as ordered, standard ``image_url`` content parts.
+
+    Preserve the frame rate, video URLs, and other media without mutating the caller's messages.
+    """
+    prepared = []
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            prepared.append(message)
+            continue
+        parts = []
+        for part in content:
+            if part.get("type") != "video" or not isinstance(part.get("video"), list):
+                parts.append(part)
+                continue
+            fps = f" at {part['fps']} fps" if part.get("fps") else ""
+            parts.append({"type": "text", "text": f"Video frames in chronological order{fps}:"})
+            parts.extend({"type": "image_url", "image_url": {"url": frame}} for frame in part["video"])
+        prepared.append({**message, "content": parts})
+    return prepared
 
 
 def is_url(value: str) -> bool:
     return value.startswith(("http://", "https://", "data:"))
 
 
-def encode_image_source(source: str) -> dict[str, Any]:
-    """OpenAI-style image content part: a URL/data-URL passthrough, or a local file base64'd."""
+def encode_image_source(source: str | Image) -> dict[str, Any]:
+    """Encode a path, URL, or prepared PIL image. Prepared images retain their exact dimensions."""
+    if not isinstance(source, str):
+        from shared.image import encode_image
+
+        _, encoded, mime_type = encode_image(source)
+        return {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded}"}}
     if is_url(source):
         return {"type": "image_url", "image_url": {"url": source}}
     path = Path(source)
@@ -171,11 +212,6 @@ def call_openai_chat(
 
     from shared.retry import retry_call
 
-    # A missing key against DashScope just 401s with "No API-key provided"; give an actionable
-    # message. Local/self-hosted servers ignore auth, so only guard the DashScope endpoint.
-    if api_key in ("", "EMPTY") and "dashscope" in base_url:
-        raise RuntimeError("no API key — set DASHSCOPE_API_KEY (or pass api_key)")
-
     retryable = (
         openai.RateLimitError,
         openai.APITimeoutError,
@@ -189,6 +225,8 @@ def call_openai_chat(
         )
 
     base_extra_body = kwargs.get("extra_body") or {}
+    if "messages" in kwargs:
+        kwargs["messages"] = expand_video_frames(kwargs["messages"])
     client = OpenAI(api_key=api_key, base_url=base_url, timeout=_chat_timeout())
 
     def _create(hints: dict[str, Any] | None) -> Any:

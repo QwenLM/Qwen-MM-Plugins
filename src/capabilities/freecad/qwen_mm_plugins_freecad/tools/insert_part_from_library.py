@@ -4,24 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class InsertPartFromLibraryArgs(BaseModel):
-    relative_path: str = Field(description="The relative path of the part to insert.")
+    relative_path: str
 
 
-TOOL: dict[str, Any] = {
-    "name": "insert_part_from_library",
-    "description": (
-        "Insert a part from the parts library addon. Returns a message indicating the success or "
-        "failure of the part insertion and a screenshot of the object."
-    ),
-    "args": InsertPartFromLibraryArgs,
-}
+TOOL = {"name": "insert_part_from_library", "args": InsertPartFromLibraryArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Insert a part from the parts library addon. Returns a message indicating the success or failure
+    of the part insertion and a screenshot of the object.
+
+    Args:
+        relative_path: The relative path of the part to insert.
+    """
     from qwen_mm_plugins_freecad._responses import add_screenshot_if_available, text_response
     from qwen_mm_plugins_freecad.loader import get_connection, only_text_feedback
 

@@ -36,6 +36,7 @@ classifiers = [
 dependencies = [
     "mcp>=1.0.0,<2",
     "anyio>=4.0,<5",
+    "docstring-parser>=0.18,<0.19",
     "pillow<12",
     "openai",  # shared text-only fallback captions for MCP image results
 ]
@@ -48,7 +49,8 @@ Issues = "https://github.com/QwenLM/Qwen-MM-Plugins/issues"
 [project.optional-dependencies]
 # capability extras — compose via the profiles below
 api = ["dashscope", "httpx[socks]", "requests[socks]"]  # cloud media APIs + HTTP/SOCKS
-search = ["requests[socks]"]                    # Serper / Exa / Tavily + optional SOCKS proxy transport
+search = ["requests[socks]"]                    # Serper / Exa / Tavily / Serply + optional SOCKS proxy transport
+nifti = ["numpy<3", "pillow<12", "nibabel>=5,<6"]  # configurable NIfTI volume visualization
 # viz = the full visualize stack — a `core` install then renders every format out of the box.
 viz = [
     "pypdfium2", "resvg-py", "lxml",          # PDF raster+text (pypdfium2) / SVG (resvg) / DrawIO / LaTeX
@@ -61,6 +63,7 @@ viz = [
     "playwright",                             # HTML screenshot
 ]
 video-memory = ["numpy<3", "requests"]        # long-video graph-memory server
+omni-memory = ["numpy<3"]                     # long-video audio-visual memory server (openai client is a base dep)
 video-edit = ["dashscope>=1.25.16", "requests"]  # image/video/audio generation server
 example = []                                   # template capability — uses the base OpenAI client
 oss = ["oss2"]                                 # optional: upload large media to OSS for a signed URL (memory-build clip upload, api oversized-video upload)
@@ -69,14 +72,16 @@ freecad = []                                   # FreeCAD live-session MCP client
 # profiles — install ONE. `core` is now local-only (no API key); cloud tools are the api/search
 # capabilities. `all` layers every server on top.
 core = ["qwen-mm-plugins[viz]"]
-memory = ["qwen-mm-plugins[core,video-memory]"]
-all = ["qwen-mm-plugins[core,api,search,video-memory,video-edit,blender,freecad]"]
+memory = ["qwen-mm-plugins[core,video-memory,omni-memory]"]
+all = ["qwen-mm-plugins[core,nifti,api,search,video-memory,omni-memory,video-edit,blender,freecad]"]
 
 [project.scripts]
 qwen-mm-plugins-core = "qwen_mm_plugins_core.__main__:main"
+qwen-mm-plugins-nifti = "qwen_mm_plugins_nifti.__main__:main"
 qwen-mm-plugins-api = "qwen_mm_plugins_api.__main__:main"
 qwen-mm-plugins-search = "qwen_mm_plugins_search.__main__:main"
 qwen-mm-plugins-video-memory = "qwen_mm_plugins_video_memory.__main__:main"
+qwen-mm-plugins-omni-memory = "qwen_mm_plugins_omni_memory.__main__:main"
 qwen-mm-plugins-video-edit = "qwen_mm_plugins_video_edit.__main__:main"
 qwen-mm-plugins-example = "qwen_mm_plugins_example.__main__:main"
 qwen-mm-plugins-blender = "qwen_mm_plugins_blender.__main__:main"
@@ -101,9 +106,11 @@ py-modules = ["mcp_framework"]
 [tool.setuptools.package-dir]
 "" = "src"
 qwen_mm_plugins_core = "src/capabilities/core/qwen_mm_plugins_core"
+qwen_mm_plugins_nifti = "src/capabilities/nifti/qwen_mm_plugins_nifti"
 qwen_mm_plugins_api = "src/capabilities/api/qwen_mm_plugins_api"
 qwen_mm_plugins_search = "src/capabilities/search/qwen_mm_plugins_search"
 qwen_mm_plugins_video_memory = "src/capabilities/video-memory/qwen_mm_plugins_video_memory"
+qwen_mm_plugins_omni_memory = "src/capabilities/omni-memory/qwen_mm_plugins_omni_memory"
 qwen_mm_plugins_video_edit = "src/capabilities/video-edit/qwen_mm_plugins_video_edit"
 qwen_mm_plugins_example = "src/capabilities/example/qwen_mm_plugins_example"
 qwen_mm_plugins_blender = "src/capabilities/blender/qwen_mm_plugins_blender"
@@ -111,7 +118,7 @@ qwen_mm_plugins_freecad = "src/capabilities/freecad/qwen_mm_plugins_freecad"
 shared = "src/shared"
 
 [tool.setuptools.packages.find]
-where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/video-edit", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src"]
+where = ["src/capabilities/core", "src/capabilities/nifti", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/video-edit", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src"]
 include = ["qwen_mm_plugins*", "shared*"]
 
 # The vendored live-session addons ship as package DATA (not importable subpackages — no __init__ on

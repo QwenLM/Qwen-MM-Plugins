@@ -1,0 +1,7 @@
+{
+  "name": "qwen-mm-plugins-omni-memory",
+  "version": "1.1.0",
+  "description": "Build and query audio-visual memory to track speakers, dialogue, sounds, and events across videos.",
+  "skills": "./skill",
+  "mcpServers": "./.mcp.json"
+}

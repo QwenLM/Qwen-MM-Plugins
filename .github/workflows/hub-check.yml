@@ -1,0 +1,57 @@
+name: Hub documentation check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hub-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # PR code is executed only here, with a read-only token and no secrets.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: upstream
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: QwenLM/qwen-mm-plugins-hub
+          ref: main
+          path: hub
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: hub/package-lock.json
+      - name: Install content export dependencies
+        run: python -m pip install -e './upstream[omni-memory]' -r hub/scripts/requirements-export.txt
+      - run: npm ci
+        working-directory: hub
+      - name: Build Hub documentation for the PR
+        working-directory: hub
+        env:
+          HUB_SOURCE_DIR: ${{ github.workspace }}/upstream
+          HUB_SOURCE_REF: pull/${{ github.event.pull_request.number }}/head
+          HUB_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha }}
+          HUB_PYTHON: python
+        run: npm run build
+      - name: Test generated content offline
+        working-directory: hub
+        run: |
+          npm test
+          python -m unittest discover -s tests -p 'test_*.py'
+      - name: Summarize the build
+        run: echo 'Hub build passed. [Published Hub](https://qwenlm.github.io/qwen-mm-plugins-hub/) — this check does not deploy PR changes.' >> "$GITHUB_STEP_SUMMARY"

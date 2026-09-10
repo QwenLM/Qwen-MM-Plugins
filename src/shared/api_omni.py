@@ -26,8 +26,9 @@ import mimetypes
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from shared.api_openai import is_url, resolve_openai_endpoint
+from shared.api_openai import expand_video_frames, is_url, resolve_openai_endpoint
 from shared.env import get_env
 
 log = logging.getLogger(__name__)
@@ -119,6 +120,16 @@ def _omni_timeout() -> int:
 
 
 # ── Content-part builders ────────────────────────────────────────────────────────────────────────
+def _source_suffix(source: str) -> str:
+    """Read the suffix from a local filename or a URL path, excluding host/query/fragment."""
+    return Path(urlsplit(source).path if is_url(source) else source).suffix.lower()
+
+
+def has_video_extension(source: str) -> bool:
+    """Classify a media path without probing it, including URLs used in dry-run previews."""
+    return _source_suffix(source) in _VIDEO_EXTS
+
+
 def b64_len(n_bytes: int) -> int:
     """Length of the base64 encoding of ``n_bytes`` raw bytes (4 chars per 3 bytes, padded)."""
     return 4 * ((n_bytes + 2) // 3)
@@ -161,11 +172,11 @@ def omni_video_part(source: str, *, fps: float = DEFAULT_OMNI_FPS, max_pixels: i
 
 
 def omni_frames_part(frames: list[str]) -> dict:
-    """The image-list video form: ``{"type": "video", "video": [<image>, …]}``.
+    """Build an internal frame list; chat clients expand it to ordered ``image_url`` parts.
 
-    Each entry is an image URL or a base64 ``data:`` URL of one frame; Omni treats the list as a video
-    but — unlike the file form — it carries NO audio, so pair it with ``omni_audio_part`` whenever the
-    source had a sound track (combining modalities in one request needs a Qwen3.5-Omni model).
+    Each entry is an image URL or a base64 ``data:`` URL of one frame. The list carries no audio,
+    so pair it with ``omni_audio_part`` whenever the source had a sound track and the model supports
+    combined image and audio input.
     Frames must be in chronological order; tell the model their timestamps in the text part, since the
     list itself has no time base.
     """
@@ -190,7 +201,7 @@ def omni_audio_part(source: str, *, audio_format: str | None = None) -> dict:
     ("Incorrect padding"), so ``QWEN_MM_AUDIO_RAW_B64=1`` sends the encoded bytes directly. Both
     forms go through the same local-file size guard.
     """
-    fmt = (audio_format or Path(source).suffix.lstrip(".") or "wav").lower()
+    fmt = (audio_format or _source_suffix(source).lstrip(".") or "wav").lower()
     if is_url(source):
         data = source
     elif (get_env("QWEN_MM_AUDIO_RAW_B64") or "").lower() in ("1", "true", "yes", "on"):
@@ -223,7 +234,7 @@ def inline_b64_bytes(messages: list[dict[str, Any]]) -> int:
 def has_video_stream(path: str) -> bool:
     """True if ``path`` carries a real (non-cover-art) video stream. URLs fall back to extension."""
     if is_url(path):
-        return Path(path.split("?", 1)[0]).suffix.lower() in _VIDEO_EXTS
+        return has_video_extension(path)
     try:
         from shared.video import probe_media
 
@@ -235,7 +246,7 @@ def has_video_stream(path: str) -> bool:
             return True
         return False
     except Exception:  # noqa: BLE001 — ffprobe missing/unreadable: fall back to the extension
-        return Path(path).suffix.lower() in _VIDEO_EXTS
+        return has_video_extension(path)
 
 
 def text_msg(role: str, text: str) -> dict:
@@ -273,9 +284,6 @@ def call_omni(
 
     model = resolve_omni_model(model)
 
-    if api_key in ("", "EMPTY") and "dashscope" in base_url:
-        raise RuntimeError("no API key — set DASHSCOPE_API_KEY (or pass api_key)")
-
     inline = inline_b64_bytes(messages)
     if inline > OMNI_MAX_B64_BYTES:
         raise PayloadTooLargeError(
@@ -287,6 +295,8 @@ def call_omni(
     body = {"modalities": ["text"]}
     if extra_body:
         body.update(extra_body)
+
+    messages = expand_video_frames(messages)
 
     retryable = (
         openai.RateLimitError,

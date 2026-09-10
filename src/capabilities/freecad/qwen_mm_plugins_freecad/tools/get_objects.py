@@ -4,25 +4,24 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class GetObjectsArgs(BaseModel):
-    doc_name: str = Field(description="The name of the document to get the objects from.")
+    doc_name: str
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_objects",
-    "description": (
-        "Get all objects in a document. You can use this tool to get the objects in a document "
-        "to see what you can check or edit. Returns a list of objects in the document and a "
-        "screenshot of the document."
-    ),
-    "args": GetObjectsArgs,
-}
+TOOL = {"name": "get_objects", "args": GetObjectsArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get all objects in a document. You can use this tool to get the objects in a document to see
+    what you can check or edit. Returns a list of objects in the document and a screenshot of the
+    document.
+
+    Args:
+        doc_name: The name of the document to get the objects from.
+    """
     from qwen_mm_plugins_freecad._responses import (
         add_screenshot_if_available,
         json_response,

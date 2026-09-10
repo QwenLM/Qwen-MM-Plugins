@@ -5,24 +5,26 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import image, require_dep, text
 
 
 class SwatchArgs(BaseModel):
-    color: str = Field(default="#3b82f6", description="Fill color: a hex string like '#3b82f6' or a name like 'red'.")
-    size: int = Field(default=128, description="Square side length in pixels (16-512).")
+    color: str = "#3b82f6"
+    size: int = 128
 
 
-TOOL: dict[str, Any] = {
-    "name": "make_swatch",
-    "description": "Generate a solid-color square PNG. Demonstrates returning an image content block.",
-    "args": SwatchArgs,
-}
+TOOL = {"name": "make_swatch", "args": SwatchArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Generate a solid-color square PNG. Demonstrates returning an image content block.
+
+    Args:
+        color: Fill color: a hex string like '#3b82f6' or a name like 'red'.
+        size: Square side length in pixels (16-512).
+    """
     if err := require_dep("PIL", "pillow"):
         return err
     from PIL import Image

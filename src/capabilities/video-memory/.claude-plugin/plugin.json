@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-video-memory",
-  "version": "1.0.3",
-  "description": "Qwen-MM-Plugins video-memory — hierarchical graph memory for long-video QA (Root → SuperEvent → MacroEvent → Subgraph with embedding search), exposed as an MCP server.",
+  "version": "1.1.0",
+  "description": "Build searchable, hierarchical memory of long videos to summarize content and locate events, text, and dialogue.",
   "skills": [
     "./skill"
   ],
@@ -10,7 +10,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "qwen-mm-plugins[video-memory] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-memory-v1.0.3",
+        "qwen-mm-plugins[video-memory] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-memory-v1.1.0",
         "qwen-mm-plugins-video-memory"
       ]
     }

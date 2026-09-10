@@ -1,4 +1,4 @@
-"""Qwen-MM-Plugins: unified MCP server for vision-language models.
+"""Qwen-MM-Plugins core: local file reading, visualization, and image operations.
 
 Server config: the auto-discovered tool registry (SPECS), the streaming transport hook, the
 system-tool table (SYSTEM_DEPS), and the --help caption (USAGE_NOTE) — the last two read by run_main.
@@ -8,11 +8,10 @@ from mcp_framework import build_registry
 
 from .stdio_streaming import streaming_stdio_server
 
-__version__ = "1.0.5"
+__version__ = "1.1.0"
 
-# Auto-discover tools from these subpackages. Cloud API tools live in the qwen-mm-plugins-api
-# (vision_chat/ocr/grounding/segmentation/transcribe_audio) and qwen-mm-plugins-search
-# (web_search/web_extractor/image_search) capabilities — core is local file I/O only.
+# Auto-discover tools from these subpackages. Dedicated model and search tools live in the api and
+# search capabilities. The framework's optional caption fallback also applies to core image results.
 SPECS, get_handler, list_tools = build_registry(__name__, ["readers", "visualizers", "producers"])
 
 # Streaming stdio transport — keeps peak memory near one frame for large read_video results.
@@ -44,10 +43,11 @@ SYSTEM_DEPS = [
     },
     {
         "label": "visualize: LaTeX (.tex)",
-        "extra": "system",  # no pip side — pdflatex is system-only (texlive)
+        "extra": "viz",
+        "probe": "pypdfium2",
         "tools": ["pdflatex"],
-        "hint": "apt install texlive-latex-base texlive-latex-extra",
-        "startup": False,  # system-only — report-only, don't nag every startup
+        "hint": "apt install texlive-latex-base texlive-latex-extra   |   brew install --cask basictex",
+        "startup": False,  # TeXLive is heavy — report-only, don't nag every startup
     },
     {
         "label": "visualize: HTML screenshot (Playwright browser)",

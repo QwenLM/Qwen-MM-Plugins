@@ -29,6 +29,7 @@ known-first-party = [
     "qwen_mm_plugins_api",
     "qwen_mm_plugins_search",
     "qwen_mm_plugins_video_memory",
+    "qwen_mm_plugins_omni_memory",
     "qwen_mm_plugins_video_edit",
     "qwen_mm_plugins_example",
     "qwen_mm_plugins_blender",

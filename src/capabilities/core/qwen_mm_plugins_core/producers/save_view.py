@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_core.renderers import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, labeled_image, parse_pages, source_to_pdf
 from shared.content import require_file, text_error
@@ -23,46 +23,33 @@ from shared.video import parse_time
 
 
 class SaveViewArgs(BaseModel):
-    file_path: str = Field(description="Absolute path to the source document or video.")
-    pages: Optional[str] = Field(
-        default=None,
-        description="Page range for documents, e.g. '1', '1-5', '2,4,7'. Default: '1'. Ignored for video.",
-    )
-    times: Optional[list[float | str]] = Field(
-        default=None,
-        description=(
-            "Timestamps for video frames — seconds (52, 58.5) or a clock string "
-            "('MM:SS'/'HH:MM:SS'). Required for video. Ignored for docs."
-        ),
-    )
-    dpi: Optional[int] = Field(
-        default=None,
-        description="Render resolution for document pages (default 200). Ignored for video (native).",
-    )
-    budget: Literal["small", "normal", "large"] = Field(
-        default="normal",
-        description="Resolution of the returned previews (the saved files are always full/native).",
-    )
-    output_dir: Optional[str] = Field(
-        default=None,
-        description="Directory to write the images to. Default: next to the source file.",
-    )
+    file_path: str
+    pages: Optional[str] = None
+    times: Optional[list[float | str]] = None
+    dpi: Optional[int] = None
+    budget: Literal["small", "normal", "large"] = "normal"
+    output_dir: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "save_view",
-    "description": (
-        "Materialize one or more views of a source as standalone image FILES and return their paths (+ previews). "
-        "For a document (PDF/SVG/XPS, and PPTX/DOCX/XLSX/LaTeX via conversion), pass `pages` (a range like "
-        "'1', '1-5', '2,4,7') to render those pages/slides; for a video, pass `times` (a list of seconds) for those "
-        "frames. Use this to turn document pages or video frames into image files you can then feed to "
-        "crop / draw_bbox / grounding / ocr / image_search / segmentation."
-    ),
-    "args": SaveViewArgs,
-}
+TOOL = {"name": "save_view", "args": SaveViewArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Materialize one or more views of a source as standalone image FILES and return their paths (+
+    previews). For a document (PDF/SVG/XPS, and PPTX/DOCX/XLSX/LaTeX via conversion), pass `pages`
+    (a range like '1', '1-5', '2,4,7') to render those pages/slides; for a video, pass `times` (a
+    list of seconds) for those frames. Use this to turn document pages or video frames into image
+    files you can then feed to crop / draw_bbox / grounding / ocr / image_search / segmentation.
+
+    Args:
+        file_path: Absolute path to the source document or video.
+        pages: Page range for documents, e.g. '1', '1-5', '2,4,7'. Default: '1'. Ignored for video.
+        times: Timestamps for video frames — seconds (52, 58.5) or a clock string
+            ('MM:SS'/'HH:MM:SS'). Required for video. Ignored for docs.
+        dpi: Render resolution for document pages (default 200). Ignored for video (native).
+        budget: Resolution of the returned previews (the saved files are always full/native).
+        output_dir: Directory to write the images to. Default: next to the source file.
+    """
     file_path = arguments.get("file_path", "")
     if err := require_file(file_path):
         return err

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 def _process_bbox(original_bbox: "list[float] | list[int] | None") -> "list[int] | None":
@@ -18,28 +18,23 @@ def _process_bbox(original_bbox: "list[float] | list[int] | None") -> "list[int]
 
 
 class GenerateHyper3DViaTextArgs(BaseModel):
-    text_prompt: str = Field(description="A short description of the desired model in **English**.")
-    bbox_condition: Optional[list[float]] = Field(
-        default=None,
-        description=(
-            "Optional. If given, it has to be a list of floats of length 3. Controls the ratio "
-            "between [Length, Width, Height] of the model."
-        ),
-    )
+    text_prompt: str
+    bbox_condition: Optional[list[float]] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "generate_hyper3d_model_via_text",
-    "description": (
-        "Generate 3D asset using Hyper3D by giving description of the desired asset, and import the "
-        "asset into Blender. The 3D asset has built-in materials. The generated model has a "
-        "normalized size, so re-scaling after generation can be useful."
-    ),
-    "args": GenerateHyper3DViaTextArgs,
-}
+TOOL = {"name": "generate_hyper3d_model_via_text", "args": GenerateHyper3DViaTextArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Generate 3D asset using Hyper3D by giving description of the desired asset, and import the asset
+    into Blender. The 3D asset has built-in materials. The generated model has a normalized size, so
+    re-scaling after generation can be useful.
+
+    Args:
+        text_prompt: A short description of the desired model in **English**.
+        bbox_condition: Optional. If given, it has to be a list of floats of length 3. Controls the
+            ratio between [Length, Width, Height] of the model.
+    """
     import json
 
     from qwen_mm_plugins_blender.loader import get_connection

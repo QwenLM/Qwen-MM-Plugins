@@ -10,6 +10,7 @@ import io
 from conftest import mcp_call
 
 from qwen_mm_plugins_core import get_handler, list_tools
+from qwen_mm_plugins_core.producers import crop, draw_bbox
 from qwen_mm_plugins_core.readers import image as image_reader
 from qwen_mm_plugins_core.readers import media_info
 from qwen_mm_plugins_core.readers import video as video_reader
@@ -104,6 +105,68 @@ def test_read_image_budget_changes_resolution(sample_image):
 def test_read_image_missing_file():
     content = image_reader.handle({"image_path": "/no/such/file.png"})
     assert _is_error(content)
+
+
+def _white_bbox(image):
+    return image.convert("L").point(lambda p: 255 if p > 128 else 0).getbbox()
+
+
+def test_read_image_uses_display_orientation(rotated_image):
+    # Stored 320x120 + EXIF Orientation 6. Every viewer shows a 120x320 portrait frame; the model
+    # has to see that frame too, not the sideways stored pixels (same contract as rotated video).
+    content = image_reader.handle({"image_path": rotated_image, "budget": "small"})
+    assert not _is_error(content)
+    assert "320x120" in content[0]["text"], f"summary reports the stored size: {content[0]['text']}"
+    frame = _decode_image(_blocks_by_type(content, "image")[0])
+    assert frame.size[1] > frame.size[0], f"portrait photo returned as a {frame.size} landscape frame"
+    box = _white_bbox(frame)
+    assert box, "white square not found in the returned image"
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    assert cx > frame.width / 2 and cy < frame.height / 2, f"square landed at {box}, expected top-right"
+
+
+def test_crop_uses_display_orientation(rotated_image, tmp_path):
+    # 0-1000 coordinates address the frame read_image showed the model. The subject sits in the
+    # top-right of the displayed photo; cropping there must return it, not stored-frame pixels.
+    from PIL import Image
+
+    out = tmp_path / "top_right.png"
+    content = crop.handle({"image_path": rotated_image, "box": [500, 0, 1000, 300], "output_path": str(out)})
+    assert not _is_error(content)
+    cropped = Image.open(out)
+    assert cropped.size == (60, 96), f"cropped the stored frame instead of the display frame: {cropped.size}"
+    assert _white_bbox(cropped), "crop of the displayed top-right corner misses the subject"
+
+
+def test_draw_bbox_uses_display_orientation(rotated_image, tmp_path):
+    from PIL import Image
+
+    out = tmp_path / "annotated.png"
+    content = draw_bbox.handle(
+        {"image_path": rotated_image, "bboxes": [{"bbox": [500, 0, 1000, 300]}], "output_path": str(out)}
+    )
+    assert not _is_error(content)
+    assert Image.open(out).size == (120, 320), "annotated the stored (sideways) frame"
+
+
+def test_read_image_tolerates_malformed_exif(tmp_path):
+    # An APP1 segment that announces EXIF but does not parse must not fail the read: the photo opens
+    # in its stored frame, exactly as a bare Image.open does. (JFIF density is set so PIL itself has
+    # no reason to touch the EXIF block at open time - the tag lookup here is the first parse.)
+    import struct
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (30, 20), (0, 0, 0)).save(buf, format="JPEG", dpi=(72, 72))
+    payload = b"Exif\x00\x00GARBAGE!" + b"\x00" * 20
+    app1 = b"\xff\xe1" + struct.pack(">H", len(payload) + 2) + payload
+    path = tmp_path / "malformed_exif.jpg"
+    path.write_bytes(buf.getvalue()[:2] + app1 + buf.getvalue()[2:])
+
+    content = image_reader.handle({"image_path": str(path), "budget": "small"})
+    assert not _is_error(content), content[0]["text"]
+    assert "20x30" in content[0]["text"], content[0]["text"]
 
 
 # ── read_video ───────────────────────────────────────────────────────
@@ -253,6 +316,29 @@ def test_visualize_dispatches_code(tmp_path):
 
 def test_visualize_missing_file():
     assert _is_error(visualize.handle({"file_path": "/no/such/file.pdf"}))
+
+
+# ── draw_bbox ────────────────────────────────────────────────────────
+
+
+def test_draw_bbox_accepts_reversed_corners(sample_image, tmp_path):
+    from PIL import Image
+
+    from qwen_mm_plugins_core.producers import draw_bbox
+
+    out = tmp_path / "annotated.png"
+    content = draw_bbox.handle(
+        {
+            "image_path": sample_image,
+            "bboxes": [{"bbox": [800, 100, 200, 400], "color": "#00FF00"}],
+            "output_path": str(out),
+        }
+    )
+    assert not _is_error(content)
+    with Image.open(out) as annotated:
+        assert annotated.size == (96, 64)
+        # Pixel (60, 6) lies on the normalized box's top edge.
+        assert annotated.getpixel((60, 6)) == (0, 255, 0), "box was not drawn where the corners describe"
 
 
 # ── server protocol (real MCP client over stdio) ─────────────────────

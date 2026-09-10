@@ -582,3 +582,60 @@ def test_omni_asr_reachable(sample_media_av):
     assert blocks and blocks[0]["type"] == "text"
     low = blocks[0]["text"].lower()
     assert not any(x in low for x in ("no api key", "no api-key", "invalid api", "connection error"))
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("https://bkt.oss-cn-hangzhou.aliyuncs.com/talk.wav?Expires=1757000000&Signature=abc%2Fdef", "wav"),
+        ("https://example.com/talk.MP3?download=other.wav#clip", "mp3"),
+        ("https://example.com/talk.wav#t=1", "wav"),
+        ("https://example.com/stream?file=talk.mp3", "wav"),
+        ("https://example.com?file=talk.mp3", "wav"),
+        ("https://example.com/#talk.mp3", "wav"),
+    ],
+)
+def test_omni_audio_part_uses_url_path(source, expected):
+    part = api_omni.omni_audio_part(source)
+    assert part["input_audio"] == {"data": source, "format": expected}
+
+
+def test_omni_audio_part_explicit_format_wins_over_url_suffix():
+    part = api_omni.omni_audio_part("https://example.com/a.wav?x=1#clip", audio_format="MP3")
+    assert part["input_audio"]["format"] == "mp3"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows filenames cannot contain ?")
+def test_omni_audio_part_preserves_local_filename_suffix(tmp_path):
+    source = tmp_path / "recording?part#1.mp3"
+    source.write_bytes(b"audio")
+    part = api_omni.omni_audio_part(str(source))
+    assert part["input_audio"]["format"] == "mp3"
+    assert base64.b64decode(part["input_audio"]["data"].split(",")[-1]) == b"audio"
+
+
+@pytest.mark.parametrize("tool", ["omni_asr", "omni_av_caption"])
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("https://example.com/clip.MP4?signature=abc#t=1", "video_url"),
+        ("https://example.com/clip.mp4#t=1", "video_url"),
+        ("https://example.com/audio.wav?filename=clip.mp4#t=1", "input_audio"),
+        ("https://media.mp4?signature=abc", "input_audio"),
+    ],
+)
+def test_remote_media_preview_matches_request(monkeypatch, tool, source, expected):
+    preview = _preview(oav.get_handler(tool)({"file_path": source, "dry_run": True}))
+    captured = {}
+
+    def fake_call(**kwargs):
+        captured.update(kwargs)
+        return {"text": "transcript"}
+
+    monkeypatch.setattr(_common, "call_omni_json", fake_call)
+    monkeypatch.setattr(_common, "call_omni", lambda **kwargs: (fake_call(**kwargs), None))
+    oav.get_handler(tool)({"file_path": source})
+    part = captured["messages"][0]["content"][0]
+    assert preview["messages"][0]["content"][0]["type"] == part["type"] == expected
+    returned_url = part["video_url"]["url"] if expected == "video_url" else part["input_audio"]["data"]
+    assert returned_url == source

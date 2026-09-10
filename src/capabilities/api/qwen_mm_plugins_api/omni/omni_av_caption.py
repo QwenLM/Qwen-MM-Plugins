@@ -5,44 +5,22 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ._common import run_omni, summary_block
 
 
 class OmniAvCaptionArgs(BaseModel):
-    file_path: str = Field(description="Absolute path to a local audio/video file, or an http(s)/OSS URL.")
-    fps: Optional[float] = Field(
-        default=None,
-        description="Video sampling fps (default 1.0). Higher = finer temporal detail, more tokens, and a "
-        "larger upload — which shortens the maximum uploadable length.",
-    )
-    max_pixels: Optional[int] = Field(default=None, description="Per-frame pixel budget (default 200704 ≈ 448²).")
-    model: Optional[str] = Field(
-        default=None,
-        description="Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.5-omni-plus.",
-    )
-    api_key: Optional[str] = Field(default=None, description="DashScope API key (defaults to DASHSCOPE_API_KEY).")
-    base_url: Optional[str] = Field(default=None, description="OpenAI-compatible base URL override.")
-    dry_run: bool = Field(default=False, description="Return the request that would be sent, without calling the API.")
+    file_path: str
+    fps: Optional[float] = None
+    max_pixels: Optional[int] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    dry_run: bool = False
 
 
-TOOL: dict[str, Any] = {
-    "name": "omni_av_caption",
-    "description": (
-        "Produce a detailed Markdown report of an audio/video using the Qwen-Omni model (reads both "
-        "the video frames and the audio track): a timestamped storyline, all visible text, a "
-        "speaker-attributed transcript, plus flags for content inappropriate for minors with a "
-        "compliance-alert table and a final safety assessment. "
-        "A local file is uploaded inline, where the endpoint caps a media item at 10 MB of base64, so "
-        "it is transcoded to fit — about 9 min at the default 1 fps / 448² sampling. A longer local video "
-        "is delivered another way automatically: uploaded to OSS when OSS_* is configured (no size "
-        "limit), else split into sampled frames plus its full audio track. Passing an http(s)/OSS URL "
-        "skips all of that (fetched and sampled server-side); for hour-scale video use video-memory. "
-        "Use dry_run=true to preview the request payload without calling."
-    ),
-    "args": OmniAvCaptionArgs,
-}
+TOOL = {"name": "omni_av_caption", "args": OmniAvCaptionArgs}
 
 _PROMPT = """
 Please provide a detailed description of the video. It must explicitly include three primary sections as defined below. Additionally, you are required to include two specific analytical sections to identify content that is inappropriate for minors.
@@ -106,6 +84,26 @@ Content: “<content>”
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     # The prompt asks for a Markdown report, not JSON — return the model's text as-is. The
     # five-section report runs long, so give it more headroom than the default 4096 tokens.
+    """Produce a detailed Markdown report of an audio/video using the Qwen-Omni model (reads both the
+    video frames and the audio track): a timestamped storyline, all visible text, a speaker-
+    attributed transcript, plus flags for content inappropriate for minors with a compliance-alert
+    table and a final safety assessment. A local file is uploaded inline, where the endpoint caps a
+    media item at 10 MB of base64, so it is transcoded to fit — about 9 min at the default 1 fps /
+    448² sampling. A longer local video is delivered another way automatically: uploaded to OSS when
+    OSS_* is configured (no size limit), else split into sampled frames plus its full audio track.
+    Passing an http(s)/OSS URL skips all of that (fetched and sampled server-side); for hour-scale
+    video use video-memory. Use dry_run=true to preview the request payload without calling.
+
+    Args:
+        file_path: Absolute path to a local audio/video file, or an http(s)/OSS URL.
+        fps: Video sampling fps (default 1.0). Higher = finer temporal detail, more tokens, and a
+            larger upload — which shortens the maximum uploadable length.
+        max_pixels: Per-frame pixel budget (default 200704 ≈ 448²).
+        model: Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.5-omni-plus.
+        api_key: API key override; otherwise selected by endpoint.
+        base_url: OpenAI-compatible base URL override.
+        dry_run: Return the request that would be sent, without calling the API.
+    """
     text, blocks = run_omni(arguments, prompt=_PROMPT, mode="auto", json_output=False, max_tokens=65536)
     if blocks is not None:
         return blocks

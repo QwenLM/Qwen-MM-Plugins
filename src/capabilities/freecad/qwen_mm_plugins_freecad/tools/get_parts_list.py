@@ -11,14 +11,11 @@ class GetPartsListArgs(BaseModel):
     pass
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_parts_list",
-    "description": "Get the list of parts in the parts library addon.",
-    "args": GetPartsListArgs,
-}
+TOOL = {"name": "get_parts_list", "args": GetPartsListArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get the list of parts in the parts library addon."""
     from qwen_mm_plugins_freecad._responses import json_response, text_response
     from qwen_mm_plugins_freecad.loader import get_connection
 

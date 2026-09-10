@@ -4,31 +4,25 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class SearchPolyhavenAssetsArgs(BaseModel):
-    asset_type: str = Field(
-        default="all",
-        description="Type of assets to search for (hdris, textures, models, all).",
-    )
-    categories: Optional[str] = Field(
-        default=None,
-        description="Optional comma-separated list of categories to filter by.",
-    )
+    asset_type: str = "all"
+    categories: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "search_polyhaven_assets",
-    "description": (
-        "Search for assets on Polyhaven with optional filtering. "
-        "Returns a list of matching assets with basic information."
-    ),
-    "args": SearchPolyhavenAssetsArgs,
-}
+TOOL = {"name": "search_polyhaven_assets", "args": SearchPolyhavenAssetsArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Search for assets on Polyhaven with optional filtering. Returns a list of matching assets with
+    basic information.
+
+    Args:
+        asset_type: Type of assets to search for (hdris, textures, models, all).
+        categories: Optional comma-separated list of categories to filter by.
+    """
     from qwen_mm_plugins_blender.loader import get_connection
 
     asset_type = arguments.get("asset_type", "all")

@@ -4,21 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ObjectInfoArgs(BaseModel):
-    object_name: str = Field(description="The name of the object to get information about.")
+    object_name: str
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_object_info",
-    "description": "Get detailed information about a specific object in the Blender scene.",
-    "args": ObjectInfoArgs,
-}
+TOOL = {"name": "get_object_info", "args": ObjectInfoArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get detailed information about a specific object in the Blender scene.
+
+    Args:
+        object_name: The name of the object to get information about.
+    """
     import json
 
     from qwen_mm_plugins_blender.loader import get_connection

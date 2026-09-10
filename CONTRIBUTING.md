@@ -16,8 +16,8 @@ python -m pip install -e '.[core]'
 ```
 
 See [local development](docs/en/local_development.md) for source and harness
-debugging, and [adding a capability](docs/en/how_to_add_new_capability.md) for
-the repository layout and registration steps.
+debugging, and [Add a new plugin](docs/en/how_to_add_new_capability.md) for
+implementation, installer registration, and the Hub contribution steps.
 
 ## Making changes
 
@@ -30,6 +30,11 @@ the repository layout and registration steps.
 - Do not commit API keys, credentials, private media, generated artifacts, or
   machine-specific configuration.
 - Add or update tests and documentation when behavior changes.
+- Keep tool and argument prose in handler docstrings and Skill instructions under the capability.
+  Maintain general English guides in `docs/en/`; the Hub imports them instead of keeping copies.
+- Contribute cookbooks and reviewed public case files to
+  [JJJYmmm/qwen-mm-plugins-hub](https://github.com/JJJYmmm/qwen-mm-plugins-hub), not this repository.
+  Follow [Hub authoring](docs/en/hub.md) for metadata, media paths, and publication order.
 
 ## Verification
 

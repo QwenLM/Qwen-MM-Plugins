@@ -131,15 +131,17 @@ These are the settings most users need for cloud capabilities. The
 
 | Variable | Used by |
 |---|---|
-| `DASHSCOPE_API_KEY` | Cloud media APIs, text-only image captions, generation, and video-memory builds |
+| `DASHSCOPE_API_KEY` | Cloud media APIs, text-only image captions, generation, and memory builds (video-memory, omni-memory) |
 | `SERPER_API_KEY` | Serper web search/extraction and all reverse-image search |
 | `TAVILY_API_KEY` | Tavily web search and extraction |
 | `EXA_API_KEY` | Exa web search and extraction |
+| `SERPLY_API_KEY` | Serply web search and extraction |
 
 Native `core` file reading needs no API key. Set values through the installer's **Configure** action,
 the shell environment, or `~/.qwen-mm-plugins/config`; environment variables take precedence.
 With `QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, text search uses the first configured key in
-this fixed order: Serper, Tavily, Exa. Setting it to `serper`, `tavily`, or `exa` pins that provider;
+this fixed order: Serper, Tavily, Exa, Serply. Setting it to `serper`, `tavily`, `exa`, or `serply` pins
+that provider;
 a missing key then raises an error instead of falling back.
 `image_search` always uses Serper Lens, independently of `QWEN_MM_SEARCH_BACKEND`, and raises an
 error when `SERPER_API_KEY` is unavailable.

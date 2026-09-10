@@ -7,104 +7,26 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import text_error
 from shared.env import get_env
 
 
 class WanT2vArgs(BaseModel):
-    mode: Literal["text_to_video", "first_frame", "first_last_frame"] = Field(
-        default="text_to_video",
-        description=(
-            "Generation mode. "
-            "text_to_video: pure text prompt → video (wan2.7-t2v). "
-            "first_frame: image + text prompt → video starting from that image (wan2.7-i2v). "
-            "first_last_frame: two images + text prompt → video interpolating between them (wan2.7-i2v)."
-        ),
-    )
-    prompt: str = Field(
-        description=(
-            "Video description prompt. Use cinematic language: "
-            "camera movements (pan, zoom, tracking), "
-            "temporal dynamics (gradually, suddenly, slowly), "
-            "style keywords (cinematic, documentary, vintage). "
-            "Avoid: multi-person interactions, complex gestures, text content. "
-            "Required for all modes."
-        )
-    )
-    first_frame_url: Optional[str] = Field(
-        default=None,
-        description=(
-            "URL of the first frame image. "
-            "Required for first_frame and first_last_frame modes. "
-            "Must be a publicly accessible HTTP/HTTPS URL."
-        ),
-    )
-    last_frame_url: Optional[str] = Field(
-        default=None,
-        description=(
-            "URL of the last frame image. "
-            "Required for first_last_frame mode only. "
-            "Must be a publicly accessible HTTP/HTTPS URL."
-        ),
-    )
-    size: str = Field(
-        default="1280*720",
-        description=(
-            "Video size preset. For text_to_video this selects the output size; for image-to-video "
-            "it selects only the resolution tier, while aspect ratio and exact dimensions follow the first frame. "
-            "Options: '1280*720' (16:9 landscape), "
-            "'720*1280' (9:16 portrait), '960*960' (square), and '1920*1080' (full HD). "
-            "The legacy '1024*1024' value is accepted and maps to Wan 2.7's 960*960 output. "
-            "Default: '1280*720'."
-        ),
-    )
-    duration: int = Field(
-        default=5,
-        description=(
-            "Video duration in seconds. Wan 2.7 accepts 2-15 seconds. Default: 5. Cost scales linearly with duration."
-        ),
-    )
-    negative_prompt: str = Field(
-        default="",
-        description=(
-            "Things to avoid in the video. Example: 'blurry, low quality, distorted faces, watermark'. Default: empty."
-        ),
-    )
-    prompt_extend: bool = Field(
-        default=True,
-        description=("Enable intelligent prompt rewriting for better video results. Default: true."),
-    )
-    seed: int = Field(
-        default=12345,
-        description=(
-            "Random seed for reproducibility [0, 2147483647]. Fix seed to compare prompt variations. Default: 12345."
-        ),
-    )
-    output_dir: Optional[str] = Field(
-        default=None,
-        description=(
-            "Directory to save the generated video. "
-            "If provided, downloads video to this directory. "
-            "If omitted, returns the video URL only (valid 24h)."
-        ),
-    )
+    mode: Literal["text_to_video", "first_frame", "first_last_frame"] = "text_to_video"
+    prompt: str
+    first_frame_url: Optional[str] = None
+    last_frame_url: Optional[str] = None
+    size: str = "1280*720"
+    duration: int = 5
+    negative_prompt: str = ""
+    prompt_extend: bool = True
+    seed: int = 12345
+    output_dir: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "wan_t2v",
-    "description": (
-        "Video generation using Wan models (wan2.7 series). "
-        "Supports multiple generation modes: "
-        "(1) text_to_video — generate video from text prompt only (wan2.7-t2v); "
-        "(2) first_frame — generate video from a first-frame image + text prompt (wan2.7-i2v); "
-        "(3) first_last_frame — generate video from first-frame + last-frame images + text prompt (wan2.7-i2v). "
-        "Synchronous call via DashScope SDK — blocks until video is ready. "
-        "Typical generation time: 30s-3min depending on duration and resolution."
-    ),
-    "args": WanT2vArgs,
-}
+TOOL = {"name": "wan_t2v", "args": WanT2vArgs}
 
 
 # Keep the public MCP `size` argument stable while translating it to Wan 2.7's
@@ -119,6 +41,40 @@ _WAN27_SIZE_PRESETS = {
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Video generation using Wan models (wan2.7 series). Supports multiple generation modes: (1)
+    text_to_video — generate video from text prompt only (wan2.7-t2v); (2) first_frame — generate
+    video from a first-frame image + text prompt (wan2.7-i2v); (3) first_last_frame — generate video
+    from first-frame + last-frame images + text prompt (wan2.7-i2v). Synchronous call via DashScope
+    SDK — blocks until video is ready. Typical generation time: 30s-3min depending on duration and
+    resolution.
+
+    Args:
+        mode: Generation mode. text_to_video: pure text prompt → video (wan2.7-t2v). first_frame:
+            image + text prompt → video starting from that image (wan2.7-i2v). first_last_frame: two
+            images + text prompt → video interpolating between them (wan2.7-i2v).
+        prompt: Video description prompt. Use cinematic language: camera movements (pan, zoom,
+            tracking), temporal dynamics (gradually, suddenly, slowly), style keywords (cinematic,
+            documentary, vintage). Avoid: multi-person interactions, complex gestures, text content.
+            Required for all modes.
+        first_frame_url: URL of the first frame image. Required for first_frame and first_last_frame
+            modes. Must be a publicly accessible HTTP/HTTPS URL.
+        last_frame_url: URL of the last frame image. Required for first_last_frame mode only. Must
+            be a publicly accessible HTTP/HTTPS URL.
+        size: Video size preset. For text_to_video this selects the output size; for image-to-video
+            it selects only the resolution tier, while aspect ratio and exact dimensions follow the
+            first frame. Options: '1280*720' (16:9 landscape), '720*1280' (9:16 portrait), '960*960'
+            (square), and '1920*1080' (full HD). The legacy '1024*1024' value is accepted and maps
+            to Wan 2.7's 960*960 output. Default: '1280*720'.
+        duration: Video duration in seconds. Wan 2.7 accepts 2-15 seconds. Default: 5. Cost scales
+            linearly with duration.
+        negative_prompt: Things to avoid in the video. Example: 'blurry, low quality, distorted
+            faces, watermark'. Default: empty.
+        prompt_extend: Enable intelligent prompt rewriting for better video results. Default: true.
+        seed: Random seed for reproducibility [0, 2147483647]. Fix seed to compare prompt
+            variations. Default: 12345.
+        output_dir: Directory to save the generated video. If provided, downloads video to this
+            directory. If omitted, returns the video URL only (valid 24h).
+    """
     prompt = arguments.get("prompt", "")
     if not prompt:
         return text_error("prompt is required")

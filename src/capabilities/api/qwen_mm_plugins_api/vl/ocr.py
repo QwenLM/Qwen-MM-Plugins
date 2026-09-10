@@ -4,40 +4,34 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class OcrArgs(BaseModel):
-    image_path: str = Field(description="Absolute path to the image file")
-    prompt: Optional[str] = Field(
-        default=None,
-        description=(
-            "Custom OCR instruction. Default extracts all visible text. "
-            "Override to focus on specific regions or languages."
-        ),
-    )
-    model: Optional[str] = Field(
-        default=None,
-        description="Model id override. Defaults to QWEN_MM_API_VL_MODEL, then 'qwen3.7-plus'.",
-    )
-    api_key: Optional[str] = Field(default=None, description="API key (defaults to DASHSCOPE_API_KEY)")
-    base_url: Optional[str] = Field(default=None, description="API base URL (defaults to DASHSCOPE_BASE_URL)")
+    image_path: str
+    prompt: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "ocr",
-    "description": (
-        "Extract text from an image using a vision-language model. "
-        "Supports printed text, handwriting, documents, signs, and more. "
-        "Returns the recognized text content."
-    ),
-    "args": OcrArgs,
-}
+TOOL = {"name": "ocr", "args": OcrArgs}
 
 DEFAULT_PROMPT = "请对这张图片进行OCR文字识别，提取图片中所有可见的文字内容，保持原始排版格式。"
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract text from an image using a vision-language model. Supports printed text, handwriting,
+    documents, signs, and more. Returns the recognized text content.
+
+    Args:
+        image_path: Absolute path to the image file
+        prompt: Custom OCR instruction. Default extracts all visible text. Override to focus on
+            specific regions or languages.
+        model: Model id override. Defaults to QWEN_MM_API_VL_MODEL, then 'qwen3.7-plus'.
+        api_key: API key override; otherwise selected by endpoint.
+        base_url: API base URL (defaults to DASHSCOPE_BASE_URL)
+    """
     from shared.api_openai import call_openai_chat, resolve_openai_endpoint, resolve_vl_model
     from shared.content import require_dep, require_file
 

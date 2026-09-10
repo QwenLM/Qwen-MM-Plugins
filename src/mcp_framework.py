@@ -8,13 +8,15 @@ A server is just its tool subpackages plus a thin `__init__.py` (`__version__`, 
   - run_main(import_name)                        — console / `python3 <dir>` entry dispatcher
   - tool_schema(model)                          — Pydantic model -> advertised inputSchema
 
-Each tool module exports `TOOL = {"name", "description", "args": <PydanticModel>}` + `handle(dict)`.
-Depends only on the `mcp` SDK (bundles FastMCP + pydantic) + anyio, so servers stay independent.
+Each tool module exports `TOOL = {"name", "args": <PydanticModel>}` + `handle(dict)`.
+The handler's Google-style docstring supplies all tool and argument descriptions.
+Depends on the `mcp` SDK (bundles FastMCP + pydantic), anyio and docstring-parser;
+servers stay independent of sibling capabilities.
 """
 
 from __future__ import annotations
 
-__version__ = "1.0.8"  # distribution/release-train version; plugin versions are per capability
+__version__ = "1.1.0"  # distribution/release-train version; plugin versions are per capability
 
 import asyncio
 import importlib
@@ -28,6 +30,7 @@ import shutil
 import signal
 import sys
 import warnings
+from copy import deepcopy
 from typing import Annotated
 
 import anyio
@@ -155,8 +158,34 @@ def build_registry(import_name: str, tool_packages: list[str]):
 
 def _spec_from_module(mod) -> ToolSpec:
     t = mod.TOOL
-    model = t["args"]
-    return ToolSpec(t["name"], t.get("description", ""), tool_schema(model), model, mod.handle)
+    description, model = _documented_args(t["name"], t["args"], mod.handle)
+    return ToolSpec(t["name"], description, tool_schema(model), model, mod.handle)
+
+
+def _documented_args(name, model, handle):
+    """Combine Google-style prose with Pydantic validation for both MCP and Hub."""
+    from docstring_parser import DocstringStyle, parse
+    from pydantic import create_model
+
+    doc = parse(inspect.getdoc(handle) or "", style=DocstringStyle.GOOGLE)
+    description = "\n\n".join(part for part in (doc.short_description, doc.long_description) if part)
+    if not description.strip():
+        raise ValueError(f"{name}: handle needs a public docstring")
+    for example in doc.examples:
+        description += "\n\nExamples:\n" + (example.description or example.snippet or "")
+    names = [param.arg_name for param in doc.params]
+    if len(names) != len(set(names)) or set(names) != set(model.model_fields):
+        raise ValueError(f"{name}: docstring Args must document each model field exactly once")
+    overrides = {}
+    for param in doc.params:
+        if not param.description:
+            raise ValueError(f"{name}: missing description for {param.arg_name}")
+        field = deepcopy(model.model_fields[param.arg_name])
+        field.description = param.description
+        overrides[param.arg_name] = (field.annotation, field)
+    if overrides:
+        model = create_model(f"{model.__name__}For_{name}", __base__=model, **overrides)
+    return description, model
 
 
 # Runtime: bridge specs onto FastMCP and run over stdio.

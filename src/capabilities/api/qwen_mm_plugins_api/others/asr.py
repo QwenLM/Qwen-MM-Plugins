@@ -17,7 +17,7 @@ import tempfile
 import urllib.request
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import text_error
 from shared.env import get_env
@@ -32,42 +32,17 @@ _rr = itertools.count()  # round-robin across self-hosted ASR endpoints
 
 
 class TranscribeAudioArgs(BaseModel):
-    file_path: str = Field(description="Absolute path to a local audio or video file.")
-    model: str = Field(
-        default="qwen3-asr-flash",
-        description="ASR model. Default: qwen3-asr-flash (supports local files, ≤5min per chunk).",
-    )
-    start_time: Optional[float] = Field(default=None, description="Start time in seconds. Default: 0.")
-    end_time: Optional[float] = Field(
-        default=None, description="End time in seconds. Default: end of file. Max range: 1 hour."
-    )
-    format: Literal["srt", "text", "json"] = Field(
-        default="srt",
-        description="Output format: srt (timestamped subtitles), text (plain text), json (raw).",
-    )
-    language: Optional[str] = Field(
-        default=None,
-        description=(
-            "Language hint for better accuracy (zh, en, ja, ko, fr, de, es, ru, …). Auto-detected if omitted."
-        ),
-    )
-    enable_itn: bool = Field(
-        default=True, description="Inverse text normalization: format numbers/dates/times. Default: true."
-    )
-    api_key: Optional[str] = Field(default=None, description="DashScope API key (defaults to DASHSCOPE_API_KEY).")
+    file_path: str
+    model: str = "qwen3-asr-flash"
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
+    format: Literal["srt", "text", "json"] = "srt"
+    language: Optional[str] = None
+    enable_itn: bool = True
+    api_key: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "transcribe_audio",
-    "description": (
-        "Transcribe speech from an audio or video file using DashScope Qwen3-ASR "
-        "(27 languages, automatic language detection). "
-        "Extracts audio automatically from video files. Supports time range selection. "
-        "Returns timestamped subtitles in SRT, plain text, or raw JSON format. "
-        "Long files are automatically chunked into segments for processing."
-    ),
-    "args": TranscribeAudioArgs,
-}
+TOOL = {"name": "transcribe_audio", "args": TranscribeAudioArgs}
 
 
 def _get_duration(file_path: str) -> float:
@@ -194,6 +169,22 @@ def _format_text(chunks: list[tuple[float, float, list[str]]]) -> str:
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Transcribe speech from an audio or video file using DashScope Qwen3-ASR (27 languages, automatic
+    language detection). Extracts audio automatically from video files. Supports time range
+    selection. Returns timestamped subtitles in SRT, plain text, or raw JSON format. Long files are
+    automatically chunked into segments for processing.
+
+    Args:
+        file_path: Absolute path to a local audio or video file.
+        model: ASR model. Default: qwen3-asr-flash (supports local files, ≤5min per chunk).
+        start_time: Start time in seconds. Default: 0.
+        end_time: End time in seconds. Default: end of file. Max range: 1 hour.
+        format: Output format: srt (timestamped subtitles), text (plain text), json (raw).
+        language: Language hint for better accuracy (zh, en, ja, ko, fr, de, es, ru, …). Auto-
+            detected if omitted.
+        enable_itn: Inverse text normalization: format numbers/dates/times. Default: true.
+        api_key: DashScope API key (defaults to DASHSCOPE_API_KEY).
+    """
     file_path = arguments.get("file_path", "")
     if not os.path.isfile(file_path):
         return text_error(f"file not found: {file_path}")

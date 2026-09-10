@@ -1,0 +1,1 @@
+"""Local NIfTI rendering implementation."""

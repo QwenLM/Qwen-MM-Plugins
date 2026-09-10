@@ -6,26 +6,25 @@ import os
 import tempfile
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import image
 
 
 class ViewportScreenshotArgs(BaseModel):
-    max_size: int = Field(default=1000, description="Maximum size in pixels for the largest dimension.")
+    max_size: int = 1000
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_viewport_screenshot",
-    "description": (
-        "Capture a screenshot of the current Blender 3D viewport. Use it to visually verify the "
-        "scene BEFORE making changes and AFTER executing code or importing assets."
-    ),
-    "args": ViewportScreenshotArgs,
-}
+TOOL = {"name": "get_viewport_screenshot", "args": ViewportScreenshotArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Capture a screenshot of the current Blender 3D viewport. Use it to visually verify the scene
+    BEFORE making changes and AFTER executing code or importing assets.
+
+    Args:
+        max_size: Maximum size in pixels for the largest dimension.
+    """
     from qwen_mm_plugins_blender.loader import get_connection
 
     max_size = int(arguments.get("max_size", 1000))

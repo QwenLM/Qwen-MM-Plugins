@@ -1,0 +1,8 @@
+{
+  "name": "qwen-mm-plugins-nifti",
+  "displayName": "Qwen MM Plugins NIfTI",
+  "version": "1.0.0",
+  "description": "Inspect NIfTI volumes with configurable slices, shared intensity ranges, and window presets.",
+  "skills": "./skill",
+  "mcp": ".mcp.json"
+}

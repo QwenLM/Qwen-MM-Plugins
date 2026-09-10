@@ -7,13 +7,24 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 
 def text(msg: str) -> dict[str, str]:
     """An MCP text content block: ``{"type": "text", "text": msg}``."""
     return {"type": "text", "text": msg}
+
+
+def json_text(value: Any) -> dict[str, str]:
+    """A text block holding ``value`` as indented JSON, non-ASCII kept.
+
+    The sibling of ``text``, for a tool whose answer is a record rather than a sentence. Returns the
+    one block, not a list, so composing several blocks reads the same either way.
+    """
+    return {"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2)}
 
 
 def image(data: bytes | str, mime: str = "image/jpeg") -> dict[str, str]:

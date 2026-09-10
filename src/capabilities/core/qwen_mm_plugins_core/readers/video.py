@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import image, text, text_error
 from shared.env import (
@@ -35,43 +35,34 @@ B64_BYTES_PER_PIXEL = 0.35
 
 
 class ReadVideoArgs(BaseModel):
-    video_path: str = Field(description="Absolute path to the video file")
-    fps: float = Field(
-        default=0,
-        description="Sampling FPS. 0 = auto-detect based on duration (recommended). Default: 0",
-    )
-    max_frames: int = Field(
-        default=MAX_TOTAL_FRAMES,
-        description=f"Maximum frames to extract (capped at {MAX_TOTAL_FRAMES}). Actual count may be lower or stripped depending on video length and response size limits.",
-    )
-    budget: Literal["small", "normal", "large"] = Field(
-        default="normal",
-        description="Per-frame resolution preset: small (~288×288), normal (~512×512), large (~1024×1024).",
-    )
-    start_time: Optional[float | str] = Field(
-        default=None,
-        description="Start time — seconds or a clock string ('MM:SS'/'HH:MM:SS'). Default: 0 (beginning).",
-    )
-    end_time: Optional[float | str] = Field(
-        default=None,
-        description="End time — seconds or a clock string ('MM:SS'/'HH:MM:SS'). Default: end of video.",
-    )
+    video_path: str
+    fps: float = 0
+    max_frames: int = MAX_TOTAL_FRAMES
+    budget: Literal["small", "normal", "large"] = "normal"
+    start_time: Optional[float | str] = None
+    end_time: Optional[float | str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "read_video",
-    "description": (
-        "Extract frames from a video file with dynamic resolution and FPS. "
-        "When fps=0 (default), automatically selects the best sampling rate based on video duration. "
-        "Resolution is automatically adjusted to fit the patch grid. "
-        "For full source properties (codec, bitrate, native fps, rotation, VFR, audio tracks) — and "
-        "before any clip/edit task — run media_info first."
-    ),
-    "args": ReadVideoArgs,
-}
+TOOL = {"name": "read_video", "args": ReadVideoArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract frames from a video file with dynamic resolution and FPS. When fps=0 (default),
+    automatically selects the best sampling rate based on video duration. Resolution is
+    automatically adjusted to fit the patch grid. For full source properties (codec, bitrate, native
+    fps, rotation, VFR, audio tracks) — and before any clip/edit task — run media_info first.
+
+    Args:
+        video_path: Absolute path to the video file
+        fps: Sampling FPS. 0 = auto-detect based on duration (recommended). Default: 0
+        max_frames: Maximum frames to extract (capped at 600). Actual count may be lower or stripped
+            depending on video length and response size limits.
+        budget: Per-frame resolution preset: small (~288×288), normal (~512×512), large
+            (~1024×1024).
+        start_time: Start time — seconds or a clock string ('MM:SS'/'HH:MM:SS'). Default: 0
+            (beginning).
+        end_time: End time — seconds or a clock string ('MM:SS'/'HH:MM:SS'). Default: end of video.
+    """
     video_path = arguments.get("video_path", "")
     if not os.path.isfile(video_path):
         return text_error(f"file not found: {video_path}")
