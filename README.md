@@ -50,6 +50,7 @@ than routing them through a separate API or ad-hoc shell commands.
 | Capability | Use case | Cookbook |
 |---|---|---|
 | `core` | Reads local images and video frames, and visualizes documents, code, data, 3D models and NIfTI volumes for the agent to inspect. Includes media metadata, cropping, bounding-box annotation and page/frame export. No API key in the default native mode. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/core/cookbook/) |
+| `nifti` | Inspects NIfTI volumes with configurable source-axis slices, volume-level intensity normalization, explicit window presets and effective-configuration reporting. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/nifti/cookbook/) |
 | `api` | Calls model services to understand images, video and audio: VL vision chat/OCR/grounding, Omni transcription/diarization/captioning/event analysis, dedicated ASR and SAM3 segmentation. Uses DashScope or compatible self-hosted services, configured per model family. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/api/cookbook/) |
 | `search` | For any model. Web search and page extraction with Serper, Exa, Tavily or Serply; reverse-image search uses Serper. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/search/cookbook/) |
 
@@ -90,6 +91,10 @@ MCP tool.
 
 `core` reads media at dynamic resolution, so manual resizing is normally unnecessary.
 NIfTI files stay local and are opened read-only; this visualization is not for clinical diagnosis.
+
+For configurable NIfTI viewing, use the dedicated `nifti` plugin's `nifti_visualize` tool.
+It defaults to three interior slices on source axis 2 with a shared volume-level P1–P99 range.
+Core's basic NIfTI preview keeps its existing orthogonal-center, per-slice defaults.
 
 ## Requirements and configuration
 

@@ -20,6 +20,16 @@
       "description": "Inspect local files and media, extract video frames, and crop or annotate images."
     },
     {
+      "name": "qwen-mm-plugins-nifti",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
+        "path": "src/capabilities/nifti",
+        "ref": "qwen-mm-plugins-nifti-v1.0.0"
+      },
+      "description": "Inspect NIfTI volumes with configurable slices, shared intensity ranges, and window presets."
+    },
+    {
       "name": "qwen-mm-plugins-api",
       "source": {
         "source": "git-subdir",

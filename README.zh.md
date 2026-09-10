@@ -47,6 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 | 能力 | 用途 | Cookbook |
 |---|---|---|
 | `core` | 读取本地图片和视频帧，可视化文档、代码、数据、3D 模型与 NIfTI 影像，供 agent 查看。提供媒体元数据、裁图、边框标注及页面/视频帧导出。默认原生模式无需 API key。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/core/cookbook/) |
+| `nifti` | 查看 NIfTI 体数据，支持自定义源体素轴切片、体级强度归一化、显式窗预设及实际配置回显。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/nifti/cookbook/) |
 | `api` | 调用模型服务理解图片、视频和音频：VL 视觉问答/OCR/目标定位，Omni 转写/说话人区分/内容描述/事件分析，以及专用 ASR 和 SAM3 分割。按模型类别配置 DashScope 或兼容的自托管服务。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/api/cookbook/) |
 | `search` | 面向任意模型。网页搜索和页面抽取支持 Serper、Exa、Tavily 或 Serply；反向图像搜索使用 Serper。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/search/cookbook/) |
 
@@ -84,6 +85,10 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 
 `core` 会以动态分辨率读取媒体，通常无需手动缩放。
 NIfTI 文件仅在本地以只读方式打开，不会上传；该可视化能力不用于临床诊断。
+
+需要自定义 NIfTI 查看方式时，使用独立 `nifti` 插件的 `nifti_visualize` 工具：
+默认沿源体素轴 2 选取三张内部切片，共用该体数据的 P1–P99 强度范围。
+Core 的基础 NIfTI 预览仍保留原有的正交中心切片和逐切片归一化默认行为。
 
 ## 依赖与配置
 

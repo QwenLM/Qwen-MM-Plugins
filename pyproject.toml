@@ -50,6 +50,7 @@ Issues = "https://github.com/QwenLM/Qwen-MM-Plugins/issues"
 # capability extras — compose via the profiles below
 api = ["dashscope", "httpx[socks]", "requests[socks]"]  # cloud media APIs + HTTP/SOCKS
 search = ["requests[socks]"]                    # Serper / Exa / Tavily / Serply + optional SOCKS proxy transport
+nifti = ["numpy<3", "pillow<12", "nibabel>=5,<6"]  # configurable NIfTI volume visualization
 # viz = the full visualize stack — a `core` install then renders every format out of the box.
 viz = [
     "pypdfium2", "resvg-py", "lxml",          # PDF raster+text (pypdfium2) / SVG (resvg) / DrawIO / LaTeX
@@ -72,10 +73,11 @@ freecad = []                                   # FreeCAD live-session MCP client
 # capabilities. `all` layers every server on top.
 core = ["qwen-mm-plugins[viz]"]
 memory = ["qwen-mm-plugins[core,video-memory,omni-memory]"]
-all = ["qwen-mm-plugins[core,api,search,video-memory,omni-memory,video-edit,blender,freecad]"]
+all = ["qwen-mm-plugins[core,nifti,api,search,video-memory,omni-memory,video-edit,blender,freecad]"]
 
 [project.scripts]
 qwen-mm-plugins-core = "qwen_mm_plugins_core.__main__:main"
+qwen-mm-plugins-nifti = "qwen_mm_plugins_nifti.__main__:main"
 qwen-mm-plugins-api = "qwen_mm_plugins_api.__main__:main"
 qwen-mm-plugins-search = "qwen_mm_plugins_search.__main__:main"
 qwen-mm-plugins-video-memory = "qwen_mm_plugins_video_memory.__main__:main"
@@ -104,6 +106,7 @@ py-modules = ["mcp_framework"]
 [tool.setuptools.package-dir]
 "" = "src"
 qwen_mm_plugins_core = "src/capabilities/core/qwen_mm_plugins_core"
+qwen_mm_plugins_nifti = "src/capabilities/nifti/qwen_mm_plugins_nifti"
 qwen_mm_plugins_api = "src/capabilities/api/qwen_mm_plugins_api"
 qwen_mm_plugins_search = "src/capabilities/search/qwen_mm_plugins_search"
 qwen_mm_plugins_video_memory = "src/capabilities/video-memory/qwen_mm_plugins_video_memory"
@@ -115,7 +118,7 @@ qwen_mm_plugins_freecad = "src/capabilities/freecad/qwen_mm_plugins_freecad"
 shared = "src/shared"
 
 [tool.setuptools.packages.find]
-where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/video-edit", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src"]
+where = ["src/capabilities/core", "src/capabilities/nifti", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/video-edit", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src"]
 include = ["qwen_mm_plugins*", "shared*"]
 
 # The vendored live-session addons ship as package DATA (not importable subpackages — no __init__ on

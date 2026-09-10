@@ -7,6 +7,7 @@
     "core": "1.1.0",
     "edu-agent": "1.1.0",
     "freecad": "1.1.0",
+    "nifti": "1.0.0",
     "omni-memory": "1.1.0",
     "search": "1.1.0",
     "video-edit": "1.1.0",

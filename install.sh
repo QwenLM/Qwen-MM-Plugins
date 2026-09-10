@@ -27,11 +27,12 @@ QMP_DRY=0
 LOCAL_REPO_ROOT=''
 
 # ── capability catalog — the ONE place capabilities are declared; every menu iterates this ──
-CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent)
+CAP_ITEMS=(core nifti api search video-memory omni-memory video-edit blender freecad edu-agent)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.1.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0)
+CAP_VERSIONS=(1.1.0 1.0.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0 1.1.0)
 CAP_DESC=("Inspect local files and media, extract video frames, and crop or annotate images."
+          "Inspect NIfTI volumes with configurable slices, shared intensity ranges, and window presets."
           "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription."
           "Search the web, read pages, and identify objects or places with reverse-image search."
           "Build searchable, hierarchical memory of long videos to summarize content and locate events, text, and dialogue."
@@ -1149,12 +1150,14 @@ menu_pick() {
 _multi_rows() {
   local cur=$1 i box ptr num body clr='' cols desc_w name_w desc name
   [ "$cur" != -1 ] && clr='\033[2K'
-  cols=$(term_cols); desc_w=$(( cols - 26 ))
+  cols=$(term_cols)
   for ((i = 0; i < ${#MP_ITEMS[@]}; i++)); do
     num=$((i + 1)); [ "$i" = "$cur" ] && ptr="${CB}${CC}❯${C0}" || ptr=' '
-    if [ "$cols" -lt 27 ]; then
+    # Account for two-digit menu indices as the capability catalog grows.
+    desc_w=$(( cols - 25 - ${#num} ))
+    if [ "$desc_w" -lt 1 ]; then
       # At very small widths omit the description and spend the remaining columns on the name.
-      name_w=$(( cols - 12 )); [ "$name_w" -lt 1 ] && name_w=1
+      name_w=$(( cols - 11 - ${#num} )); [ "$name_w" -lt 1 ] && name_w=1
       name=$(_fit "${MP_ITEMS[$i]}" "$name_w")
       if [ "${MP_DIS[$i]}" = 1 ]; then
         body=$(printf '%b[-] %d) %s%b' "$CD" "$num" "$name" "$C0")
