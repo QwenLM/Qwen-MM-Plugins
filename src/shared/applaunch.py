@@ -101,9 +101,9 @@ def resolve_binary(candidates: list[str], explicit: str | None = None) -> str | 
 def auto_install_enabled() -> bool:
     """Whether a missing app may be auto-downloaded. On by default; set QWEN_MM_NO_AUTO_INSTALL=1 on a
     managed box that provisions the binaries itself (or to avoid a large download)."""
-    from .env import get_env
+    from .env import get_bool_env
 
-    return (get_env("QWEN_MM_NO_AUTO_INSTALL") or "").lower() not in ("1", "true", "yes", "on")
+    return not get_bool_env("QWEN_MM_NO_AUTO_INSTALL")
 
 
 def apps_cache_dir() -> Path:
@@ -249,9 +249,9 @@ def run_foreground(cmd: list[str], *, env: dict | None = None) -> int:
 
 def autolaunch_enabled() -> bool:
     """Whether QWEN_MM_AUTOLAUNCH opts into launching the app on first connect."""
-    from .env import get_env
+    from .env import get_bool_env
 
-    return (get_env("QWEN_MM_AUTOLAUNCH") or "").lower() in ("1", "true", "yes", "on")
+    return get_bool_env("QWEN_MM_AUTOLAUNCH")
 
 
 def is_local_host(host: str) -> bool:

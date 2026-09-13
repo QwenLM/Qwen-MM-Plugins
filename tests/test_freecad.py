@@ -11,6 +11,7 @@ import os
 import threading
 import time
 
+import pytest
 from conftest import REPO_ROOT, mcp_call
 
 import qwen_mm_plugins_freecad as m
@@ -54,6 +55,16 @@ def test_every_tool_has_schema_and_handler():
 
 def test_unknown_tool_has_no_handler():
     assert m.get_handler("does_not_exist") is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [("1", True), ("on", True), (" TRUE ", True), ("0", False), ("off", False)]
+)
+def test_only_text_feedback_reads_boolean_spellings(monkeypatch, value, expected):
+    import qwen_mm_plugins_freecad.loader as loader
+
+    monkeypatch.setenv("FREECAD_ONLY_TEXT_FEEDBACK", value)
+    assert loader.only_text_feedback() is expected
 
 
 # ── graceful degradation (no live FreeCAD) ───────────────────────────

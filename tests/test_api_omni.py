@@ -447,12 +447,13 @@ def test_audio_data_url_omits_the_mime_prefix(tmp_path):
     assert part["input_audio"]["format"] == "wav"
 
 
-def test_audio_raw_b64_optin_strips_the_wrapper(tmp_path, monkeypatch):
+@pytest.mark.parametrize("value", ["1", " on "])
+def test_audio_raw_b64_optin_strips_the_wrapper(tmp_path, monkeypatch, value):
     # QWEN_MM_AUDIO_RAW_B64 targets OpenAI-spec servers (e.g. vLLM), whose `input_audio.data`
     # is RAW base64 — the data-URL wrapper fails their decoding with "Incorrect padding"
     wav = tmp_path / "a.wav"
     wav.write_bytes(b"RIFF")
-    monkeypatch.setenv("QWEN_MM_AUDIO_RAW_B64", "1")
+    monkeypatch.setenv("QWEN_MM_AUDIO_RAW_B64", value)
     part = api_omni.omni_audio_part(str(wav))
     assert not part["input_audio"]["data"].startswith("data:")
     assert base64.b64decode(part["input_audio"]["data"]) == b"RIFF"

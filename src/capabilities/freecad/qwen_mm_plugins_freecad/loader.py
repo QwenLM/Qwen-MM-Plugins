@@ -11,7 +11,7 @@ import logging
 import threading
 import xmlrpc.client
 
-from shared.env import get_env
+from shared.env import get_bool_env, get_env
 
 log = logging.getLogger("qwen-mm-plugins-freecad")
 
@@ -102,7 +102,7 @@ class FreeCADConnection:
 
 def only_text_feedback() -> bool:
     """When FREECAD_ONLY_TEXT_FEEDBACK is set, tools skip the attached screenshot."""
-    return (get_env("FREECAD_ONLY_TEXT_FEEDBACK") or "").lower() in ("1", "true", "yes")
+    return get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
 
 
 _autolaunch_tried = False
