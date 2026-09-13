@@ -32,9 +32,16 @@ def test_auto_install_on_by_default(monkeypatch):
     assert applaunch.auto_install_enabled() is True
 
 
-def test_auto_install_opt_out(monkeypatch):
-    monkeypatch.setenv("QWEN_MM_NO_AUTO_INSTALL", "1")
+@pytest.mark.parametrize("value", ["1", "on", " true "])
+def test_auto_install_opt_out(monkeypatch, value):
+    monkeypatch.setenv("QWEN_MM_NO_AUTO_INSTALL", value)
     assert applaunch.auto_install_enabled() is False
+
+
+@pytest.mark.parametrize(("value", "expected"), [("1", True), (" On ", True), ("0", False), ("off", False)])
+def test_autolaunch_reads_boolean_spellings(monkeypatch, value, expected):
+    monkeypatch.setenv("QWEN_MM_AUTOLAUNCH", value)
+    assert applaunch.autolaunch_enabled() is expected
 
 
 def test_download_file_verifies_sha256_and_cleans_mismatch(monkeypatch, tmp_path):
