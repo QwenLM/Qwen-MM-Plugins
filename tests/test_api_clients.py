@@ -262,6 +262,23 @@ def test_clients_send_video_frames_as_ordered_images(monkeypatch, streaming, bas
     assert parts[3]["type"] == "text"
 
 
+def test_call_omni_enables_temporary_oss_resolution(monkeypatch):
+    chunk = SimpleNamespace(usage=None, choices=[SimpleNamespace(delta=SimpleNamespace(content="ok"))])
+    holder = _install_fake_openai(monkeypatch, lambda _: [chunk])
+    messages = [
+        {
+            "role": "user",
+            "content": [{"type": "video_url", "video_url": {"url": "oss://temporary/clip.mp4"}}],
+        }
+    ]
+
+    text, _ = omni.call_omni(base_url=oa.DEFAULT_DASHSCOPE_BASE_URL, api_key="key", messages=messages)
+
+    assert text == "ok"
+    sent = holder["client"].chat.completions.seen[0]
+    assert sent["extra_headers"] == {"X-DashScope-OssResourceResolve": "enable"}
+
+
 def test_call_openai_chat_retries_transient_then_succeeds(monkeypatch):
     import openai
 

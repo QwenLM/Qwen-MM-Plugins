@@ -1,6 +1,6 @@
 ---
 name: qwen-mm-plugins-api
-description: "Understand images, video, and audio using hosted or self-hosted model services through MCP tools. Use for visual questions, OCR, object grounding, speech transcription, speaker diarization, timestamped captions, event localization/counting, music captioning, or segmentation. Includes VL and Omni model tools, transcribe_audio (Qwen3-ASR), and segmentation (SAM3)."
+description: "Understand images, video, and audio using hosted or self-hosted model services through MCP tools. Use for visual questions, OCR, object grounding, speech transcription, speaker diarization, timestamped captions, event localization/counting, music captioning, or segmentation. Includes VL and Omni model tools, general-purpose Omni chat, transcribe_audio (Qwen3-ASR), and segmentation (SAM3)."
 ---
 
 # Media Understanding
@@ -8,7 +8,7 @@ description: "Understand images, video, and audio using hosted or self-hosted mo
 Use `qwen-mm-plugins-api` to understand media through configured model services. The tools are grouped by model family:
 
 - **VL model** (Qwen-VL, OpenAI-compatible endpoint): `vision_chat`, `ocr`, `grounding`.
-- **Omni model** (Qwen-Omni — the AV tools combine video frames and audio; the ASR/music tools focus on audio): `omni_asr`, `omni_asr_timestamped`, `omni_multi_speaker_asr`, `omni_av_caption`, `omni_av_grounding`, `omni_av_counting`, `omni_music_caption`.
+- **Omni model** (Qwen-Omni — combines video frames and audio): `perceive_media`, `omni_asr`, `omni_asr_timestamped`, `omni_multi_speaker_asr`, `omni_av_caption`, `omni_av_grounding`, `omni_av_counting`, `omni_music_caption`.
 - **Other services**: `transcribe_audio` (Qwen3-ASR), `segmentation` (a SAM3 server).
 
 Check the `qwen-mm-plugins-api` tools in your tool list for full schemas and parameters. For file reading, rendering, or metadata inspection, use `core`.
@@ -21,8 +21,12 @@ Check the `qwen-mm-plugins-api` tools in your tool list for full schemas and par
 - **Extract text** from an image → `ocr`
 - **Detect/locate objects** in an image (bounding boxes, spatial WHERE) → `grounding`. It sends EXIF-corrected pixels, so returned 0–1000 boxes address the displayed image and can be passed directly to core `crop`/`draw_bbox` or search `image_search`.
 
-**Omni model** (audio + video together, temporal reasoning; clips up to a few minutes):
+**Omni model** (audio + video together, temporal reasoning):
 
+- **Prefer general-purpose chat** → `perceive_media`. Pass the actual objective in `prompt`; use
+  `audio`, `video`, or `auto` according to the evidence needed.
+- Treat the atomic tools below as references. Use one when its fixed structured output is explicitly
+  needed rather than merely because its name resembles the task.
 - **Transcribe speech, plain text** → `omni_asr` (one continuous string, no timestamps)
 - **Transcribe with timestamps** → `omni_asr_timestamped` (`granularity` = `sentence` or `word`; also returns SRT)
 - **Who said what** → `omni_multi_speaker_asr` (diarization: speaker labels + timestamps + SRT; pass `num_speakers` if known)
@@ -55,18 +59,18 @@ are sent as ordered images; direct video URLs require video support from the mod
 
 **Segmentation**: needs a SAM3 server (`SAM3_SERVER_URL`). To stand one up, run `references/launch_sam3_server.py` (multi-GPU HTTP server; see its header for prerequisites).
 
-**Omni tools**: every tool takes a local audio/video `file_path` (or an http/OSS URL) and supports `dry_run=true`. The AV tools (`caption`/`grounding`/`counting`) accept `fps` and `max_pixels` to trade temporal/spatial detail against token cost — raise `fps` only for fast/frequent events; keep `max_pixels` at the default (≈448²) unless fine detail matters. The ASR family extracts and sends only the audio track from local video; remote video URLs are passed through for server-side handling. Timestamps are seconds from the start. For ASR, pass `language` (e.g. `zh`, `en`) as a hint when known. Model precedence is explicit `model` → `QWEN_MM_API_OMNI_MODEL` → `qwen3.5-omni-plus`.
+**Omni tools**: every tool takes a local audio/video `file_path` (or an http/OSS URL) and supports `dry_run=true`. Prefer `perceive_media`; it sends the supplied prompt unchanged. For long audio or video, call it repeatedly over different local `start_time`/`end_time` ranges: use a broad pass to find likely intervals, then inspect those intervals more closely, with overlap when an event may cross a boundary. A selected interval is rebased to 0 for model-visible timestamps; add `start_time` to map a returned timestamp back to the original file. Ranged results include the requested and actually processed intervals, including whether the end was clamped to the media duration. The AV tools accept `fps` and `max_pixels` to trade temporal/spatial detail against token cost — raise `fps` only for fast/frequent events; keep `max_pixels` at the default (≈448²) unless fine detail matters. The ASR family extracts and sends only the audio track from local video; remote video URLs are passed through for server-side handling. Timestamps are seconds from the start. For ASR, pass `language` (e.g. `zh`, `en`) as a hint when known. Model precedence is explicit `model` → `QWEN_MM_API_OMNI_MODEL` → `qwen3.5-omni-plus`.
 
-**Video delivery**: VL uploads local video when OSS is configured and the model's duration limit allows it; otherwise it samples inline frames. Omni first fits local video into an inline media item, then uses OSS or sampled frames plus audio if needed. Video over the model's server-side duration limit uses local sampling. Very long audio can still exceed the inline budget. OSS requires `OSS_AK`/`OSS_SK`/`OSS_ENDPOINT`/`OSS_BUCKET` and the `oss` extra.
+**Video delivery**: VL uploads local video when user-managed OSS is configured and the model's duration limit allows it; otherwise it samples inline frames. For Omni, a local audio/video file over the base64 limit is first uploaded to DashScope's model-bound temporary OSS when using a DashScope endpoint (up to 1 GiB; currently retained for about 48 hours). If that is unavailable, video falls back to inline fitting, optional user-managed OSS, or sampled frames plus audio. Video over the model's server-side duration limit uses local sampling. User-managed OSS requires `OSS_AK`/`OSS_SK`/`OSS_ENDPOINT`/`OSS_BUCKET` and the `oss` extra; temporary DashScope OSS only requires the same DashScope API key and model used for inference.
 
 ## Choosing between the families (do NOT overlap)
 
-- **`transcribe_audio` vs `omni_asr*`**: `transcribe_audio` uses the dedicated Qwen3-ASR service and chunks long files. Pick the `omni_asr*` tools for multi-speaker diarization or controllable word/sentence granularity. Local video inputs to the ASR tools are reduced to their audio track; use the Omni AV tools when visual context matters.
+- **`transcribe_audio` vs `omni_asr*`**: `transcribe_audio` uses the dedicated Qwen3-ASR service and chunks long files. Prefer `perceive_media` for Omni tasks; use `omni_asr*` when a fixed transcript/SRT/diarization schema is explicitly required. Local video inputs to the ASR tools are reduced to their audio track.
 - **`grounding` (spatial, WHERE) vs `omni_av_grounding` (temporal, WHEN)**: `grounding` draws a bounding box in a single image; `omni_av_grounding` locates a span in time. Different axes — don't substitute one for the other.
-- **`vision_chat` vs the Omni AV tools**: `vision_chat` is a general VLM over images/video frames (no audio); the Omni AV tools combine frames with the audio track for timestamped descriptions, localization, or counting. Use Omni when audio or precise timing matters.
+- **`vision_chat` vs Omni**: `vision_chat` handles images/video frames without audio; prefer `perceive_media` when audio or joint audio-video evidence matters.
 
 ## Relationship to Other Capabilities (do NOT overlap)
 
 - **Read/visualize local files** (images, video frames, PDF, Office, 3D, ...) → `qwen-mm-plugins-core` (`read_image`/`read_video`/`visualize`/`crop`/`draw_bbox`/`save_view`).
 - **Confirm a fact or identify an entity** (reverse image / web) → `qwen-mm-plugins-search` (`image_search`/`web_search`/`web_extractor`).
-- **Long videos (30 min+)**: for whole-video QA over long content, use the `qwen-mm-plugins-video-memory` skill (hierarchical graph memory) instead of feeding the entire file to these per-call tools.
+- **Long videos (30 min+)**: use repeated, focused `perceive_media` calls for targeted analysis; use `qwen-mm-plugins-video-memory` when reusable whole-video memory or broad retrieval is needed.

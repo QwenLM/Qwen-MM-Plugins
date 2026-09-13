@@ -192,6 +192,13 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "override the DashScope OpenAI-compatible base URL",
     ),
     (
+        "DASHSCOPE_UPLOAD_POLICY_URL",
+        False,
+        "Media APIs & endpoints",
+        "inferred for official DashScope hosts",
+        "override the model-bound temporary OSS policy endpoint used for oversized Omni media",
+    ),
+    (
         "QWEN_MM_API_VL_MODEL",
         False,
         "Media APIs & endpoints",

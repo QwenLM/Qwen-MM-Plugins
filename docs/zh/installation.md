@@ -132,6 +132,13 @@ wsl --install -d Ubuntu
 
 本地 `core` 文件读取无需 API key。可通过安装器的 **Configure**、shell 环境变量或
 `~/.qwen-mm-plugins/config` 设置；环境变量优先。
+
+使用官方 DashScope 端点调用 Omni 工具时，超过 10 MB base64 限额的本地音视频会优先
+上传到与当前模型、API key 绑定的百炼临时 OSS（单文件最大 1 GiB，目前约保留 48 小时），
+随后以 `oss://` 地址请求模型；无需配置 `OSS_AK`、`OSS_SK`、`OSS_ENDPOINT` 或
+`OSS_BUCKET`。非官方兼容网关如支持该流程，可通过 `DASHSCOPE_UPLOAD_POLICY_URL` 指定完整的
+临时上传凭证接口。临时上传不可用或失败时，仍按原有规则转码、使用用户自管 OSS 或抽帧降级。
+
 未设置 `QWEN_MM_SEARCH_BACKEND` 或设为 `auto` 时，文本搜索按固定顺序选择第一个已配置
 key 的后端：Serper、Tavily、Exa、Serply。设为 `serper`、`tavily`、`exa` 或 `serply` 会固定使用该后端；
 如果缺少对应 key，则直接报错，不会回退。

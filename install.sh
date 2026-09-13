@@ -72,6 +72,7 @@ CONFIG_SPEC=(
   "OPENROUTER_API_KEY|1|services||OpenAI-compatible calls to openrouter.ai"
   "MINIMAX_API_KEY|1|services||MiniMax text-to-speech generation"
   "DASHSCOPE_BASE_URL|0|services|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
+  "DASHSCOPE_UPLOAD_POLICY_URL|0|services|inferred for official DashScope hosts|override the model-bound temporary OSS policy endpoint used for oversized Omni media"
   "QWEN_MM_API_VL_MODEL|0|services|qwen3.7-plus|default VL model for vision_chat, OCR, grounding, and text-only image captions"
   "QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|default Omni model for audio/video understanding tools, omni-memory, and Omni ChatCut"
   "SAM3_SERVER_URL|0|services||segmentation SAM3 server URL"

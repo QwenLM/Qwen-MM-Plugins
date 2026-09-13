@@ -139,6 +139,10 @@ These are the settings most users need for cloud capabilities. The
 
 Native `core` file reading needs no API key. Set values through the installer's **Configure** action,
 the shell environment, or `~/.qwen-mm-plugins/config`; environment variables take precedence.
+With the official DashScope endpoint, oversized local media used by Omni is uploaded to temporary OSS
+when possible, without requiring user-managed OSS credentials. Existing fallback behavior remains
+available when temporary upload cannot be used.
+
 With `QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, text search uses the first configured key in
 this fixed order: Serper, Tavily, Exa, Serply. Setting it to `serper`, `tavily`, `exa`, or `serply` pins
 that provider;
