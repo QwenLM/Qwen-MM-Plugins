@@ -176,6 +176,8 @@ def parse_pages(pages_str: str, total_pages: int) -> list[int]:
     """Parse a page range string into 0-based page indices.
 
     Accepts: "1-5", "3", "1,3,5-8".  Input is 1-based, output is 0-based.
+    A blank spec means "no selection" and yields the default page window;
+    a non-blank spec that matches no page raises ValueError.
     """
     result = []
     for part in pages_str.split(","):
@@ -191,4 +193,8 @@ def parse_pages(pages_str: str, total_pages: int) -> list[int]:
             idx = int(part.strip()) - 1
             if 0 <= idx < total_pages:
                 result.append(idx)
-    return sorted(set(result)) if result else list(range(min(total_pages, DEFAULT_MAX_PAGES)))
+    if result:
+        return sorted(set(result))
+    if pages_str.strip():
+        raise ValueError(f"no pages selected from {pages_str!r} (document has {total_pages} page(s))")
+    return list(range(min(total_pages, DEFAULT_MAX_PAGES)))
