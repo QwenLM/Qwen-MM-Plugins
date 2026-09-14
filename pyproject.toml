@@ -75,11 +75,12 @@ example = []                                   # template capability — uses th
 oss = ["oss2"]                                 # optional: upload large media to OSS for a signed URL (memory-build clip upload, api oversized-video upload)
 blender = []                                   # Blender live-session MCP client (stdlib socket; needs a running Blender + addon)
 freecad = []                                   # FreeCAD live-session MCP client (stdlib xml-rpc; needs a running FreeCAD + addon)
+omni-skill-creator = ["openai", "dashscope", "httpx", "numpy<3", "pyyaml"]  # video-to-skill creator: native AV perception + grounding + skill extraction (numpy: MFCC audio dedup; pyyaml: SKILL.md frontmatter)
 # profiles — install ONE. `core` is now local-only (no API key); cloud tools are the api/search
 # capabilities. `all` layers every server on top.
 core = ["qwen-mm-plugins[viz]"]
 memory = ["qwen-mm-plugins[core,video-memory,omni-memory]"]
-all = ["qwen-mm-plugins[core,api,search,video-memory,omni-memory,omni-video2note,video-edit,omni-chatcut,blender,freecad]"]
+all = ["qwen-mm-plugins[core,api,search,video-memory,omni-memory,omni-video2note,video-edit,omni-chatcut,blender,freecad,omni-skill-creator]"]
 
 [project.scripts]
 qwen-mm-plugins-core = "qwen_mm_plugins_core.__main__:main"
@@ -93,6 +94,7 @@ qwen-mm-plugins-omni-chatcut = "qwen_mm_plugins_omni_chatcut.__main__:main"
 qwen-mm-plugins-example = "qwen_mm_plugins_example.__main__:main"
 qwen-mm-plugins-blender = "qwen_mm_plugins_blender.__main__:main"
 qwen-mm-plugins-freecad = "qwen_mm_plugins_freecad.__main__:main"
+qwen-mm-plugins-omni-skill-creator = "qwen_mm_plugins_omni_skill_creator.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -123,10 +125,11 @@ qwen_mm_plugins_omni_chatcut = "src/capabilities/omni-chatcut/qwen_mm_plugins_om
 qwen_mm_plugins_example = "src/capabilities/example/qwen_mm_plugins_example"
 qwen_mm_plugins_blender = "src/capabilities/blender/qwen_mm_plugins_blender"
 qwen_mm_plugins_freecad = "src/capabilities/freecad/qwen_mm_plugins_freecad"
+qwen_mm_plugins_omni_skill_creator = "src/capabilities/omni-skill-creator/qwen_mm_plugins_omni_skill_creator"
 shared = "src/shared"
 
 [tool.setuptools.packages.find]
-where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/omni-video2note", "src/capabilities/video-edit", "src/capabilities/omni-chatcut", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src"]
+where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/omni-video2note", "src/capabilities/video-edit", "src/capabilities/omni-chatcut", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src/capabilities/omni-skill-creator", "src"]
 include = ["qwen_mm_plugins*", "shared*"]
 
 # The vendored live-session addons ship as package DATA (not importable subpackages — no __init__ on

@@ -41,8 +41,9 @@ only a Skill entry.
 ## Direct Skill + MCP registration
 
 For the direct Skill + MCP registrations below, replace `<cap>` with `core`, `api`, `search`,
-`video-memory`, `omni-memory`, `omni-video2note`, `video-edit`, `omni-chatcut`, `blender`, or
-`freecad`. `edu-agent` is Skill-only. Use one immutable tag for both the Skill and MCP command:
+`video-memory`, `omni-memory`, `omni-video2note`, `video-edit`, `omni-chatcut`, `blender`, `freecad`,
+or `omni-skill-creator`. `edu-agent` is Skill-only. Use one immutable tag for both the Skill and
+MCP command:
 
 ```text
 qwen-mm-plugins-<cap>-v<version>

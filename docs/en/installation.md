@@ -158,6 +158,7 @@ error when `SERPER_API_KEY` is unavailable.
 | LibreOffice | Office and DrawIO visualization |
 | TeX | LaTeX visualization |
 | Chromium | Web-page screenshots and edu-agent rendering |
+| `tesseract` | On-screen text OCR when extracting a skill from a video (optional) |
 | Blender / FreeCAD | Their respective live application integrations |
 
 Run `bash install.sh verify` or `<entry> --check-system` to see what the selected capability needs.

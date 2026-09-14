@@ -118,6 +118,16 @@
         "ref": "qwen-mm-plugins-freecad-v1.1.0"
       },
       "description": "Create and edit parametric CAD models, technical drawings, and model exports in FreeCAD."
+    },
+    {
+      "name": "qwen-mm-plugins-omni-skill-creator",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
+        "path": "src/capabilities/omni-skill-creator",
+        "ref": "qwen-mm-plugins-omni-skill-creator-v1.0.0"
+      },
+      "description": "Turns a demonstration video into a reusable Agent Skill. Needs a DashScope key and ffmpeg."
     }
   ]
 }

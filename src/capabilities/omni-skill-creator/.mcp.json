@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "qwen-mm-plugins-omni-skill-creator": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "qwen-mm-plugins[omni-skill-creator] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-omni-skill-creator-v1.0.0",
+        "qwen-mm-plugins-omni-skill-creator"
+      ]
+    }
+  }
+}
