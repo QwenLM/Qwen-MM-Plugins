@@ -541,7 +541,7 @@ def test_audio_falls_back_to_fitted_mp3_when_wav_would_not_fit(sample_media_av):
     assert 0 < size <= 30_000
 
 
-def test_audio_extraction_preserves_delayed_stream_timeline(tmp_path):
+def test_audio_extraction_preserves_delayed_stream_timeline(tmp_path, requires_ffmpeg):
     from shared.video import probe_media
 
     source = tmp_path / "delayed-audio.mp4"

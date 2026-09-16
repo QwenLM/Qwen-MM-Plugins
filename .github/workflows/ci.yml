@@ -31,6 +31,18 @@ jobs:
       - name: Resolve the full platform profile
         run: uv sync --all-extras --dry-run --python 3.12
 
+      # ffmpeg is a local tool, not a service: without it the media fixtures in tests/conftest.py
+      # skip and roughly 38 tests never run. Installing it here keeps the default suite honest.
+      - name: Install ffmpeg (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
       - name: Run tests without external services
         run: >-
           uv run --no-project

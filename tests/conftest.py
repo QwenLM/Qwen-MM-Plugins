@@ -113,6 +113,13 @@ def rotated_image(tmp_path_factory) -> str:
     return str(path)
 
 
+@pytest.fixture
+def requires_ffmpeg() -> None:
+    """Guard a test that shells out to ffmpeg itself rather than taking a media fixture."""
+    if not HAS_FFMPEG:
+        pytest.skip("ffmpeg not available")
+
+
 @pytest.fixture(scope="session")
 def sample_video(tmp_path_factory) -> str:
     """A 6s, 160×120, 10fps test-pattern MP4 (requires ffmpeg)."""
