@@ -11,7 +11,6 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import yaml
 from pydantic import BaseModel, Field
 
 from ._media_utils import MAX_AUDIO_CLIP_SECONDS, MAX_CLIP_SECONDS
@@ -100,6 +99,10 @@ def _extract_local_links(text: str) -> list[str]:
 
 
 def _validate(skill_dir: Path) -> dict:
+    # Imported lazily: build_registry imports every tool module, so a top-level pyyaml import would
+    # make it a hard requirement just to construct the registry.
+    import yaml
+
     errors: list[str] = []
     warnings: list[str] = []
     stats: dict[str, int] = {}
