@@ -258,7 +258,8 @@ def scene_change_times(
         "-vf",
         filter_value,
         "-an",
-        "-vsync",
+        # ffmpeg 8 removed -vsync; -fps_mode is the replacement and has existed since ffmpeg 5.0.
+        "-fps_mode",
         "vfr",
         "-f",
         "null",
