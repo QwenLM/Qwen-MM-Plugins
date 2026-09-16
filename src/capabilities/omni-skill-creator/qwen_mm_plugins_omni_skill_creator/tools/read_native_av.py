@@ -252,7 +252,7 @@ def _openai_call(
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {resolved_key}"}
     request_timeout = timeout if timeout is not None else _default_chat_timeout()
     if contains_temporary_oss_url(media_parts if media_parts is not None else media_url):
-        headers["X-DashScope-OssResourceResolve"] = "enable"
+        headers.update(dashscope_upload.OSS_RESOLVE_HEADER)
     content: list[dict] = list(media_parts) if media_parts is not None else []
     if media_parts is None and media_url:
         content.append(_openai_media_part(media_url, mime_type, fps))
@@ -454,15 +454,9 @@ def _temporary_oss_upload(path: str, *, model: str | None, base_url: str | None,
     if not (model and base_url and api_key) or not dashscope_upload.is_available(base_url, api_key):
         log.info("[deliver] DashScope temporary OSS unavailable for this endpoint/key; trying existing delivery")
         return None
-    try:
-        url = dashscope_upload.upload_temporary_file(
-            path,
-            base_url=base_url,
-            api_key=api_key,
-            model=model,
-        )
-    except Exception as error:
-        log.info("[deliver] DashScope temporary OSS upload failed (%s); trying existing delivery", error)
+    url = dashscope_upload.try_upload_temporary_file(path, base_url=base_url, api_key=api_key, model=model)
+    if url is None:
+        log.info("[deliver] DashScope temporary OSS upload failed; trying existing delivery")
         return None
     log.info("[deliver] original media uploaded through DashScope temporary OSS")
     return url
