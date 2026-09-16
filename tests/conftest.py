@@ -7,6 +7,7 @@ tests/assets/; those cases skip when an asset or optional dependency is missing.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,16 +53,17 @@ HAS_FFMPEG = shutil.which("ffmpeg") is not None
 def _has_ass_filter() -> bool:
     """Whether ffmpeg exposes the libass-backed ``ass`` filter (Homebrew's build does not).
 
-    ``-filters`` prints to stderr, so parsing that output is easy to get wrong; asking ffmpeg for the
-    filter's own help is unambiguous.
+    Look the name up in ``-filters``. ``-h filter=ass`` cannot be used: it exits 0 whether or not the
+    filter exists. ``-filters`` prints to stderr, so both streams have to be searched.
     """
     if not HAS_FFMPEG:
         return False
     try:
-        probe = subprocess.run(["ffmpeg", "-hide_banner", "-h", "filter=ass"], capture_output=True, text=True)
+        probe = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True)
     except OSError:
         return False
-    return probe.returncode == 0
+    listing = (probe.stdout or "") + (probe.stderr or "")
+    return re.search(r"(?m)^\s*\S+\s+ass\s", listing) is not None
 
 
 HAS_ASS_FILTER = _has_ass_filter()

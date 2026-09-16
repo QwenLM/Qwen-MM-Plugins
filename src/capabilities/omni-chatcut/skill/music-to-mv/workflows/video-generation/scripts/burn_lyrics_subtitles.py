@@ -30,16 +30,17 @@ def fail(message: str) -> None:
 
 
 def has_ass_filter() -> bool:
-    """Whether this ffmpeg exposes the libass-backed ``ass`` filter."""
+    """Whether this ffmpeg exposes the libass-backed ``ass`` filter.
+
+    Look the name up in ``-filters``. ``-h filter=ass`` cannot be used: it exits 0 whether or not the
+    filter exists, and ``-filters`` prints to stderr, so both streams have to be searched.
+    """
     try:
-        probe = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-h", "filter=ass"],
-            capture_output=True,
-            text=True,
-        )
+        probe = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True)
     except OSError:
         return False
-    return probe.returncode == 0
+    listing = (probe.stdout or "") + (probe.stderr or "")
+    return re.search(r"(?m)^\s*\S+\s+ass\s", listing) is not None
 
 
 def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
