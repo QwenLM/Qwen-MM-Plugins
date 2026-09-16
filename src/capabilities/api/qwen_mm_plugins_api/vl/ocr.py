@@ -51,7 +51,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         {
             "role": "user",
             "content": [
-                encode_image_source(image_path),
+                encode_image_source(image_path, base_url=base_url, api_key=api_key, model=model),
                 {"type": "text", "text": prompt},
             ],
         }

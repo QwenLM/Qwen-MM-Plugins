@@ -196,7 +196,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         False,
         "Media APIs & endpoints",
         "inferred for official DashScope hosts",
-        "override the model-bound temporary OSS policy endpoint used for oversized Omni media",
+        "override the model-bound temporary OSS policy endpoint used for oversized Omni and VL media",
     ),
     (
         "QWEN_MM_API_VL_MODEL",

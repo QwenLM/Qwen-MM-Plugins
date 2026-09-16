@@ -7,6 +7,7 @@ model calls that consume one must send ``X-DashScope-OssResourceResolve: enable`
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import uuid
 from pathlib import Path
@@ -14,6 +15,11 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from shared.env import get_env
+
+log = logging.getLogger(__name__)
+
+# A model call that consumes an ``oss://`` object must opt in to server-side resolution.
+OSS_RESOLVE_HEADER = {"X-DashScope-OssResourceResolve": "enable"}
 
 DEFAULT_UPLOAD_TIMEOUT = 60
 DEFAULT_UPLOAD_TRANSFER_TIMEOUT = 1800
@@ -48,6 +54,26 @@ def upload_policy_url(base_url: str) -> str | None:
 def is_available(base_url: str, api_key: str) -> bool:
     """Whether this request has enough information to use DashScope temporary storage."""
     return bool(api_key and api_key != "EMPTY" and upload_policy_url(base_url))
+
+
+def contains_temporary_oss_url(value: Any) -> bool:
+    """Whether a request payload contains a DashScope temporary ``oss://`` resource."""
+    if isinstance(value, str):
+        return value.startswith("oss://")
+    if isinstance(value, dict):
+        return any(contains_temporary_oss_url(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(contains_temporary_oss_url(item) for item in value)
+    return False
+
+
+def try_upload_temporary_file(path: str | Path, **kwargs: Any) -> str | None:
+    """``upload_temporary_file`` that returns None instead of raising, for a caller with a fallback."""
+    try:
+        return upload_temporary_file(path, **kwargs)
+    except Exception as error:  # noqa: BLE001 — preserve the caller's local fallback chain
+        log.warning("DashScope temporary OSS upload failed (%s); falling back to local delivery", error)
+        return None
 
 
 def _response_error(response: Any) -> str:
