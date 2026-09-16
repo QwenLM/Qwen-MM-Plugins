@@ -222,7 +222,9 @@ def main() -> int:
             "-map",
             "0:a?",
             "-vf",
-            "ass=lyrics.ass:fontsdir=.",
+            # Name the first option explicitly: a current ffmpeg rejects a filter that mixes
+            # positional shorthand with named options ("No option name near ...").
+            "ass=filename=lyrics.ass:fontsdir=.",
             "-c:v",
             "libx264",
             "-preset",
