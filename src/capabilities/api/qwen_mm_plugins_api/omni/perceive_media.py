@@ -55,7 +55,9 @@ def _dry_run(arguments: dict[str, Any], model: str) -> list[dict[str, str]]:
 
 
 def _interval_note(requested_start: float, requested_end: float, actual_end: float) -> dict[str, str]:
-    clamped = actual_end < requested_end
+    # end_time -> duration -> end_time is not exact in binary floating point, so a range that was
+    # never shortened can come back a few ULPs short (e.g. 717.68 + (1751.16 - 717.68) < 1751.16).
+    clamped = actual_end < requested_end - 1e-6
     detail = "; end clamped to the media duration" if clamped else ""
     return {
         "type": "text",

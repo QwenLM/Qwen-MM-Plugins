@@ -602,6 +602,34 @@ def local_video_parts(
     return [omni_video_part(mp4, fps=fps, max_pixels=max_pixels)]
 
 
+# ffprobe codec names that map to an audio format DashScope accepts. A file whose codec is not here
+# cannot be labelled honestly, so it skips the temporary upload and takes the local path instead.
+_AUDIO_CODEC_FORMATS = {
+    "aac": "m4a",
+    "flac": "flac",
+    "mp3": "mp3",
+    "opus": "opus",
+    "pcm_s16le": "wav",
+    "vorbis": "ogg",
+}
+
+
+def audio_format_for(path: str) -> str | None:
+    """The audio format to declare for ``path``: its extension, else its probed codec, else None."""
+    suffix = os.path.splitext(path)[1].lstrip(".").lower()
+    if suffix:
+        return suffix
+    try:
+        from shared.video import probe_media
+
+        for stream in probe_media(path).get("streams", []):
+            if stream.get("codec_type") == "audio":
+                return _AUDIO_CODEC_FORMATS.get(str(stream.get("codec_name", "")).lower())
+    except Exception:  # noqa: BLE001 — unprobeable: the caller falls back to local delivery
+        return None
+    return None
+
+
 def temporary_oss_parts(
     file_path: str,
     mode: str,
@@ -639,6 +667,14 @@ def temporary_oss_parts(
             cleanup.append(upload_path)
             encode_audio_fn(file_path, upload_path, kbps=MP3_KBPS[-1])
             send_as_video = False
+        audio_format = None if send_as_video else audio_format_for(upload_path)
+        if not send_as_video and audio_format is None:
+            log.warning(
+                "cannot determine the audio format of %s; skipping the temporary upload so the "
+                "endpoint is not told a guessed one",
+                os.path.basename(upload_path),
+            )
+            return None
         url = dashscope_upload.upload_temporary_file(
             upload_path,
             base_url=base_url,
@@ -650,7 +686,7 @@ def temporary_oss_parts(
         return None
     if send_as_video:
         return [omni_video_part(url, fps=fps, max_pixels=max_pixels)]
-    return [omni_audio_part(url, audio_format=os.path.splitext(upload_path)[1].lstrip("."))]
+    return [omni_audio_part(url, audio_format=audio_format)]
 
 
 def build_media_parts(

@@ -153,6 +153,7 @@ key 的后端：Serper、Tavily、Exa、Serply。设为 `serper`、`tavily`、`e
 | LibreOffice | Office 与 DrawIO 可视化 |
 | TeX | LaTeX 可视化 |
 | Chromium | 网页截图和 edu-agent 渲染 |
+| `tesseract` | 从视频提取 Skill 时识别屏幕文字（可选） |
 | Blender / FreeCAD | 对应的实时应用集成 |
 
 运行 `bash install.sh verify` 或 `<entry> --check-system` 查看所选能力的具体要求。能力专属依赖

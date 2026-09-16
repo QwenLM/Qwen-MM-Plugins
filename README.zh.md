@@ -66,9 +66,10 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 
 | 能力 | 用途 | Cookbook |
 |---|---|---|
-| `omni-memory` | 为长音视频构建音视频记忆：谁在场、谁说了什么、怎么说的、听起来是什么样。由 Omni 模型连同音轨一起读取视频。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-memory/cookbook/) |
-| `omni-video2note` | 将本地教程视频转换为可恢复、经审核的图文 PDF。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-video2note/cookbook/) |
 | `omni-chatcut` | 视频创作 Skill 集合，支持音乐生成 MV、电影解说和保留说话人音色的视频翻译。需要相应的生成/Omni 服务、ffmpeg/ffprobe；翻译配音还需可选的外部配音服务。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-chatcut/cookbook/) |
+| `omni-video2note` | 将本地教程视频转换为可恢复、经审核的图文 PDF。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-video2note/cookbook/) |
+| `omni-skill-creator` | 将演示视频转化为可复用的 Agent Skill。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-skill-creator/cookbook/) |
+| `omni-memory` | 为长音视频构建音视频记忆：谁在场、谁说了什么、怎么说的、听起来是什么样。由 Omni 模型连同音轨一起读取视频。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-memory/cookbook/) |
 
 具体版本与可选依赖见[安装文档](docs/zh/installation.md#依赖)。
 

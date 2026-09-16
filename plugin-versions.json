@@ -1,15 +1,16 @@
 {
-  "distribution_version": "1.1.3",
+  "distribution_version": "1.1.4",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
   "plugins": {
-    "api": "1.1.0",
+    "api": "1.1.1",
     "blender": "1.1.0",
     "core": "1.1.0",
     "edu-agent": "1.1.0",
     "freecad": "1.1.0",
-    "omni-chatcut": "1.0.0",
+    "omni-chatcut": "1.0.1",
     "omni-memory": "1.1.1",
-    "omni-video2note": "1.0.0",
+    "omni-skill-creator": "1.0.0",
+    "omni-video2note": "1.0.1",
     "search": "1.1.0",
     "video-edit": "1.1.0",
     "video-memory": "1.1.0"

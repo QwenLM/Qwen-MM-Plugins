@@ -37,8 +37,8 @@ Skill 与 MCP server 使用同一个已发布 tag，安装后确认 MCP 工具�
 ## 直接注册 Skill + MCP
 
 对于下文直接注册 Skill + MCP 的 harness，请将 `<cap>` 替换为 `core`、`api`、`search`、
-`video-memory`、`omni-memory`、`omni-video2note`、`video-edit`、`omni-chatcut`、`blender`
-或 `freecad`。`edu-agent` 是纯 Skill。Skill 与 MCP 命令必须使用同一个不可变 tag：
+`video-memory`、`omni-memory`、`omni-video2note`、`video-edit`、`omni-chatcut`、`blender`、
+`freecad` 或 `omni-skill-creator`。`edu-agent` 是纯 Skill。Skill 与 MCP 命令必须使用同一个不可变 tag：
 
 ```text
 qwen-mm-plugins-<cap>-v<version>

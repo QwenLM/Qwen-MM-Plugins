@@ -27,10 +27,10 @@ QMP_DRY=0
 LOCAL_REPO_ROOT=''
 
 # ── capability catalog — the ONE place capabilities are declared; every menu iterates this ──
-CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent omni-video2note omni-chatcut)
+CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent omni-video2note omni-chatcut omni-skill-creator)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.1.0 1.1.0 1.1.0 1.1.0 1.1.1 1.1.0 1.1.0 1.1.0 1.1.0 1.0.0 1.0.0)
+CAP_VERSIONS=(1.1.0 1.1.1 1.1.0 1.1.0 1.1.1 1.1.0 1.1.0 1.1.0 1.1.0 1.0.1 1.0.1 1.0.0)
 CAP_DESC=("Inspect local files and media, extract video frames, and crop or annotate images."
           "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription."
           "Search the web, read pages, and identify objects or places with reverse-image search."
@@ -41,7 +41,8 @@ CAP_DESC=("Inspect local files and media, extract video frames, and crop or anno
           "Create and edit parametric CAD models, technical drawings, and model exports in FreeCAD."
           "Create narrated Mandarin math and science tutorial videos or interactive explainers from problem statements and images."
           "Convert a local tutorial video into an audited, illustrated PDF with resumable processing and offline status inspection."
-          "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation.")
+          "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation."
+          "Turns a demonstration video into a reusable Agent Skill. Needs a DashScope key and ffmpeg.")
 # Skill-only capabilities have NO MCP server / pyproject extra / console entry: they install via
 # the marketplace like any plugin, but the uvx --check-system self-test doesn't apply to them.
 CAP_SKILL_ONLY=" edu-agent "

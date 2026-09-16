@@ -30,6 +30,7 @@ known-first-party = [
     "qwen_mm_plugins_search",
     "qwen_mm_plugins_video_memory",
     "qwen_mm_plugins_omni_memory",
+    "qwen_mm_plugins_omni_skill_creator",
     "qwen_mm_plugins_omni_video2note",
     "qwen_mm_plugins_video_edit",
     "qwen_mm_plugins_omni_chatcut",

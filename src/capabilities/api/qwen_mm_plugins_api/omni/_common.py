@@ -3,6 +3,12 @@
 Media preparation lives in :mod:`shared.omni_media`. This module intentionally keeps thin private
 adapters with the historical names so existing tests and callers can override individual delivery
 steps without duplicating the implementation.
+
+Only the steps that :mod:`shared.omni_media` accepts as injectable reach the model through these
+adapters — the video path (``_preprocess_video``, ``_frames_and_audio_parts``,
+``_transcode_and_upload``) and ``_fit_audio``. ``local_audio_part`` takes no such hook, so the ASR
+audio path calls the module-level functions directly and overriding ``_encode_audio`` does not
+affect it.
 """
 
 from __future__ import annotations
@@ -36,10 +42,6 @@ _InlineBudgetExceeded = omni_media.InlineBudgetExceeded
 
 
 # Compatibility adapters. Keep these small: media policy belongs in shared.omni_media.
-def _extract_audio(file_path: str, out_path: str) -> None:
-    omni_media.extract_audio(file_path, out_path)
-
-
 def _encode_audio(
     file_path: str,
     out_path: str,
