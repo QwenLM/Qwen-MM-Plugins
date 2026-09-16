@@ -32,11 +32,13 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     """Chat about images and videos via an OpenAI-compatible endpoint. Local videos are
     sampled into inline frames, so per request keep ≤ 250 items total (frames + images) and fps =
     frames / duration within [0.1, 10] — set video_max_frames to the video's length; for videos over
-    ~40 min use read_video instead. Remote video URLs are handled server-side. When OSS is
-    configured (OSS_AK/OSS_SK/OSS_ENDPOINT/OSS_BUCKET) a local video is uploaded and sampled server-
-    side instead, lifting the inline frame cap (still bounded by the model's server-side video-
-    duration limit, e.g. 2 h for qwen3.7-plus). Use dry_run=true to preview the request payload
-    without calling.
+    ~40 min use read_video instead. Remote video URLs are handled server-side. Against a DashScope
+    endpoint a local video is instead uploaded to model-bound temporary storage (no configuration
+    needed; objects expire in ~48 h) and sampled server-side, lifting the inline frame cap; a
+    configured OSS bucket (OSS_AK/OSS_SK/OSS_ENDPOINT/OSS_BUCKET) is the fallback for that upload.
+    Either way the model's server-side video-duration limit still applies (e.g. 2 h for
+    qwen3.7-plus), and an oversized local image takes the same upload path. Use dry_run=true to
+    preview the request payload without calling.
 
     Args:
         model: Model id override. Defaults to QWEN_MM_API_VL_MODEL, then 'qwen3.7-plus'.
@@ -77,11 +79,23 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
 
     try:
         content: list[dict[str, Any]] = []
+        # dry_run must not hit the network, so allow_upload=False suppresses every upload below and
+        # previews the local path instead.
         for img in images:
-            content.append(encode_image_source(img))
+            content.append(
+                encode_image_source(img, allow_upload=not dry_run, base_url=base_url, api_key=api_key, model=model)
+            )
         for vid in videos:
-            # dry_run must not hit the network, so suppress the OSS upload and preview the local path.
-            content.append(encode_video_source(vid, video_max_frames, allow_upload=not dry_run, model=model))
+            content.append(
+                encode_video_source(
+                    vid,
+                    video_max_frames,
+                    allow_upload=not dry_run,
+                    model=model,
+                    base_url=base_url,
+                    api_key=api_key,
+                )
+            )
         content.append({"type": "text", "text": text})
         messages = [{"role": "user", "content": content}]
 
@@ -103,10 +117,16 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             if optional_extra_body:
                 preview_request["extra_body"] = optional_extra_body
             payload: dict[str, Any] = {"base_url": base_url, "request": preview_request}
-            from shared import oss
+            from shared import dashscope_upload, oss
 
-            local_videos = [v for v in videos if not v.startswith(("http://", "https://", "data:"))]
-            if local_videos and oss.is_upload_configured():
+            local_videos = [v for v in videos if not v.startswith(("http://", "https://", "data:", "oss://"))]
+            if local_videos and dashscope_upload.is_available(base_url, api_key):
+                payload["note"] = (
+                    "This endpoint offers DashScope temporary storage — on a real call each local video "
+                    "is uploaded and passed as an oss:// video_url (sampled server-side, no frame cap), "
+                    "NOT the inline frames previewed here."
+                )
+            elif local_videos and oss.is_upload_configured():
                 payload["note"] = (
                     "OSS is configured — on a real call each local video is uploaded and passed as a "
                     "signed video_url (sampled server-side, no frame cap), NOT the inline frames "

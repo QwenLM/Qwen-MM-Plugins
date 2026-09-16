@@ -1,4 +1,4 @@
-"""Omni A/V Grounding — locate the time segment(s) matching a text query (temporal localization)."""
+"""Omni A/V temporal grounding — locate time segments matching a text query."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ _PROMPT = (
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     """Temporal grounding: given a text query, locate the time segment(s) in an audio/video where it
     occurs, returning start/end seconds per match, using the Qwen-Omni model (reads frames + audio).
-    This is temporal (WHEN) localization — for spatial (WHERE in a frame) use core's grounding tool.
+    This is temporal grounding (WHEN) — for spatial grounding (WHERE in a frame), use core's tool.
     A local file is uploaded inline, where the endpoint caps a media item at 10 MB of base64, so it
     is transcoded to fit — about 9 min at the default 1 fps / 448² sampling. A longer local video is
     delivered another way automatically: uploaded to OSS when OSS_* is configured (no size limit),

@@ -262,6 +262,23 @@ def test_clients_send_video_frames_as_ordered_images(monkeypatch, streaming, bas
     assert parts[3]["type"] == "text"
 
 
+def test_call_omni_enables_temporary_oss_resolution(monkeypatch):
+    chunk = SimpleNamespace(usage=None, choices=[SimpleNamespace(delta=SimpleNamespace(content="ok"))])
+    holder = _install_fake_openai(monkeypatch, lambda _: [chunk])
+    messages = [
+        {
+            "role": "user",
+            "content": [{"type": "video_url", "video_url": {"url": "oss://temporary/clip.mp4"}}],
+        }
+    ]
+
+    text, _ = omni.call_omni(base_url=oa.DEFAULT_DASHSCOPE_BASE_URL, api_key="key", messages=messages)
+
+    assert text == "ok"
+    sent = holder["client"].chat.completions.seen[0]
+    assert sent["extra_headers"] == {"X-DashScope-OssResourceResolve": "enable"}
+
+
 def test_call_openai_chat_retries_transient_then_succeeds(monkeypatch):
     import openai
 
@@ -506,3 +523,189 @@ def test_save_url_to_dir_retries_transient(monkeypatch, tmp_path):
     dsc.save_url_to_dir("http://x/a.bin", str(dest))
     assert dest.read_bytes() == b"DATA"
     assert calls["n"] == 2
+
+
+# ── DashScope temporary OSS on the VL path (shared with Omni) ─────────
+
+
+@pytest.fixture
+def _temp_oss(monkeypatch):
+    """Make DashScope temporary storage available and record what gets uploaded."""
+    from shared import dashscope_upload
+
+    uploaded: list[str] = []
+
+    def _upload(path, **kwargs):
+        uploaded.append(str(path))
+        return f"oss://dashscope-instant/{Path(path).name}"
+
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a, **k: True)
+    monkeypatch.setattr(dashscope_upload, "upload_temporary_file", _upload)
+    return uploaded
+
+
+ENDPOINT = {"base_url": oa.DEFAULT_DASHSCOPE_BASE_URL, "api_key": "sk-test"}
+
+
+def test_is_model_url_accepts_temporary_oss():
+    assert oa.is_model_url("oss://bucket/clip.mp4")
+    assert oa.is_model_url("https://example.com/clip.mp4")
+    assert not oa.is_model_url("/local/clip.mp4")
+    assert not oa.is_url("oss://bucket/clip.mp4")  # the narrow predicate is unchanged
+
+
+def test_encode_image_source_passes_through_temporary_oss_url():
+    url = "oss://dashscope-instant/photo.jpg"
+    assert oa.encode_image_source(url)["image_url"]["url"] == url
+
+
+def test_encode_image_source_uploads_oversized_local_image(tmp_path, _temp_oss):
+    """An image whose base64 form would blow the per-item cap goes to temporary OSS instead."""
+    big = tmp_path / "huge.jpg"
+    big.write_bytes(b"\xff" * (oa.VL_MAX_B64_BYTES * 3 // 4 + 1024))
+    assert oa.b64_len(big.stat().st_size) > oa.VL_MAX_B64_BYTES
+    part = oa.encode_image_source(str(big), **ENDPOINT)
+    assert part == {"type": "image_url", "image_url": {"url": "oss://dashscope-instant/huge.jpg"}}
+    assert _temp_oss == [str(big)]
+
+
+def test_encode_image_source_keeps_small_image_inline(sample_image, _temp_oss):
+    """A within-budget image still travels inline — no upload round-trip for the common case."""
+    part = oa.encode_image_source(sample_image, **ENDPOINT)
+    assert part["image_url"]["url"].startswith("data:")
+    assert _temp_oss == []
+
+
+def test_encode_image_source_oversized_without_endpoint_stays_inline(tmp_path, _temp_oss):
+    """Without base_url/api_key the oversized item behaves exactly as before (inline)."""
+    big = tmp_path / "huge.jpg"
+    big.write_bytes(b"\xff" * (oa.VL_MAX_B64_BYTES * 3 // 4 + 1024))
+    assert oa.encode_image_source(str(big))["image_url"]["url"].startswith("data:")
+    assert _temp_oss == []
+
+
+def test_encode_video_source_passes_through_temporary_oss_url():
+    url = "oss://dashscope-instant/clip.mp4"
+    assert oa.encode_video_source(url) == {"type": "video_url", "video_url": {"url": url}}
+
+
+def test_encode_video_source_prefers_temporary_oss_over_bucket(monkeypatch, _temp_oss):
+    """Temporary storage outranks a configured bucket, so no bucket upload happens."""
+    from shared import oss
+
+    monkeypatch.setattr(oss, "is_upload_configured", lambda: True)
+    monkeypatch.setattr(oss, "upload_and_sign", lambda *a, **k: (_ for _ in ()).throw(AssertionError("bucket used")))
+    part = oa.encode_video_source("/some/local/clip.mp4", **ENDPOINT)
+    assert part == {"type": "video_url", "video_url": {"url": "oss://dashscope-instant/clip.mp4"}}
+    assert _temp_oss == ["/some/local/clip.mp4"]
+
+
+def test_encode_video_source_falls_back_to_bucket_when_temporary_upload_fails(monkeypatch):
+    """A failed temporary upload degrades to the next rung rather than raising."""
+    from shared import dashscope_upload, oss
+
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a, **k: True)
+    monkeypatch.setattr(
+        dashscope_upload,
+        "upload_temporary_file",
+        lambda *a, **k: (_ for _ in ()).throw(dashscope_upload.TemporaryUploadError("over 1 GiB")),
+    )
+    monkeypatch.setattr(oss, "is_upload_configured", lambda: True)
+    monkeypatch.setattr(oss, "upload_and_sign", lambda path, **kw: f"https://oss.example/{Path(path).name}?sig")
+    part = oa.encode_video_source("/some/local/clip.mp4", **ENDPOINT)
+    assert part == {"type": "video_url", "video_url": {"url": "https://oss.example/clip.mp4?sig"}}
+
+
+def test_encode_video_source_temporary_oss_respects_duration_cap(monkeypatch, sample_video, _temp_oss):
+    """An over-cap local video skips BOTH uploads and degrades to local frames."""
+    from shared import video
+
+    monkeypatch.setattr(video, "video_duration_exceeds", lambda p, cap: True)
+    part = oa.encode_video_source(sample_video, model="qwen-vl-max", **ENDPOINT)
+    assert part["type"] == "video"  # frame-list form
+    assert _temp_oss == []
+
+
+def test_encode_video_source_allow_upload_false_skips_temporary_oss(sample_video, _temp_oss):
+    """dry_run suppresses the temporary upload too, not just the bucket one."""
+    part = oa.encode_video_source(sample_video, allow_upload=False, **ENDPOINT)
+    assert part["type"] == "video"
+    assert _temp_oss == []
+
+
+@pytest.mark.parametrize(
+    ("url", "expect_header"),
+    [("oss://dashscope-instant/clip.mp4", True), ("https://example.com/clip.mp4", False)],
+)
+def test_call_openai_chat_sets_oss_resolve_header(monkeypatch, url, expect_header):
+    """A payload carrying an oss:// resource must opt in to server-side resolution."""
+    holder = _install_fake_openai(monkeypatch, lambda n: "RESULT")
+    messages = [{"role": "user", "content": [{"type": "video_url", "video_url": {"url": url}}]}]
+    oa.call_openai_chat(base_url="http://local", api_key="k", model="m", messages=messages)
+    sent = holder["client"].chat.completions.seen[0]
+    assert (sent.get("extra_headers") == {"X-DashScope-OssResourceResolve": "enable"}) is expect_header
+
+
+def test_call_openai_chat_keeps_caller_extra_headers(monkeypatch):
+    """The resolve header merges into caller headers instead of replacing them."""
+    holder = _install_fake_openai(monkeypatch, lambda n: "RESULT")
+    messages = [{"role": "user", "content": [{"type": "video_url", "video_url": {"url": "oss://x/y.mp4"}}]}]
+    oa.call_openai_chat(
+        base_url="http://local",
+        api_key="k",
+        model="m",
+        messages=messages,
+        extra_headers={"X-Trace": "abc"},
+    )
+    sent = holder["client"].chat.completions.seen[0]
+    assert sent["extra_headers"] == {"X-DashScope-OssResourceResolve": "enable", "X-Trace": "abc"}
+
+
+# ── Regression: the temporary-OSS path must not fire where it is not wanted ────
+
+
+def test_encode_image_source_allow_upload_false_skips_temporary_oss(tmp_path, _temp_oss):
+    """dry_run passes allow_upload=False, so even an oversized image must NOT be uploaded."""
+    big = tmp_path / "huge.jpg"
+    big.write_bytes(b"\xff" * (oa.VL_MAX_B64_BYTES * 3 // 4 + 1024))
+    part = oa.encode_image_source(str(big), allow_upload=False, **ENDPOINT)
+    assert part["image_url"]["url"].startswith("data:")
+    assert _temp_oss == []
+
+
+def test_vision_chat_dry_run_does_not_upload_images(monkeypatch, tmp_path, _temp_oss):
+    """An oversized image in a dry_run preview must not reach the network either."""
+    big = tmp_path / "huge.jpg"
+    big.write_bytes(b"\xff" * (oa.VL_MAX_B64_BYTES * 3 // 4 + 1024))
+    from qwen_mm_plugins_api.vl import vision_chat
+
+    blocks = vision_chat.handle({"images": [str(big)], "text": "hi", "dry_run": True})
+    assert _temp_oss == []
+    assert "error" not in blocks[0]["text"].lower()
+
+
+def test_encode_video_source_skips_upload_when_frames_capture_everything(monkeypatch, _temp_oss):
+    """A clip short enough to sample in full locally must not be uploaded — frames lose nothing."""
+    from shared import oss, video
+
+    monkeypatch.setattr(
+        video, "get_video_info", lambda p: {"duration": 10.0, "native_fps": 30.0, "height": 8, "width": 8}
+    )
+    monkeypatch.setattr(oss, "is_upload_configured", lambda: False)
+    monkeypatch.setattr(video, "extract_frames_by_seeking", lambda *a, **k: [(0.0, "Zm9v"), (1.0, "YmFy")])
+    part = oa.encode_video_source("/some/local/short.mp4", **ENDPOINT)
+    assert part["type"] == "video"  # sampled locally
+    assert _temp_oss == []
+
+
+def test_encode_video_source_uploads_when_frames_would_be_capped(monkeypatch, _temp_oss):
+    """A clip long enough that local sampling hits max_frames is worth a full upload."""
+    from shared import oss, video
+
+    monkeypatch.setattr(
+        video, "get_video_info", lambda p: {"duration": 3600.0, "native_fps": 30.0, "height": 8, "width": 8}
+    )
+    monkeypatch.setattr(oss, "is_upload_configured", lambda: False)
+    part = oa.encode_video_source("/some/local/long.mp4", **ENDPOINT)
+    assert part == {"type": "video_url", "video_url": {"url": "oss://dashscope-instant/long.mp4"}}
+    assert _temp_oss == ["/some/local/long.mp4"]

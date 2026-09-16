@@ -4,8 +4,9 @@ A pure-tools MCP server. Each module under ``vl/`` / ``omni/`` / ``others/`` exp
 ``handle`` and is auto-discovered by the framework:
 
 * ``vl/`` — a Qwen-VL model (OpenAI-compatible endpoint): vision_chat, ocr, grounding.
-* ``omni/`` — Qwen-Omni audio transcription/analysis and joint video/audio understanding:
-  omni_asr(+_timestamped / multi_speaker), omni_av_caption / grounding / counting, omni_music_caption.
+* ``omni/`` — Qwen-Omni chat-first general-purpose perception, audio transcription/analysis, and
+  joint video/audio understanding: perceive_media, omni_asr(+_timestamped / multi_speaker),
+  omni_av_caption / grounding / counting, omni_music_caption.
 * ``others/`` — services that are neither: transcribe_audio (Qwen3-ASR) and segmentation (SAM3).
 
 Local file reading/visualization lives in ``core``; fact-finding/confirmation lives in ``search``.
@@ -20,8 +21,8 @@ SPECS, get_handler, list_tools = build_registry(__name__, ["vl", "omni", "others
 
 # System tools pip/uv cannot install; the framework renders --check-system + startup warnings from
 # this table. ffmpeg fits every local file to the endpoint's inline cap: transcribe_audio pulls out
-# the audio track, and the Omni A/V tools transcode the video (splitting it into frames when it is
-# too long to inline).
+# the audio track, and the Omni perception/A/V tools transcode the video (splitting it into frames
+# when it is too long to inline).
 SYSTEM_DEPS = [
     {
         "label": "audio/video decoding (transcribe_audio track extraction; Omni inline-size fitting + frame split)",
@@ -35,8 +36,9 @@ SYSTEM_DEPS = [
 USAGE_NOTE = (
     "Media-understanding model services (model defaults per family). "
     "VL model: vision_chat (caption/VQA), ocr, grounding. "
-    "Omni model: omni_asr / omni_asr_timestamped / omni_multi_speaker_asr, "
-    "omni_av_caption / omni_av_grounding / omni_av_counting, omni_music_caption. "
+    "Omni model: prefer the perceive_media chat interface for audio/video understanding. "
+    "The specialized omni_asr*, omni_av_caption / grounding / counting, and omni_music_caption "
+    "tools are reference paths for callers that require their fixed output schemas. "
     "VL/Omni default to DashScope; compatible endpoints can be configured with base_url/api_key/model. "
     "Others: transcribe_audio (DashScope Qwen3-ASR with ASR_SERVER_URLS fallback), "
     "segmentation (SAM3_SERVER_URL or the server argument). "
