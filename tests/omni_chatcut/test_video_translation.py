@@ -50,6 +50,12 @@ EXPECTED_TOOLS = {
 
 CAPABILITY_DIR = Path(__file__).resolve().parents[2] / "src/capabilities/omni-chatcut"
 
+# Keep pure contract/client tests runnable without the local media toolchain.
+requires_media_tools = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="ffmpeg and ffprobe are required for local media tests",
+)
+
 
 def test_dubbing_service_launcher_is_bundled_with_the_skill():
     reference_dir = CAPABILITY_DIR / "skill/video-translation/references"
@@ -180,6 +186,7 @@ def test_source_analysis_mode_uses_ten_minute_boundary():
     assert analysis_mode_for_duration(600.001) == "bounded_windows"
 
 
+@requires_media_tools
 def test_prepare_and_validate_translation_plan(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     state = prepare_project(
@@ -202,6 +209,7 @@ def test_prepare_and_validate_translation_plan(sample_media_av, tmp_path):
     assert validate_plan(str(root))["valid"] is False
 
 
+@requires_media_tools
 def test_plan_requires_persisted_vad_evidence(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root), source_language="zh")
@@ -213,6 +221,7 @@ def test_plan_requires_persisted_vad_evidence(sample_media_av, tmp_path):
     assert any("VAD evidence is missing" in error for error in result["errors"])
 
 
+@requires_media_tools
 def test_plan_treats_low_vad_overlap_as_agent_review_diagnostic(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root), source_language="zh")
@@ -240,6 +249,7 @@ def test_plan_treats_low_vad_overlap_as_agent_review_diagnostic(sample_media_av,
     }
 
 
+@requires_media_tools
 def test_plan_allows_agent_to_merge_adjacent_same_speaker_segments(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root), source_language="zh")
@@ -268,6 +278,7 @@ def test_plan_allows_agent_to_merge_adjacent_same_speaker_segments(sample_media_
     assert validate_plan(str(root))["valid"] is True
 
 
+@requires_media_tools
 def test_inspector_supports_legacy_source_facts_duration(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root))
@@ -283,6 +294,7 @@ def test_inspector_supports_legacy_source_facts_duration(sample_media_av, tmp_pa
     assert state["analysis_mode"] == "single_full_video"
 
 
+@requires_media_tools
 def test_resume_rejects_changed_source_content(sample_media_av, tmp_path):
     source = tmp_path / "source.mp4"
     shutil.copyfile(sample_media_av, source)
@@ -295,6 +307,7 @@ def test_resume_rejects_changed_source_content(sample_media_av, tmp_path):
         prepare_project(source_movie=str(source), project_dir=str(root), resume=True)
 
 
+@requires_media_tools
 def test_plan_reports_large_duration_mismatch_as_agent_diagnostic(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(
@@ -314,6 +327,7 @@ def test_plan_reports_large_duration_mismatch_as_agent_diagnostic(sample_media_a
     assert result["timing_diagnostics"][0]["estimated_nominal_speedup"] > 1.18
 
 
+@requires_media_tools
 def test_plan_rejects_overlapping_segments(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root), source_language="zh")
@@ -331,6 +345,7 @@ def test_plan_rejects_overlapping_segments(sample_media_av, tmp_path):
     assert any("overlaps the previous segment" in error for error in result["errors"])
 
 
+@requires_media_tools
 def test_plan_rejects_cross_speaker_grouping_and_reference(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root), source_language="zh")
@@ -357,6 +372,7 @@ def test_plan_rejects_cross_speaker_grouping_and_reference(sample_media_av, tmp_
     assert any("reference overlaps speech from another speaker" in error for error in result["errors"])
 
 
+@requires_media_tools
 def test_plan_allows_explained_same_speaker_reference_fallback(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root), source_language="zh")
@@ -377,6 +393,7 @@ def test_japanese_duration_estimation_counts_kana():
     assert _estimated_spoken_duration("これはテストです", "ja") > _estimated_spoken_duration("日", "ja")
 
 
+@requires_media_tools
 def test_fit_voice_preserves_short_audio_pace_and_centers_remaining_silence(tmp_path):
     source = tmp_path / "short.wav"
     output = tmp_path / "fitted.wav"
@@ -456,6 +473,7 @@ def test_fit_voice_preserves_short_audio_pace_and_centers_remaining_silence(tmp_
     assert 0.60 <= audible[-1] / rate <= 0.65
 
 
+@requires_media_tools
 def test_fit_voice_smooths_the_transition_to_padded_silence(tmp_path):
     source = tmp_path / "hard_edge.wav"
     output = tmp_path / "fitted.wav"
@@ -487,6 +505,7 @@ def test_fit_voice_smooths_the_transition_to_padded_silence(tmp_path):
     assert largest_step < peak * 0.25
 
 
+@requires_media_tools
 def test_fit_voice_rejects_speedup_above_limit(tmp_path):
     source = tmp_path / "long.wav"
     output = tmp_path / "fitted.wav"
@@ -511,6 +530,7 @@ def test_fit_voice_rejects_speedup_above_limit(tmp_path):
     assert not output.exists()
 
 
+@requires_media_tools
 def test_overlong_tts_retries_only_the_current_segment(monkeypatch, tmp_path):
     durations = iter((1.25, 0.95))
     calls = []
@@ -578,6 +598,7 @@ def test_overlong_tts_retries_only_the_current_segment(monkeypatch, tmp_path):
     )
 
 
+@requires_media_tools
 def test_clearly_long_translation_does_not_keep_retrying(monkeypatch, tmp_path):
     calls = 0
 
@@ -620,6 +641,7 @@ def test_clearly_long_translation_does_not_keep_retrying(monkeypatch, tmp_path):
     assert calls == 1
 
 
+@requires_media_tools
 def test_mix_keeps_voice_audible_without_automatic_ducking(tmp_path):
     background = tmp_path / "background.wav"
     voice = tmp_path / "voice.wav"
@@ -670,6 +692,7 @@ def test_mix_keeps_voice_audible_without_automatic_ducking(tmp_path):
     assert float(mean_match.group(1)) > -30.0
 
 
+@requires_media_tools
 def test_mix_can_omit_background(tmp_path):
     voice = tmp_path / "voice.wav"
     mixed = tmp_path / "mixed.wav"
@@ -716,6 +739,7 @@ def test_mix_can_omit_background(tmp_path):
     )
 
 
+@requires_media_tools
 def test_mix_preserves_late_voice_timeline_position(tmp_path):
     first = tmp_path / "first.wav"
     last = tmp_path / "last.wav"
@@ -758,6 +782,7 @@ def test_mix_preserves_late_voice_timeline_position(tmp_path):
     assert rms(4.05, 4.45) > 100
 
 
+@requires_media_tools
 def test_mix_does_not_wrap_final_voice_to_the_start(tmp_path):
     background = tmp_path / "background.wav"
     subprocess.run(
@@ -884,6 +909,7 @@ def test_render_tool_returns_concise_human_summary():
     assert rendered.count("{") == 0
 
 
+@requires_media_tools
 def test_inspector_routes_transcript_and_plan(sample_media_av, tmp_path):
     root = tmp_path / "translation"
     prepare_project(source_movie=sample_media_av, project_dir=str(root))
@@ -996,6 +1022,7 @@ def test_external_client_falls_back_to_curl_on_bad_file_descriptor(monkeypatch):
     assert captured["command"][-1] == "http://example.invalid/health"
 
 
+@requires_media_tools
 def test_local_renderer_and_delivery_validation(sample_media_av, tmp_path, monkeypatch):
     source = tmp_path / "source.mp4"
     shutil.copyfile(sample_media_av, source)
