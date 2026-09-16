@@ -29,7 +29,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from shared.api_openai import expand_video_frames, is_url, resolve_openai_endpoint
+from shared.api_openai import b64_len, expand_video_frames, is_model_url, resolve_openai_endpoint
+from shared.dashscope_upload import OSS_RESOLVE_HEADER, contains_temporary_oss_url
 from shared.env import get_env
 
 log = logging.getLogger(__name__)
@@ -128,17 +129,12 @@ def _source_suffix(source: str) -> str:
 
 def is_omni_url(value: str) -> bool:
     """URLs accepted by Omni, including DashScope's model-bound temporary ``oss://`` objects."""
-    return is_url(value) or value.startswith("oss://")
+    return is_model_url(value)
 
 
 def has_video_extension(source: str) -> bool:
     """Classify a media path without probing it, including URLs used in dry-run previews."""
     return _source_suffix(source) in _VIDEO_EXTS
-
-
-def b64_len(n_bytes: int) -> int:
-    """Length of the base64 encoding of ``n_bytes`` raw bytes (4 chars per 3 bytes, padded)."""
-    return 4 * ((n_bytes + 2) // 3)
 
 
 def _local_b64(source: str) -> tuple[Path, str]:
@@ -256,17 +252,6 @@ def inline_b64_bytes(messages: list[dict[str, Any]]) -> int:
     return sum(inline_b64_item_bytes(messages))
 
 
-def contains_temporary_oss_url(value: Any) -> bool:
-    """Whether a request payload contains a DashScope temporary ``oss://`` resource."""
-    if isinstance(value, str):
-        return value.startswith("oss://")
-    if isinstance(value, dict):
-        return any(contains_temporary_oss_url(item) for item in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(contains_temporary_oss_url(item) for item in value)
-    return False
-
-
 def has_video_stream(path: str) -> bool:
     """True if ``path`` carries a real (non-cover-art) video stream. URLs fall back to extension."""
     if is_omni_url(path):
@@ -350,7 +335,7 @@ def call_omni(
     def _once() -> tuple[str, Any]:
         request: dict[str, Any] = {}
         if contains_temporary_oss_url(messages):
-            request["extra_headers"] = {"X-DashScope-OssResourceResolve": "enable"}
+            request["extra_headers"] = dict(OSS_RESOLVE_HEADER)
         stream = client.chat.completions.create(
             model=model,
             messages=messages,

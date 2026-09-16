@@ -351,9 +351,28 @@ def test_encode_video_source_allow_upload_false_skips_oss(monkeypatch, sample_vi
 
 
 def test_vision_chat_dry_run_does_not_upload(monkeypatch, sample_video):
-    """A dry_run preview never hits the network, even with OSS configured; it notes the real behavior."""
-    from shared import oss
+    """A dry_run preview never hits the network, even with an upload path available; it notes the
+    real behavior. DashScope temporary storage outranks a configured bucket, so its note wins."""
+    from shared import dashscope_upload, oss
 
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a, **k: True)
+    monkeypatch.setattr(
+        dashscope_upload,
+        "upload_temporary_file",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("uploaded")),
+    )
+    monkeypatch.setattr(oss, "is_upload_configured", lambda: True)
+    monkeypatch.setattr(oss, "upload_and_sign", lambda *a, **k: (_ for _ in ()).throw(AssertionError("uploaded")))
+    blocks = vision_chat.handle({"videos": [sample_video], "text": "hi", "dry_run": True})
+    payload = json.loads(blocks[0]["text"])
+    assert "DashScope temporary storage" in payload.get("note", "")
+
+
+def test_vision_chat_dry_run_notes_bucket_when_no_temporary_storage(monkeypatch, sample_video):
+    """Without DashScope temporary storage the preview falls back to noting the configured bucket."""
+    from shared import dashscope_upload, oss
+
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a, **k: False)
     monkeypatch.setattr(oss, "is_upload_configured", lambda: True)
     monkeypatch.setattr(oss, "upload_and_sign", lambda *a, **k: (_ for _ in ()).throw(AssertionError("uploaded")))
     blocks = vision_chat.handle({"videos": [sample_video], "text": "hi", "dry_run": True})

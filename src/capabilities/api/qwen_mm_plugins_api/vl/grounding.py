@@ -138,6 +138,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             "role": "user",
             "content": [
                 # Send the same pixels used for box conversion; endpoints differ in EXIF handling.
+                # A prepared image always travels inline for that reason — no temporary-OSS upload.
                 encode_image_source(img),
                 {"type": "text", "text": grounding_prompt},
             ],
