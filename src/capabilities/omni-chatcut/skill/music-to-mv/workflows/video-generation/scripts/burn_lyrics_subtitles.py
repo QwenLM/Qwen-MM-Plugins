@@ -29,6 +29,19 @@ def fail(message: str) -> None:
     raise SystemExit(message)
 
 
+def has_ass_filter() -> bool:
+    """Whether this ffmpeg exposes the libass-backed ``ass`` filter."""
+    try:
+        probe = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-h", "filter=ass"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    return probe.returncode == 0
+
+
 def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, check=True, text=True, capture_output=True, cwd=cwd)
 
@@ -169,6 +182,13 @@ def main() -> int:
     for executable in ("ffmpeg", "ffprobe"):
         if not shutil.which(executable):
             fail(f"Required executable not found on PATH: {executable}")
+    # Burning subtitles needs the ass filter, which only exists in an ffmpeg built with libass.
+    # Without this check ffmpeg fails later with a bare "No such filter: 'ass'".
+    if not has_ass_filter():
+        fail(
+            "This ffmpeg was built without libass, so it has no 'ass' filter and cannot burn "
+            "subtitles. Install an ffmpeg with libass enabled."
+        )
     video = args.video.expanduser().resolve()
     srt = args.srt.expanduser().resolve()
     output = args.output.expanduser().resolve()

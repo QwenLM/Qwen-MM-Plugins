@@ -49,6 +49,24 @@ CORE_SERVER_DIR = _SERVER_DIRS.get("qwen_mm_plugins_core")
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
 
+def _has_ass_filter() -> bool:
+    """Whether ffmpeg exposes the libass-backed ``ass`` filter (Homebrew's build does not).
+
+    ``-filters`` prints to stderr, so parsing that output is easy to get wrong; asking ffmpeg for the
+    filter's own help is unambiguous.
+    """
+    if not HAS_FFMPEG:
+        return False
+    try:
+        probe = subprocess.run(["ffmpeg", "-hide_banner", "-h", "filter=ass"], capture_output=True, text=True)
+    except OSError:
+        return False
+    return probe.returncode == 0
+
+
+HAS_ASS_FILTER = _has_ass_filter()
+
+
 def pytest_exception_interact(node, call, report):
     """Attach a failed child process's captured output to the report.
 
@@ -129,6 +147,13 @@ def rotated_image(tmp_path_factory) -> str:
     exif[0x0112] = 6
     image.save(path, format="JPEG", exif=exif.tobytes(), quality=95)
     return str(path)
+
+
+@pytest.fixture
+def requires_ass_filter() -> None:
+    """Guard a test that burns subtitles: the ass filter needs an ffmpeg built with libass."""
+    if not HAS_ASS_FILTER:
+        pytest.skip("ffmpeg was built without libass (no 'ass' filter)")
 
 
 @pytest.fixture

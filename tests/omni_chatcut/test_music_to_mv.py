@@ -357,7 +357,7 @@ def test_pipeline_materializes_sentence_lyrics_from_canonical_evidence(tmp_path)
     assert rendered.endswith("Second line\n")
 
 
-def test_pipeline_burns_auto_discovered_evidence_into_final_mv(tmp_path):
+def test_pipeline_burns_auto_discovered_evidence_into_final_mv(tmp_path, requires_ass_filter):
     if not HAS_FFMPEG:
         return
     from qwen_mm_plugins_omni_chatcut.music_to_mv import pipeline as runner
@@ -423,7 +423,7 @@ def test_pipeline_burns_auto_discovered_evidence_into_final_mv(tmp_path):
     assert (project / "execution/reports/subtitle_render.json").is_file()
 
 
-def test_bundled_subtitle_renderer_burns_and_preserves_audio(tmp_path):
+def test_bundled_subtitle_renderer_burns_and_preserves_audio(tmp_path, requires_ass_filter):
     if not HAS_FFMPEG:
         return
     renderer = SKILL_DIR / "workflows/video-generation/scripts/burn_lyrics_subtitles.py"
