@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-omni-chatcut",
   "displayName": "Qwen MM Plugins Omni ChatCut",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation.",
   "skills": "./skill",
   "mcp": ".mcp.json"

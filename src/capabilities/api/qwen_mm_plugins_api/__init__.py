@@ -14,7 +14,7 @@ Local file reading/visualization lives in ``core``; fact-finding/confirmation li
 
 from mcp_framework import build_registry
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 # Auto-discover tools from the three model-family subpackages.
 SPECS, get_handler, list_tools = build_registry(__name__, ["vl", "omni", "others"])

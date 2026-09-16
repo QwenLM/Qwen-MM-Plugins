@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Qwen multimodal understanding plugins — Agent Skills + MCP servers",
-    "version": "1.1.3"
+    "version": "1.1.4"
   },
   "plugins": [
     {
@@ -25,7 +25,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/api",
-        "ref": "qwen-mm-plugins-api-v1.1.0"
+        "ref": "qwen-mm-plugins-api-v1.1.1"
       },
       "description": "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription."
     },
@@ -65,7 +65,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/omni-video2note",
-        "ref": "qwen-mm-plugins-omni-video2note-v1.0.0"
+        "ref": "qwen-mm-plugins-omni-video2note-v1.0.1"
       },
       "description": "Convert a local tutorial video into an audited, illustrated PDF with resumable processing and offline status inspection."
     },
@@ -85,7 +85,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/omni-chatcut",
-        "ref": "qwen-mm-plugins-omni-chatcut-v1.0.0"
+        "ref": "qwen-mm-plugins-omni-chatcut-v1.0.1"
       },
       "description": "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation."
     },

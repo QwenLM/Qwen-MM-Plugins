@@ -1,6 +1,6 @@
 """Omni Video2Note MCP server: turn local tutorial videos into audited illustrated PDFs."""
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 from mcp_framework import build_registry
 

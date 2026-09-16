@@ -1,6 +1,6 @@
 """Omni ChatCut: atomic tools and runtime for project-backed video creation."""
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 from mcp_framework import build_registry
 
