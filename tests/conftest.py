@@ -49,6 +49,24 @@ CORE_SERVER_DIR = _SERVER_DIRS.get("qwen_mm_plugins_core")
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
 
+def pytest_exception_interact(node, call, report):
+    """Attach a failed child process's captured output to the report.
+
+    ``CalledProcessError``'s message carries only the command, so a test that runs a helper script
+    with ``capture_output=True`` reports the exit status and throws the actual error away — which
+    makes a CI-only failure impossible to diagnose from the log.
+    """
+    exc = call.excinfo.value if call.excinfo is not None else None
+    if not isinstance(exc, subprocess.CalledProcessError):
+        return
+    for stream in ("stdout", "stderr"):
+        data = getattr(exc, stream, None)
+        if not data:
+            continue
+        text = data.decode("utf-8", "replace") if isinstance(data, bytes) else str(data)
+        report.sections.append((f"child process {stream}", text))
+
+
 def mcp_call(server_dir, action, env=None):
     """Launch the MCP server as a subprocess, initialize a client, run one async
     `action(session)`, and return its result. Shared by the protocol tests so the
