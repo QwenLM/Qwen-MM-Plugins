@@ -48,7 +48,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         fps: Video sampling fps (default 1.0). Raise for fast/frequent events — at the cost of a
             larger upload, which shortens the maximum uploadable length.
         max_pixels: Per-frame pixel budget (default 200704 ≈ 448²).
-        model: Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.5-omni-plus.
+        model: Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.8-omni-flash.
         api_key: API key override; otherwise selected by endpoint.
         base_url: OpenAI-compatible base URL override.
         dry_run: Return the request that would be sent, without calling the API.

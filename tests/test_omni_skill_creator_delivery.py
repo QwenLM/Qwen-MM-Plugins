@@ -21,7 +21,7 @@ def wire(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
-    monkeypatch.setenv("QWEN_MM_API_OMNI_MODEL", "qwen3.5-omni-plus")
+    monkeypatch.setenv("QWEN_MM_API_OMNI_MODEL", "qwen3.8-omni-flash")
     monkeypatch.setattr(omni_media.oss, "is_upload_configured", lambda: False)
     monkeypatch.setattr(omni_media, "has_video_stream", lambda p: str(p).endswith(".mp4"))
     monkeypatch.setattr("shared.video.video_duration_exceeds", lambda *_a: False)
@@ -100,7 +100,7 @@ def test_temporary_oss_success_reaches_model_from_tool(wire, monkeypatch, tmp_pa
     assert value == "oss://temporary/source" + suffix
     assert "max_pixels" not in part
     assert upload.call_args.args[0] == str(path)
-    assert upload.call_args.kwargs["model"] == "qwen3.5-omni-plus"
+    assert upload.call_args.kwargs["model"] == "qwen3.8-omni-flash"
     assert "MEDIA DELIVERY NOTICE" not in result[0]["text"]
 
 

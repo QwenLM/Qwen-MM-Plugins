@@ -130,7 +130,7 @@ def test_default_model_reads_repo_wide_var(no_model_env):
 
 
 def test_default_model_hard_default(no_model_env):
-    assert read_native_av._default_model() == "qwen3.5-omni-plus"
+    assert read_native_av._default_model() == "qwen3.8-omni-flash"
 
 
 def test_config_file_layer_feeds_default_model(no_model_env, tmp_path):
@@ -310,11 +310,11 @@ def test_temporary_oss_upload_precedes_existing_oss_and_preserves_original(monke
     )
 
     assert read_native_av._deliver_local(
-        str(path), model="dashscope.qwen3.5-omni-plus", base_url="https://gateway/v1", api_key="key"
+        str(path), model="dashscope.qwen3.8-omni-flash", base_url="https://gateway/v1", api_key="key"
     ) == ("url", "oss://temporary/model/video.mp4")
     temporary.assert_called_once_with(
         str(path),
-        model="dashscope.qwen3.5-omni-plus",
+        model="dashscope.qwen3.8-omni-flash",
         base_url="https://gateway/v1",
         api_key="key",
     )
@@ -394,7 +394,7 @@ def test_temporary_oss_request_adds_resource_resolve_header(monkeypatch):
     monkeypatch.setattr(read_native_av, "_openai_key", lambda: "key")
 
     result = read_native_av._openai_call(
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         "oss://temporary/model/video.mp4",
         "same prompt",
         base="https://dashscope.example/v1",
@@ -405,7 +405,7 @@ def test_temporary_oss_request_adds_resource_resolve_header(monkeypatch):
     assert captured["body"]["messages"][0]["content"][0]["video_url"]["url"].startswith("oss://")
 
     read_native_av._openai_call(
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         "https://media.example/video.mp4",
         "same prompt",
         base="https://dashscope.example/v1",

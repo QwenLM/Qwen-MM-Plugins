@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 | `freecad` | 驱动一个正在运行的 FreeCAD：参数化 CAD、STEP/STL 与 FEM。需要已安装 FreeCAD。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/freecad/cookbook/) |
 | `edu-agent` | 生成中文数理讲解视频与交互页面。纯 Skill，需要 Node 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/edu-agent/cookbook/) |
 
-**Qwen Omni 系列模型**（例如 **Qwen3.5-Omni-Plus**）：
+**Qwen Omni 系列模型**（例如 **qwen3.8-omni-flash**）：
 
 > 目前大多数 harness 还不支持把音频原生输入给主模型，因此音频暂时通过 API 处理。
 

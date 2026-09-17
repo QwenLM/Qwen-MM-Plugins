@@ -244,7 +244,7 @@ def test_shared_delivery_attempts_temporary_oss_with_endpoint(monkeypatch, tmp_p
         200704,
         [],
         3600,
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key="key",
     )
@@ -280,7 +280,7 @@ def test_shared_delivery_normalizes_local_range_to_source_duration(
         200704,
         [],
         3600,
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         start_time=80.0,
         duration=requested_duration,
     )
@@ -300,7 +300,7 @@ def test_shared_delivery_rejects_range_starting_after_media_end(monkeypatch):
             200704,
             [],
             3600,
-            "qwen3.5-omni-plus",
+            "qwen3.8-omni-flash",
             start_time=100.0,
             duration=10.0,
         )

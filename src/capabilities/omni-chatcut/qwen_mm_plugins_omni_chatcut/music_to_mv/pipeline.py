@@ -488,7 +488,7 @@ class Pipeline:
         self.state["models"]["image"] = None if self.video_provider.name == "seedance" else self.image_provider.model
         self.state["models"]["video"] = self.video_provider.model
         self.state["models"]["quality_control"] = (
-            self.qc_config.get("model") or get_env("QWEN_MM_API_OMNI_MODEL", "qwen3.5-omni-plus")
+            self.qc_config.get("model") or get_env("QWEN_MM_API_OMNI_MODEL", "qwen3.8-omni-flash")
             if self.qc_config.get("enabled")
             else None
         )
@@ -1885,7 +1885,7 @@ class Pipeline:
                 "raw_omni_response": raw_result,
                 "review_media": self.relative(media_path),
                 "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-                "model": self.qc_config.get("model") or get_env("QWEN_MM_API_OMNI_MODEL", "qwen3.5-omni-plus"),
+                "model": self.qc_config.get("model") or get_env("QWEN_MM_API_OMNI_MODEL", "qwen3.8-omni-flash"),
             },
         )
         return normalized, report_path

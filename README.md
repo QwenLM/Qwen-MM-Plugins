@@ -63,7 +63,7 @@ than routing them through a separate API or ad-hoc shell commands.
 | `freecad` | Drives a running FreeCAD: parametric CAD, STEP/STL and FEM. Needs FreeCAD installed. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/freecad/cookbook/) |
 | `edu-agent` | Creates Chinese math and science explainer videos and interactive pages. Skill-only; needs Node and ffmpeg. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/edu-agent/cookbook/) |
 
-**Qwen Omni series model** (e.g. **Qwen3.5-Omni-Plus**):
+**Qwen Omni series model** (e.g. **qwen3.8-omni-flash**):
 
 > Most harnesses cannot yet feed audio to the main model natively. For now, audio is handled through
 > the API instead.

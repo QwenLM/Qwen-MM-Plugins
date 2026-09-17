@@ -209,7 +209,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "QWEN_MM_API_OMNI_MODEL",
         False,
         "Media APIs & endpoints",
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         "default Omni model for audio/video understanding tools, omni-memory, and Omni ChatCut",
     ),
     ("SAM3_SERVER_URL", False, "Media APIs & endpoints", "", "segmentation SAM3 server URL"),

@@ -3,7 +3,7 @@
   "omni": {
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "api_key_env": "DASHSCOPE_API_KEY",
-    "model": "qwen3.5-omni-plus"
+    "model": "qwen3.8-omni-flash"
   },
   "image_providers": {
     "qwen_image_3": {
