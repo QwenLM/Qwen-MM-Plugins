@@ -58,7 +58,6 @@ class _LocalBackend:
             "dense_ok": bool(sd.get("dense_ok")),
             "processed_sec": sd.get("processed_sec")
             or float(max((e.get("win_end", 0) or 0 for e in (sd.get("episodic") or [])), default=0)),
-            "scene": (sd.get("global_summary") or "")[:120],
         }
         if extra:
             m.update(extra)

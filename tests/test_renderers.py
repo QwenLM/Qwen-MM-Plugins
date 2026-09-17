@@ -240,6 +240,7 @@ def _has_dep(key: str) -> bool:
         "geopandas": lambda: __import__("geopandas"),
         "nibabel": lambda: __import__("nibabel"),
         "trimesh": lambda: __import__("trimesh"),
+        "cascadio": lambda: __import__("cascadio"),  # trimesh STEP/STP loader
         "playwright": lambda: __import__("playwright"),
         "libreoffice": lambda: shutil.which("libreoffice") or shutil.which("soffice"),
         "pdflatex": lambda: shutil.which("pdflatex"),
@@ -340,13 +341,13 @@ TESTS = [
     ("sample.drawio", "image", 1, "DrawIO (XML → SVG)", ["resvg_py", "lxml"]),
     ("sample.srt", "text", 1, "SRT subtitle (text)", []),
     ("sample-model.glb", "image", 3, "GLB (blender)", ["blender"]),
-    ("GothicRoseWindow.step", "image", 3, "STEP (trimesh)", ["trimesh"]),
+    ("GothicRoseWindow.step", "image", 3, "STEP (trimesh)", ["trimesh", "cascadio"]),
     ("sample.geojson", "image", 1, "GeoJSON (geopandas)", ["geopandas"]),
     ("avg152T1_LR_nifti.nii.gz", "image", 3, "NIfTI (nibabel)", ["nibabel"]),
     ("sample.ipynb", "text", 3, "Jupyter notebook", ["nbformat"]),
     ("charts.ipynb", "image", 3, "Jupyter notebook (charts)", ["nbformat"]),
-    ("sample.tex", "image", 1, "LaTeX (pdflatex)", ["pdflatex"]),
-    ("tex_project/main.tex", "image", 1, "LaTeX multi-file", ["pdflatex"]),
+    ("sample.tex", "image", 1, "LaTeX (pdflatex)", ["pdflatex", "pypdfium2"]),
+    ("tex_project/main.tex", "image", 1, "LaTeX multi-file", ["pdflatex", "pypdfium2"]),
     ("broken.tex", "text", 1, "LaTeX fallback (text)", []),
 ]
 

@@ -31,6 +31,17 @@ class ProtocolError(Exception):
     """An adapter's response does not conform to MHS-HTTP/1."""
 
 
+def command_accepted(payload: dict[str, Any], where: str) -> bool:
+    """A write or reset needs an explicit boolean acknowledgement from the device."""
+    ok = payload.get("ok")
+    if not isinstance(ok, bool):
+        raise ProtocolError(
+            f"{where} response must contain a boolean 'ok'; command execution is unconfirmed. "
+            "Check mhs_health_check before retrying."
+        )
+    return ok
+
+
 def normalize_device_summary(raw: object, adapter_name: str) -> dict[str, Any] | None:
     """One entry of GET /devices. Returns None for an entry with no usable device_id."""
     if not isinstance(raw, dict):

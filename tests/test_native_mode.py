@@ -40,7 +40,12 @@ def caption_endpoint():
 
         def do_POST(self):  # noqa: N802 — BaseHTTPRequestHandler API
             length = int(self.headers.get("Content-Length", "0"))
-            requests.append(json.loads(self.rfile.read(length)))
+            requests.append(
+                {
+                    "body": json.loads(self.rfile.read(length)),
+                    "authorization": self.headers.get("Authorization"),
+                }
+            )
             body = json.dumps(
                 {
                     "id": "caption-e2e",
@@ -72,7 +77,7 @@ def caption_endpoint():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_port}/v1", requests
+        yield f"http://127.0.0.1:{server.server_port}/dashscope/v1", requests
     finally:
         server.shutdown()
         server.server_close()
@@ -93,21 +98,6 @@ def test_text_only_mode_without_images_is_also_a_noop(monkeypatch):
     blocks = [{"type": "text", "text": "already textual"}]
 
     assert nm.adapt_content_blocks(blocks) is blocks
-
-
-def test_missing_key_replaces_images_without_exposing_data(monkeypatch):
-    _mode(monkeypatch, "0")
-    _endpoint(monkeypatch, api_key="")
-    blocks = [
-        {"type": "text", "text": "PDF text"},
-        {"type": "image", "data": "SECRET_BASE64"},
-    ]
-
-    adapted = nm.adapt_content_blocks(blocks)
-
-    assert adapted[0] == blocks[0]
-    assert "requires a non-empty DASHSCOPE_API_KEY" in adapted[1]["text"]
-    assert "SECRET_BASE64" not in json.dumps(adapted)
 
 
 def test_caption_fallback_batches_images_and_preserves_order(monkeypatch):
@@ -138,9 +128,10 @@ def test_caption_fallback_batches_images_and_preserves_order(monkeypatch):
     assert calls[0]["optional_extra_body"] == {"response_format": {"type": "json_object"}}
 
 
-def test_caption_failure_uses_safe_placeholders_and_stops(monkeypatch, caplog):
+@pytest.mark.parametrize("api_key", ["key", "EMPTY"])
+def test_caption_failure_uses_safe_placeholders_and_stops(monkeypatch, caplog, api_key):
     _mode(monkeypatch, "0")
-    _endpoint(monkeypatch)
+    _endpoint(monkeypatch, api_key=api_key)
     calls = 0
 
     def fail(**_kwargs):
@@ -189,5 +180,6 @@ def test_pdf_return_e2e_becomes_caption_text(server_dir, caption_endpoint):
     assert "[PDF Start]" in text
     assert "[Generated visual caption]\nE2E caption for the rendered PDF page." in text
     assert len(requests) == 1
-    assert requests[0]["max_tokens"] == 32 * 1024
-    assert requests[0]["enable_thinking"] is False
+    assert requests[0]["authorization"] == "Bearer EMPTY"
+    assert requests[0]["body"]["max_tokens"] == 32 * 1024
+    assert requests[0]["body"]["enable_thinking"] is False

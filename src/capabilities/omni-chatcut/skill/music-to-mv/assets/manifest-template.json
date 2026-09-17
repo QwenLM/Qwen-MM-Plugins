@@ -1,0 +1,50 @@
+{
+  "schema": "qwen-mm-plugins-music2mv/project/v1",
+  "profile": "standard",
+  "project_root": "",
+  "target": "analysis_only|storyboard_only|final_mv|resume",
+  "inputs": {
+    "source_audio": "",
+    "brief": "",
+    "model_config": "",
+    "api_config": ""
+  },
+  "artifacts": {
+    "music_caption": "",
+    "music_caption_evidence": "",
+    "music_caption_slice_manifest": "",
+    "music_caption_run_state": "",
+    "lyrics_srt": "",
+    "music_map": "",
+    "creative_blueprint": "",
+    "storyboard": "",
+    "storyboard_validation_report": "",
+    "execution_output_dir": "",
+    "execution_state": "",
+    "generation_manifest": "",
+    "shot_quality_control": "",
+    "technical_qc": "",
+    "subtitle_ass": "",
+    "subtitle_render_report": "",
+    "final_mv": ""
+  },
+  "stages": {
+    "caption": "pending|running|complete|failed|stale|skipped",
+    "authoring": "pending|running|complete|failed|stale|skipped",
+    "execution": "pending|running|complete|failed|blocked|stale|skipped"
+  },
+  "decisions": {
+    "media_form": "",
+    "execution_authorization": {
+      "status": "not_authorized|authorized",
+      "basis": ""
+    },
+    "execution_compatible": null,
+    "blockers": []
+  },
+  "workflows": {
+    "caption": "workflows/music-caption/WORKFLOW.md",
+    "authoring": "workflows/storyboard/WORKFLOW.md",
+    "execution": "workflows/video-generation/WORKFLOW.md"
+  }
+}

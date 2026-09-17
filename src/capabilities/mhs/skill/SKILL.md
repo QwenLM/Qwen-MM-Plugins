@@ -13,6 +13,7 @@ The tool surface does not grow when new hardware appears. A new device shows up 
 because someone started an adapter for it.
 
 Check the `qwen-mm-plugins-mhs` tools in your tool list for full schemas.
+For setup and a mock-device walkthrough, see [Quickstart](references/quickstart.md).
 
 ## The loop
 
@@ -117,7 +118,9 @@ Rules for an adapter you wrote yourself, because you are now on both sides of th
   place to make an unsafe command impossible. Do not declare a range wider than you can justify from
   the device's documentation.
 - **Mark consequential writes `requires_confirm: true`.**
-- **Never fake success.** Return `ok: false` when the device declines and a 405 when it cannot reset.
+- **Never fake success.** Writes and resets must return a boolean `ok`: `true` only when accepted,
+  `false` when declined. Return 405 when reset is unsupported. A missing or invalid `ok` leaves
+  execution unconfirmed, including whether an emergency stop completed.
   You will be the one misled later.
 - **Tell the user what you built before you use it to move anything** — what device it talks to, which
   capabilities it exposes, and which of them can change physical state. An adapter you wrote has had no

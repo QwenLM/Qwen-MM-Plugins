@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import json_text, text
 
@@ -13,36 +13,28 @@ from ..registry import all_devices, invalidate
 
 
 class DiscoverArgs(BaseModel):
-    device_type: str | None = Field(
-        default=None,
-        description="Only list devices of this type (e.g. 'camera', 'robot_arm'). Case-insensitive.",
-    )
-    tag: str | None = Field(
-        default=None,
-        description="Only list devices carrying this tag (e.g. 'lab-a', 'production').",
-    )
-    refresh: bool = Field(
-        default=False,
-        description=(
-            "Re-query every adapter instead of using the cached device list. Use after plugging in, "
-            "power-cycling, or reconfiguring hardware."
-        ),
-    )
+    device_type: str | None = None
+    tag: str | None = None
+    refresh: bool = False
 
 
-TOOL: dict[str, Any] = {
-    "name": "mhs_discover",
-    "description": (
-        "List the physical devices reachable through the configured MHS adapters, with each device's "
-        "id, type, state and capability names. Call this FIRST — device ids come from here, never "
-        "from a guess. Then use mhs_meta_info before writing to a device you have not touched yet."
-    ),
-    "args": DiscoverArgs,
-}
+TOOL: dict[str, Any] = {"name": "mhs_discover", "args": DiscoverArgs}
 
 
 @guarded
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """List the physical devices reachable through the configured MHS adapters, with each device's id, type,
+    state and capability names.
+
+    Call this FIRST — device ids come from here, never from a guess. Then use mhs_meta_info before writing
+    to a device you have not touched yet.
+
+    Args:
+        device_type: Only list devices of this type (e.g. 'camera', 'robot_arm'). Case-insensitive.
+        tag: Only list devices carrying this tag (e.g. 'lab-a', 'production').
+        refresh: Re-query every adapter instead of using the cached device list. Use after plugging in,
+            power-cycling, or reconfiguring hardware.
+    """
     if arguments.get("refresh"):
         invalidate()
 

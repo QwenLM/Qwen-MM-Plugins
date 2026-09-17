@@ -3,7 +3,7 @@ name: qwen-mm-plugins-omni-memory
 description: "Build and query persistent stateful audio-visual memory for long videos, including people, speaker-attributed dialogue, paralinguistics, non-speech sound, events, semantic facts, and selective source-clip replay."
 ---
 
-# Omni Memory — Joint Audio-Visual Memory for Long Videos
+# Audio-Visual Memory
 
 Check the `qwen-mm-plugins-omni-memory` tools in your tool list for full schemas and parameters.
 

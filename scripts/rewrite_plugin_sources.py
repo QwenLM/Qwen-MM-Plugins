@@ -15,7 +15,7 @@ def _write_if_changed(path: Path, data: dict, original: str) -> bool:
     rendered = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
     if rendered == original:
         return False
-    path.write_text(rendered)
+    path.write_text(rendered, encoding="utf-8")
     return True
 
 
@@ -26,7 +26,7 @@ def _rewrite_marketplace(
     restore: bool,
     versions: dict[str, str],
 ) -> bool:
-    original = path.read_text()
+    original = path.read_text(encoding="utf-8")
     data = json.loads(original)
     found: set[str] = set()
     for plugin in data.get("plugins", []):
@@ -53,7 +53,7 @@ def _rewrite_marketplace(
 
 
 def _rewrite_mcp(path: Path, cap: str, source: str, *, refresh: bool) -> bool:
-    original = path.read_text()
+    original = path.read_text(encoding="utf-8")
     pattern = re.compile(rf"(qwen-mm-plugins\[{re.escape(cap)}\] @ )[^\"\r\n]+")
     rendered, count = pattern.subn(rf"\g<1>{source}", original)
     if count == 0:
@@ -74,7 +74,7 @@ def _rewrite_mcp(path: Path, cap: str, source: str, *, refresh: bool) -> bool:
 
     if rendered == original:
         return False
-    path.write_text(rendered)
+    path.write_text(rendered, encoding="utf-8")
     return True
 
 
@@ -91,7 +91,7 @@ def main() -> int:
     if not (repo / "pyproject.toml").is_file():
         parser.error(f"--repo must be the repository root containing pyproject.toml: {repo}")
 
-    version_data = json.loads((repo / "plugin-versions.json").read_text())
+    version_data = json.loads((repo / "plugin-versions.json").read_text(encoding="utf-8"))
     versions: dict[str, str] = version_data["plugins"]
     capabilities = set(versions) if args.capabilities == ["all"] else set(args.capabilities)
     unknown = capabilities - set(versions)

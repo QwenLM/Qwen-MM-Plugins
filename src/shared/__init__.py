@@ -13,6 +13,7 @@ tools, no console entry). Submodules:
   - shared.syscmd        locate external CLIs with PATH recovery (which_tool, find_tool)
   - shared.isolated_worker JSON-file RPC for native/crash-prone callables (run_isolated)
   - shared.api_openai    OpenAI-compatible chat client (call_openai_chat, resolve_openai_endpoint)
+  - shared.omni_media    Omni local-media fitting, temporary/custom OSS, and frames+audio fallback
   - shared.api_dashscope DashScope native-REST async generation-task helpers (submit/poll/save_url)
   - shared.retry         one retry/backoff loop shared by the API clients (retry_call)
   - shared.applaunch     thin-client app launch/probe plumbing (ports, binary resolve, xvfb, autolaunch)

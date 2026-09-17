@@ -91,6 +91,9 @@ def draw_boxes(img, detections: list[dict[str, Any]]):
     for i, det in enumerate(detections):
         color = det.get("color") or COLORS[i % len(COLORS)]
         x1, y1, x2, y2 = det["bbox_pixel"]
+        # Accept either corner order; Pillow requires top-left then bottom-right.
+        x1, x2 = sorted((x1, x2))
+        y1, y2 = sorted((y1, y2))
         draw.rectangle([x1, y1, x2, y2], outline=color, width=line_width)
 
         label = det.get("label") or ""
@@ -102,6 +105,21 @@ def draw_boxes(img, detections: list[dict[str, Any]]):
             draw.text((x1 + 3, label_y + 2), label, fill=(255, 255, 255), font=font)
 
     return annotated
+
+
+def open_image(path: str):
+    """Open a photo in display orientation, retaining stored pixels if its EXIF is unreadable."""
+    from PIL import Image, ImageOps
+
+    img = Image.open(path)
+    try:
+        orientation = img.getexif().get(0x0112, 1)
+    except Exception:  # noqa: BLE001 — malformed EXIF segment: keep the stored frame, as Image.open does
+        return img
+    # exif_transpose copies even when there is nothing to do — only pay for it when tagged.
+    if orientation in range(2, 9):
+        img = ImageOps.exif_transpose(img)
+    return img
 
 
 def render_pdf_page(page, dpi: int = 150):
@@ -183,37 +201,28 @@ def smart_resize(
     return height, width
 
 
-def process_image(img, min_pixels: int, max_pixels: int):
-    """Resize a PIL Image to fit patch grid and pixel budget.
-
-    Returns (resized_img, b64_str, target_w, target_h, mime_type).
-    """
-    from PIL import Image
-
-    orig_w, orig_h = img.size
-
-    target_h, target_w = smart_resize(
-        orig_h,
-        orig_w,
-        min_pixels,
-        max_pixels,
-    )
-
-    resized = img
-    if (target_w, target_h) != (orig_w, orig_h):
-        resized = img.resize((target_w, target_h), Image.LANCZOS)
-
+def encode_image(img):
+    """Encode at the current size; return the encodable image, base64 text, and MIME type."""
     buf = io.BytesIO()
     # JPEG only handles RGB/L — keep palette/alpha as PNG; convert exotic modes to RGB.
     if img.mode in ("RGBA", "LA", "PA", "P"):
         fmt, mime, save_kwargs = "PNG", "image/png", {}
     else:
         fmt, mime, save_kwargs = "JPEG", "image/jpeg", {"quality": 90}
-        if resized.mode not in ("RGB", "L"):
-            resized = resized.convert("RGB")
-    resized.save(buf, format=fmt, **save_kwargs)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+    img.save(buf, format=fmt, **save_kwargs)
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return img, b64, mime
 
+
+def process_image(img, min_pixels: int, max_pixels: int):
+    """Resize to the pixel budget; return (image, base64, width, height, MIME type)."""
+    from PIL import Image
+
+    target_h, target_w = smart_resize(img.height, img.width, min_pixels, max_pixels)
+    resized = img if (target_w, target_h) == img.size else img.resize((target_w, target_h), Image.LANCZOS)
+    resized, b64, mime = encode_image(resized)
     return resized, b64, target_w, target_h, mime
 
 

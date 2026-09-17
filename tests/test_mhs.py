@@ -443,6 +443,54 @@ def test_configured_auth_with_an_unset_token_env_is_reported_not_sent(tmp_path, 
 
 
 # ── untrusted adapter output ──
+@pytest.mark.parametrize(
+    ("tool", "arguments", "method", "success", "rejection"),
+    [
+        ("mhs_write", {"capability": "settings"}, "write", "accepted", "REJECTED"),
+        ("mhs_reset", {"mode": "soft"}, "reset", "soft reset completed", "refused"),
+        ("mhs_reset", {"mode": "estop"}, "reset", "emergency stop completed", "refused"),
+    ],
+)
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({}, id="missing"),
+        pytest.param({"ok": None}, id="null"),
+        pytest.param({"ok": 0}, id="zero"),
+        pytest.param({"ok": 1}, id="one"),
+        pytest.param({"ok": "false"}, id="string-false"),
+        pytest.param({"ok": "true"}, id="string-true"),
+        pytest.param({"ok": []}, id="array"),
+        pytest.param({"ok": {}}, id="map"),
+        pytest.param({"ok": False}, id="declined"),
+        pytest.param({"ok": True}, id="accepted"),
+    ],
+)
+def test_command_acknowledgements_are_explicit_and_never_retried(
+    live, monkeypatch, tool, arguments, method, success, rejection, payload
+):
+    """Exercise HTTP + MessagePack through the host: an invalid acknowledgement confirms nothing."""
+    calls = []
+
+    def reply(*args):
+        calls.append(args)
+        return payload
+
+    monkeypatch.setattr(live["server"].devices["mock-camera"], method, reply)
+    result = _blocks_text(_call(tool, device_id="mock/mock-camera", **arguments))
+
+    assert len(calls) == 1
+    if payload.get("ok") is True:
+        assert success in result
+        assert "Error:" not in result
+    elif payload.get("ok") is False:
+        assert rejection in result
+        assert success not in result
+    else:
+        assert "Error:" in result and "boolean 'ok'" in result and "unconfirmed" in result
+        assert success not in result and rejection not in result
+
+
 def test_string_image_data_is_refused_instead_of_reaching_the_harness():
     blocks = protocol.to_content_blocks([{"type": "image", "data": "not!base64", "mimeType": "image/png"}], "dev")
     assert blocks[0]["type"] == "text" and "not non-empty binary bytes" in blocks[0]["text"]

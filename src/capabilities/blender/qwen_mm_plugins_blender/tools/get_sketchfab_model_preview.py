@@ -4,29 +4,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class GetSketchfabModelPreviewArgs(BaseModel):
-    uid: str = Field(
-        description="The unique identifier of the Sketchfab model (obtained from search_sketchfab_models)."
-    )
+    uid: str
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_sketchfab_model_preview",
-    "description": (
-        "Get a preview thumbnail of a Sketchfab model by its UID. "
-        "Use this to visually confirm a model before downloading.\n\n"
-        "Parameters:\n"
-        "- uid: The unique identifier of the Sketchfab model (obtained from search_sketchfab_models)\n\n"
-        "Returns the model's thumbnail as an Image for visual confirmation."
-    ),
-    "args": GetSketchfabModelPreviewArgs,
-}
+TOOL = {"name": "get_sketchfab_model_preview", "args": GetSketchfabModelPreviewArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get a preview thumbnail of a Sketchfab model by its UID. Use this to visually confirm a model
+    before downloading.
+
+    Returns the model's thumbnail as an Image for visual confirmation.
+
+    Args:
+        uid: The unique identifier of the Sketchfab model (obtained from search_sketchfab_models).
+    """
     from qwen_mm_plugins_blender.loader import get_connection
     from shared.content import image
 

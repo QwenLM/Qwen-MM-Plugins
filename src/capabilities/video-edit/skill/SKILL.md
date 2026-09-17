@@ -3,7 +3,7 @@ name: qwen-mm-plugins-video-edit
 description: "Editing-director skill that OWNS every video task built from EXISTING REAL FOOTAGE the user supplies (vlog, montage, intro, recap, eating/travel/family edits, style replication, compositing, subtitles, voiceover, B-roll). When footage files are the input, use THIS skill first — not the generic hyperframes entry and not the general-video workflow: it contributes footage judgment (selection, pacing, beat-sync, sound, looks, per-scene design) and then hands the designed composition to the HyperFrames pipeline for assembly and rendering, so the two are complementary rather than alternatives. It enforces the taste contract, scene-loop assembly with a Scene Ledger, and evidence-based independent review via its own plan-gate and review-gate scripts. Only tasks with NO real footage at all (a motion graphic or promo invented from a brief) go straight to hyperframes. Governance scales by mode instead of confirming every step."
 ---
 
-# Video Edit
+# Video Editing
 
 ## Who you are
 
@@ -89,6 +89,7 @@ It reports OK/MISSING/WARN per item with install hints. Summary:
 | project-local GSAP (designed deliverables) | seek-safe motion in render | `npm install gsap && mkdir -p assets && cp node_modules/gsap/dist/gsap.min.js assets/gsap.min.js` |
 | MCP perception + generation tools | seeing media / generating assets | perception (`read_video`/`read_image`/`vision_chat`/...) ships with the **`qwen-mm-plugins-core`** plugin — install it alongside this one; generation ships with this plugin's own server. Verify in the live agent tool list — a schema file on disk is not availability. Perception missing ⇒ degraded mode in `mcps/core-perception.md` § Failure Handling |
 | `DASHSCOPE_API_KEY` (optional) | DashScope-backed MCP tools | set in the MCP server's environment, not passed as a parameter |
+| `MINIMAX_API_KEY` (optional) | `minimax_tts` MCP tool | set via environment or `~/.qwen-mm-plugins/config`; only needed for MiniMax |
 
 Minimal bootstrap for designed renders:
 

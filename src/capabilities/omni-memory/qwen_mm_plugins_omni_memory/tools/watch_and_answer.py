@@ -3,39 +3,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import json_text
 
 from .. import omni_core, watch
-from ..service import DEFAULT_OMNI_MODEL, memory_dir
+from ..service import memory_dir
 
 
 class WatchAndAnswerArgs(BaseModel):
     """Not a MemoryRef: this is the one tool that reads the video itself, so it takes a source path
     and never a namespace — there is no memory to locate."""
 
-    video_path: str = Field(description="Absolute path to the source video. No memory needs to exist.")
-    question: str = Field(description="What to determine from watching the video.")
-    model: str | None = Field(
-        default=None,
-        description=f"Omni model for this call. Leave unset to use the configured default ({DEFAULT_OMNI_MODEL}).",
-    )
+    video_path: str
+    question: str
+    model: str | None = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "watch_and_answer",
-    "description": "Watch a SHORT audio-video in one pass and answer from it, with NO memory involved. "
-    "Use it when the video is under ~10 minutes, or when the user has said they do not want a memory "
-    "built and just wants a quick answer. Past ~30 minutes build a memory instead — this tool sends the "
-    "whole video in a single request, so it cannot cover a long one no matter how the question is "
-    "phrased. The video is re-encoded once and that copy is kept, so "
-    "follow-up questions about the same video skip the re-encode. If the video will be asked about "
-    "several times, a memory is cheaper: build it and use plan_and_search. When a watch cannot get "
-    'through, the result carries fallback="build_memory" and the exact command to run. Needs ffmpeg '
-    "on PATH and an omni endpoint.",
-    "args": WatchAndAnswerArgs,
-}
+TOOL = {"name": "watch_and_answer", "args": WatchAndAnswerArgs}
 
 
 _MP4_LIKE = {".mp4", ".m4v"}
@@ -178,4 +163,19 @@ def watch_and_answer(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Watch a SHORT audio-video in one pass and answer from it, with NO memory involved. Use it when
+    the video is under ~10 minutes, or when the user has said they do not want a memory built and
+    just wants a quick answer. Past ~30 minutes build a memory instead — this tool sends the whole
+    video in a single request, so it cannot cover a long one no matter how the question is phrased.
+    The video is re-encoded once and that copy is kept, so follow-up questions about the same video
+    skip the re-encode. If the video will be asked about several times, a memory is cheaper: build
+    it and use plan_and_search. When a watch cannot get through, the result carries
+    fallback="build_memory" and the exact command to run. Needs ffmpeg on PATH and an omni endpoint.
+
+    Args:
+        video_path: Absolute path to the source video. No memory needs to exist.
+        question: What to determine from watching the video.
+        model: Omni model for this call. Leave unset to use the configured default (qwen3.5-omni-
+            plus).
+    """
     return [json_text(watch_and_answer(**arguments))]

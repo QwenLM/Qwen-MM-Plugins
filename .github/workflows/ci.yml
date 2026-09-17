@@ -31,6 +31,16 @@ jobs:
       - name: Resolve the full platform profile
         run: uv sync --all-extras --dry-run --python 3.12
 
+      - name: Install ffmpeg (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
       - name: Run tests without external services
         run: >-
           uv run --no-project
@@ -38,6 +48,7 @@ jobs:
           --with pytest
           --with "mcp>=1,<2"
           --with "anyio>=4,<5"
+          --with "docstring-parser>=0.18,<0.19"
           --with "pydantic>=2"
           --with "pillow<12"
           --with "numpy<3"
@@ -45,6 +56,7 @@ jobs:
           --with requests
           --with "msgpack>=1.1,<2"
           --with openai
+          --with pyyaml
           python -m pytest -q -m "not reachability"
 
       - name: Check manifests

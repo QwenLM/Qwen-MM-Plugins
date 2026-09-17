@@ -195,8 +195,10 @@ Request body is the params object. Respond:
 { "ok": true, "state": "online", "blocks": [ { "type": "text", "text": "applied {'exposure': 40}" } ] }
 ```
 
-`ok: false` means the device declined the command — the host reports that as a failure even on
-HTTP 200, so use it rather than pretending success. `blocks` is optional and follows the read format.
+`ok` is required and must be a boolean: `true` confirms acceptance and `false` means the device
+declined the command, even on HTTP 200. A missing or non-boolean `ok` is a protocol error and leaves
+execution unconfirmed; the host never retries automatically. `blocks` is optional and follows the
+read format.
 
 ### GET /devices/{device_id}/health
 
@@ -211,6 +213,8 @@ by the host — answer it from live state, not from a variable you set at startu
 ### POST /devices/{device_id}/reset
 
 Body `{"mode": "soft"}` or `{"mode": "estop"}`. Respond `{"ok": true, "state": "online"}`.
+The same required boolean `ok` applies: the host reports completion only for `ok: true`.
+An invalid acknowledgement leaves the reset unconfirmed; do not assume the hardware has stopped.
 
 - `soft` — return to idle / known-good, clear an error.
 - `estop` — halt motion and output *now*; recovery is secondary.

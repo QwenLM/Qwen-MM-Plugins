@@ -6,17 +6,11 @@ from it: the two fields are how a memory is addressed, and they mirror service.m
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class MemoryRef(BaseModel):
     """Every tool locates a memory by video path, optionally with a namespace."""
 
-    video_path: str | None = Field(
-        default=None, description="Absolute path to the source video; memory is read from <video_path>.memory/."
-    )
-    namespace: str | None = Field(
-        default=None,
-        description="Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the "
-        "memory is read from the configured shared root.",
-    )
+    video_path: str | None = None
+    namespace: str | None = None

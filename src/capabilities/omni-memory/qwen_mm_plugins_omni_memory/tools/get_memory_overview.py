@@ -12,16 +12,7 @@ class GetMemoryOverviewArgs(MemoryRef):
     pass
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_memory_overview",
-    "description": "The vocabulary a retrieval plan is written from: the cast of people (person_id, "
-    "name, appearance, and also_heard_as for anyone still unnamed) and the COMPLETE directory of "
-    "semantic fact keys. Read this before plan_and_search — fact keys are an exact lookup, so a plan "
-    "that names none comes back with no facts. One call covers every later question about the same "
-    "video. `scene_env_available` only says a scene container exists; ask for the items with "
-    "plan_and_search(include_scene=True).",
-    "args": GetMemoryOverviewArgs,
-}
+TOOL = {"name": "get_memory_overview", "args": GetMemoryOverviewArgs}
 
 
 def overview(video_path: str | None = None, namespace: str | None = None) -> dict[str, Any]:
@@ -46,4 +37,16 @@ def overview(video_path: str | None = None, namespace: str | None = None) -> dic
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """The vocabulary a retrieval plan is written from: the cast of people (person_id, name,
+    appearance, and also_heard_as for anyone still unnamed) and the COMPLETE directory of semantic
+    fact keys. Read this before plan_and_search — fact keys are an exact lookup, so a plan that
+    names none comes back with no facts. One call covers every later question about the same video.
+    `scene_env_available` only says a scene container exists; ask for the items with
+    plan_and_search(include_scene=True).
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+    """
     return [json_text(overview(**arguments))]

@@ -1,15 +1,15 @@
 """The build-time stages: one clip in, memory state out.
 
 pipeline.py drives these in order — extract a clip against the carried state, roll the batch up into
-semantic triples, keep a global summary, align names off the accumulated transcript, then apply the
-roster back over what was already written.
+semantic triples, align names off the accumulated transcript, then apply the roster back over what was
+already written.
 
 Nothing on the query side reaches any of it, which is why this file lives in the skill rather than in
 the server package: omni_core carries the little that both halves need, llm.py the model calls, and
-prompts.py the four prompts these stages fill in.
+prompts.py the three prompts these stages fill in.
 
 The caps below are read by this file alone, so they are defined here instead of being imported from
-somewhere shared — the same reason NAME ALIGNMENT and GLOBAL SUMMARY are documented here now.
+somewhere shared — the same reason NAME ALIGNMENT is documented here now.
 """
 
 import difflib
@@ -28,18 +28,10 @@ from omni_core import (
     diag,
     normalize_acoustic_events,
 )
-from prompts import ALIGN_PROMPT_TRANSCRIPT, GS_CONSOLIDATE_PROMPT, STAGE2_PROMPT, SW_PROMPT
+from prompts import ALIGN_PROMPT_TRANSCRIPT, STAGE2_PROMPT, SW_PROMPT
 
 NAME_LEDGER_CAP = 400  # streaming name-alignment: max distinct (name|speaker|next|type) mentions kept
 SCENE_ENV_CAP = 20  # bounded scene_env; older items fall off instead of being LLM-deduplicated
-GS_MERGE_K = int(os.environ.get("MEM_GS_MERGE_K", "6") or "6")  # global-state: merge oldest K nodes/level when >K
-GS_RENDER_CAP = int(os.environ.get("MEM_GS_RENDER_CAP", "1200") or "1200")  # global-state render char cap
-
-# ============================================================ GLOBAL SUMMARY
-# A resolution-decaying rolling summary: each K-clip batch becomes a level-0 node, and once a level
-# holds more than GS_MERGE_K nodes its oldest ones merge upwards. Recent detail and distant summary
-# then coexist in a bounded budget, so it works on arbitrarily long streams. Built in the background
-# rollup. Nothing consumes it today — see DEVIATIONS.md before extending it.
 
 # ============================================================ NAME ALIGNMENT
 # Per-clip extraction never binds a name, so names are resolved separately and can be revised as the
@@ -71,10 +63,9 @@ def new_state():
     }
 
 
-def prev_state_for_prompt(state, global_context=None):
-    """Continuity-prior view handed to the model (internal counters hidden). `global_context` = the
-    rolling global summary so far, given as background for extraction."""
-    if state["scene_id"] is None and not state["known_entities"] and not global_context:
+def prev_state_for_prompt(state):
+    """Continuity-prior view handed to the model (internal counters hidden)."""
+    if state["scene_id"] is None and not state["known_entities"]:
         return None
     d = {
         "scene_id": state["scene_id"],
@@ -96,8 +87,6 @@ def prev_state_for_prompt(state, global_context=None):
     }
     if state.get("active_audio_events"):
         d["active_audio_events"] = state["active_audio_events"]
-    if global_context:
-        d["global_context"] = global_context
     return d
 
 
@@ -524,76 +513,6 @@ def _finalize_semantic(client, active_list):
     if res.get("parsed") and isinstance(res["parsed"].get("triples"), list):
         return res["parsed"]["triples"], tok
     return None, tok
-
-
-def _gs_summarize(client, items, kind):
-    """Compress a list of texts into ONE concise summary. kind='segment' (K clip captions) or
-    'merge' (K node summaries). Returns text ('' on failure)."""
-    body = "\n".join(f"- {t}" for t in items if str(t or "").strip())
-    if not body:
-        return ""
-    prompt = GS_CONSOLIDATE_PROMPT.replace("{{KIND}}", kind).replace("{{ITEMS}}", body)
-    try:
-        res = _stream_text(client, prompt)
-        return (res.get("raw") or "").strip()
-    except Exception:
-        return ""
-
-
-def _gs_cascade_merge(client, nodes):
-    """One upward pass: at each level with > GS_MERGE_K nodes, merge its oldest GS_MERGE_K into one
-    node at level+1 (so every level keeps ≤ GS_MERGE_K → bounded). Returns a NEW chronological list."""
-    nodes = list(nodes)
-    lvl, max_lvl = 0, max((n.get("level", 0) for n in nodes), default=0)
-    while lvl <= max_lvl:
-        at = sorted((n for n in nodes if n.get("level", 0) == lvl), key=lambda n: n.get("t0") or 0)
-        if len(at) > GS_MERGE_K:
-            oldest = at[:GS_MERGE_K]
-            text = _gs_summarize(client, [n.get("text", "") for n in oldest], "merge")
-            oid = {id(n) for n in oldest}
-            nodes = [n for n in nodes if id(n) not in oid]
-            nodes.append({"level": lvl + 1, "text": text, "t0": oldest[0].get("t0"), "t1": oldest[-1].get("t1")})
-            max_lvl = max(max_lvl, lvl + 1)
-        lvl += 1
-    nodes.sort(key=lambda n: n.get("t0") or 0)
-    return nodes
-
-
-def gs_render_nodes(nodes, cap=None):
-    """Render nodes chronologically (older/coarse → recent/fine); tail-capped to `cap` chars."""
-    if not nodes:
-        return ""
-    cap = cap or GS_RENDER_CAP
-    ns = sorted(nodes, key=lambda n: n.get("t0") or 0)
-    text = " ".join(
-        f"[{int(n.get('t0') or 0)}-{int(n.get('t1') or 0)}s] {n.get('text', '')}" for n in ns if n.get("text")
-    )
-    return text[-cap:] if len(text) > cap else text
-
-
-def gs_add_segment(client, store, batch):
-    """Add ONE level-0 node summarizing a K-clip batch, then cascade-merge. Mutates
-    store.global_nodes / store.global_summary via ATOMIC reassignment (race-safe vs the main-thread
-    snapshot). Runs in the background rollup thread."""
-    caps = []
-    for rec in batch:
-        vis = (rec.get("parsed") or {}).get("visual", {}) or {}
-        cap = (vis.get("visual_caption") or "").strip()
-        if cap:
-            caps.append(f"[{rec.get('win_start')}-{rec.get('win_end')}s] {cap}")
-    text = _gs_summarize(client, caps, "segment")
-    if not text:
-        return
-    node = {"level": 0, "text": text, "t0": batch[0].get("win_start"), "t1": batch[-1].get("win_end")}
-    nodes = _gs_cascade_merge(client, list(store.global_nodes) + [node])
-    store.global_nodes = nodes  # atomic swap
-    store.global_summary = gs_render_nodes(nodes)  # keep field in sync (QA-resident / view)
-
-
-def gs_flush(store):
-    """Finalize: recompute the rendered global_summary from current nodes (no LLM)."""
-    store.global_summary = gs_render_nodes(store.global_nodes)
-    return store.global_summary
 
 
 # name token: no apostrophe → "Emma's" yields "Emma", "It's"/"Don't" don't leak in as names

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.api_dashscope import API_V1, submit_dashscope_async
 from shared.content import text_error
@@ -14,125 +14,23 @@ from shared.env import get_env
 
 
 class HappyhorseArgs(BaseModel):
-    mode: Literal["text_to_video", "image_to_video", "reference_to_video", "video_edit"] = Field(
-        description=(
-            "Operation mode. "
-            "text_to_video: generate video from text description. "
-            "image_to_video: animate a single input image (first frame) into video. "
-            "reference_to_video: generate video with 1-9 reference images fused into the scene "
-            "(use [Image 1], [Image 2] etc. in prompt to reference each image). "
-            "video_edit: modify an existing video based on text instruction, "
-            "optionally guided by reference images."
-        )
-    )
-    prompt: Optional[str] = Field(
-        default=None,
-        description=(
-            "Text prompt (up to 2500 Chinese chars / 5000 non-Chinese). "
-            "Required for all modes EXCEPT image_to_video (optional there). "
-            "For reference_to_video: use [Image 1], [Image 2] etc. to reference images "
-            "and describe what each depicts, e.g. 'the woman from [Image 1] runs on the beach'."
-        ),
-    )
-    image_url: Optional[str] = Field(
-        default=None,
-        description=(
-            "Input image URL or base64 data for image_to_video mode. Required for image_to_video. "
-            "This image becomes the first frame of the generated video. "
-            "Requirements: JPEG/JPG/PNG/WEBP, width & height ≥300px, "
-            "aspect ratio 1:2.5~2.5:1, ≤20MB. "
-            "Output video aspect ratio follows the input image (ratio param is ignored)."
-        ),
-    )
-    video_url: Optional[str] = Field(
-        default=None,
-        description=(
-            "Input video URL for video_edit mode. Required for video_edit. "
-            "Requirements: MP4/MOV (H.264), 3-60s duration (>15s auto-truncated to first 15s), "
-            "long edge ≤4096px, short edge ≥360px, aspect ratio 1:2.5~2.5:1, ≤100MB, >8fps."
-        ),
-    )
-    reference_image_urls: Optional[list[str]] = Field(
-        default=None,
-        description=(
-            "Reference images for reference_to_video (1-9, required) or video_edit (0-5, optional). "
-            "For reference_to_video: each image provides a character/object to fuse into the video. "
-            "Prompt must use [Image 1], [Image 2] etc. to reference them by array order. "
-            "For video_edit: style guidance or element replacement reference. "
-            "Requirements: JPEG/JPG/PNG/WEBP, ≤20MB each. "
-            "r2v: short edge ≥400px, recommend ≥720P. video_edit: width/height ≥300px."
-        ),
-    )
-    resolution: Literal["720P", "1080P"] = Field(
-        default="1080P",
-        description="Output video resolution. Default: '1080P'.",
-    )
-    ratio: Literal["16:9", "9:16", "1:1", "4:3", "3:4", "4:5", "5:4", "21:9", "9:21"] = Field(
-        default="16:9",
-        description=(
-            "Aspect ratio for text_to_video and reference_to_video modes. "
-            "Ignored for image_to_video (follows input image) and video_edit. "
-            "Default: '16:9'."
-        ),
-    )
-    duration: int = Field(
-        default=5,
-        description=(
-            "Video duration in seconds for text_to_video, image_to_video, "
-            "and reference_to_video modes. Range: 3-15. Default: 5. "
-            "For video_edit: duration follows input video (≤15s)."
-        ),
-    )
-    audio_setting: Literal["auto", "origin"] = Field(
-        default="auto",
-        description=(
-            "Audio control for video_edit mode only. "
-            "'auto': model generates/modifies audio. "
-            "'origin': preserve original audio from input video. "
-            "Default: 'auto'."
-        ),
-    )
-    seed: Optional[int] = Field(
-        default=None,
-        description="Random seed [0, 2147483647] for reproducibility.",
-    )
-    watermark: bool = Field(
-        default=False,
-        description="Whether to add watermark. Default: false.",
-    )
-    poll_interval: int = Field(
-        default=15,
-        description="Polling interval in seconds. Default: 15.",
-    )
-    poll_timeout: int = Field(
-        default=600,
-        description="Max wait time in seconds. Default: 600.",
-    )
-    output_dir: Optional[str] = Field(
-        default=None,
-        description=(
-            "Directory to save generated video. "
-            "If provided, downloads video to this directory. "
-            "If omitted, returns URL only (valid 24h)."
-        ),
-    )
+    mode: Literal["text_to_video", "image_to_video", "reference_to_video", "video_edit"]
+    prompt: Optional[str] = None
+    image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    reference_image_urls: Optional[list[str]] = None
+    resolution: Literal["720P", "1080P"] = "1080P"
+    ratio: Literal["16:9", "9:16", "1:1", "4:3", "3:4", "4:5", "5:4", "21:9", "9:21"] = "16:9"
+    duration: int = 5
+    audio_setting: Literal["auto", "origin"] = "auto"
+    seed: Optional[int] = None
+    watermark: bool = False
+    poll_interval: int = 15
+    poll_timeout: int = 600
+    output_dir: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "happyhorse",
-    "description": (
-        "Video generation and editing using HappyHorse models. "
-        "Four modes: "
-        "(1) text_to_video — generate video from text prompt (happyhorse-1.0-t2v); "
-        "(2) image_to_video — animate a single image into video (happyhorse-1.0-i2v); "
-        "(3) reference_to_video — generate video with 1-9 reference images fused as characters/objects "
-        "(happyhorse-1.0-r2v, use [Image 1] etc. in prompt to reference them); "
-        "(4) video_edit — edit an existing video with text instruction + optional reference images "
-        "(happyhorse-1.0-video-edit). "
-        "All modes are async — submit task then poll until completion (1-5 min typical)."
-    ),
-    "args": HappyhorseArgs,
-}
+TOOL = {"name": "happyhorse", "args": HappyhorseArgs}
 
 
 _VIDEO_SYNTH_PATH = "services/aigc/video-generation/video-synthesis"
@@ -222,6 +120,52 @@ def _submit_r2v(arguments: dict[str, Any], api_key: str) -> tuple[str | None, di
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Video generation and editing using HappyHorse models. Four modes: (1) text_to_video — generate
+    video from text prompt (happyhorse-1.0-t2v); (2) image_to_video — animate a single image into
+    video (happyhorse-1.0-i2v); (3) reference_to_video — generate video with 1-9 reference images
+    fused as characters/objects (happyhorse-1.0-r2v, use [Image 1] etc. in prompt to reference
+    them); (4) video_edit — edit an existing video with text instruction + optional reference images
+    (happyhorse-1.0-video-edit). All modes are async — submit task then poll until completion (1-5
+    min typical).
+
+    Args:
+        mode: Operation mode. text_to_video: generate video from text description. image_to_video:
+            animate a single input image (first frame) into video. reference_to_video: generate
+            video with 1-9 reference images fused into the scene (use [Image 1], [Image 2] etc. in
+            prompt to reference each image). video_edit: modify an existing video based on text
+            instruction, optionally guided by reference images.
+        prompt: Text prompt (up to 2500 Chinese chars / 5000 non-Chinese). Required for all modes
+            EXCEPT image_to_video (optional there). For reference_to_video: use [Image 1], [Image 2]
+            etc. to reference images and describe what each depicts, e.g. 'the woman from [Image 1]
+            runs on the beach'.
+        image_url: Input image URL or base64 data for image_to_video mode. Required for
+            image_to_video. This image becomes the first frame of the generated video. Requirements:
+            JPEG/JPG/PNG/WEBP, width & height ≥300px, aspect ratio 1:2.5~2.5:1, ≤20MB. Output video
+            aspect ratio follows the input image (ratio param is ignored).
+        video_url: Input video URL for video_edit mode. Required for video_edit. Requirements:
+            MP4/MOV (H.264), 3-60s duration (>15s auto-truncated to first 15s), long edge ≤4096px,
+            short edge ≥360px, aspect ratio 1:2.5~2.5:1, ≤100MB, >8fps.
+        reference_image_urls: Reference images for reference_to_video (1-9, required) or video_edit
+            (0-5, optional). For reference_to_video: each image provides a character/object to fuse
+            into the video. Prompt must use [Image 1], [Image 2] etc. to reference them by array
+            order. For video_edit: style guidance or element replacement reference. Requirements:
+            JPEG/JPG/PNG/WEBP, ≤20MB each. r2v: short edge ≥400px, recommend ≥720P. video_edit:
+            width/height ≥300px.
+        resolution: Output video resolution. Default: '1080P'.
+        ratio: Aspect ratio for text_to_video and reference_to_video modes. Ignored for
+            image_to_video (follows input image) and video_edit. Default: '16:9'.
+        duration: Video duration in seconds for text_to_video, image_to_video, and
+            reference_to_video modes. Range: 3-15. Default: 5. For video_edit: duration follows
+            input video (≤15s).
+        audio_setting: Audio control for video_edit mode only. 'auto': model generates/modifies
+            audio. 'origin': preserve original audio from input video. Default: 'auto'.
+        seed: Random seed [0, 2147483647] for reproducibility.
+        watermark: Whether to add watermark. Default: false.
+        poll_interval: Polling interval in seconds. Default: 15.
+        poll_timeout: Max wait time in seconds. Default: 600.
+        output_dir: Directory to save generated video. If provided, downloads video to this
+            directory. If omitted, returns URL only (valid 24h).
+    """
     mode = arguments.get("mode")
     prompt = arguments.get("prompt", "")
 

@@ -27,20 +27,23 @@ QMP_DRY=0
 LOCAL_REPO_ROOT=''
 
 # ── capability catalog — the ONE place capabilities are declared; every menu iterates this ──
-CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent mhs)
+CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent omni-video2note omni-chatcut omni-skill-creator mhs)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.0.5 1.0.5 1.0.4 1.0.3 1.0.0 1.0.2 1.0.2 1.0.2 1.0.2 1.0.0)
-CAP_DESC=("read/visualize any local file — images, video, docs, 3D"
-          "cloud media APIs by model family: VL (vision_chat/ocr/grounding), Omni A/V, ASR, segmentation"
-          "web search/extraction (Serper, Exa, Tavily) + Serper reverse-image search"
-          "hierarchical graph memory for long-video QA"
-          "audio-visual memory for long video: who said what, how, and what it sounded like"
-          "video-edit + image/video/audio generation"
-          "drive a running Blender: 3D modeling / materials / render (thin client)"
-          "drive a running FreeCAD: parametric CAD / STEP·STL / FEM (thin client)"
-          "step-by-step Chinese math/science tutorial videos (skill-only)"
-          "operate real hardware via Model Hardware Standard adapters (thin client)")
+CAP_VERSIONS=(1.1.0 1.1.1 1.1.0 1.1.0 1.1.1 1.1.0 1.1.0 1.1.0 1.1.0 1.0.1 1.0.1 1.0.0 1.0.0)
+CAP_DESC=("Inspect local files and media, extract video frames, and crop or annotate images."
+          "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription."
+          "Search the web, read pages, and identify objects or places with reverse-image search."
+          "Build searchable, hierarchical memory of long videos to summarize content and locate events, text, and dialogue."
+          "Build and query audio-visual memory to track speakers, dialogue, sounds, and events across videos."
+          "Edit existing footage into finished videos with pacing, sound, subtitles, and visual effects."
+          "Create, refine, and render 3D scenes and assets in Blender."
+          "Create and edit parametric CAD models, technical drawings, and model exports in FreeCAD."
+          "Create narrated Mandarin math and science tutorial videos or interactive explainers from problem statements and images."
+          "Convert a local tutorial video into an audited, illustrated PDF with resumable processing and offline status inspection."
+          "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation."
+          "Turns a demonstration video into a reusable Agent Skill. Needs a DashScope key and ffmpeg."
+          "Operate physical hardware through Model Hardware Standard adapters: discover devices, read sensors and camera frames, send commands with host-side safety-limit enforcement, check health, and emergency-stop — as MCP tools. Adapters are run by the hardware's owner.")
 # Skill-only capabilities have NO MCP server / pyproject extra / console entry: they install via
 # the marketplace like any plugin, but the uvx --check-system self-test doesn't apply to them.
 CAP_SKILL_ONLY=" edu-agent "
@@ -67,15 +70,22 @@ ALL_HARNESSES="$MP_HARNESSES $CFG_HARNESSES"
 # bash-3.2 safe (no assoc arrays).
 CONFIG_SPEC=(
   "DASHSCOPE_API_KEY|1|services||vision, OCR, grounding, text-only image captions, ASR, generation, memory builds"
+  "ORCAROUTER_API_KEY|1|services||OpenAI-compatible calls to api.orcarouter.ai"
+  "OPENROUTER_API_KEY|1|services||OpenAI-compatible calls to openrouter.ai"
+  "MINIMAX_API_KEY|1|services||MiniMax text-to-speech generation"
   "DASHSCOPE_BASE_URL|0|services|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
+  "DASHSCOPE_UPLOAD_POLICY_URL|0|services|inferred for official DashScope hosts|override the model-bound temporary OSS policy endpoint used for oversized Omni and VL media"
   "QWEN_MM_API_VL_MODEL|0|services|qwen3.7-plus|default VL model for vision_chat, OCR, grounding, and text-only image captions"
-  "QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|default Omni model for audio/video understanding tools and omni-memory"
+  "QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|default Omni model for audio/video understanding tools, omni-memory, and Omni ChatCut"
   "SAM3_SERVER_URL|0|services||segmentation SAM3 server URL"
   "ASR_SERVER_URLS|0|services||self-hosted ASR fallback URLs (comma-separated)"
-  "QWEN_MM_SEARCH_BACKEND|0|search|auto|text search backend (auto: serper > tavily > exa; or choose one)"
+  "QWEN_MM_OMNI_CHATCUT_MODEL_CONFIG|0|chatcut||path to the shared Omni, image-provider, and video-provider connection JSON"
+  "QWEN_MM_DUBBING_SERVER_URL|0|chatcut||external IndexTTS2/Demucs/TEN-VAD service used by video translation"
+  "QWEN_MM_SEARCH_BACKEND|0|search|auto|text search backend (auto: serper > tavily > exa > serply; or choose one)"
   "SERPER_API_KEY|1|search||Serper web_search / web_extractor and Serper-only image_search"
   "TAVILY_API_KEY|1|search||Tavily web_search / web_extractor"
   "EXA_API_KEY|1|search||Exa web_search / web_extractor"
+  "SERPLY_API_KEY|1|search||Serply web_search / web_extractor"
   "QWEN_MM_CACHE|0|runtime|OS cache dir|cache dir for derived render artifacts"
   "QWEN_MM_FFMPEG_TIMEOUT|0|runtime|120|ffmpeg/ffprobe timeout seconds"
   "QWEN_MM_CHAT_TIMEOUT|0|runtime|tool-specific (600; Omni 1800)|OpenAI-compatible chat request timeout seconds"
@@ -101,10 +111,11 @@ CONFIG_SPEC=(
   "NODE_PATH|0|edu||Node.js module resolution path"
   "PUPPETEER_EXECUTABLE_PATH|0|edu||headless Chromium executable for Puppeteer"
 )
-CONFIG_GROUPS=(services search runtime oss memory omni hosts edu)
+CONFIG_GROUPS=(services chatcut search runtime oss memory omni hosts edu)
 config_group_title() {
   case "$1" in
     services) printf 'Media APIs & endpoints' ;;
+    chatcut) printf 'Omni ChatCut' ;;
     search)   printf 'Search providers' ;;
     runtime)  printf 'Runtime paths & limits' ;;
     oss)    printf 'OSS storage (serve large media by URL)' ;;
@@ -723,12 +734,51 @@ uvx_cap() {
   fi
 }
 
-install_gemini_skill() {  # install_gemini_skill <gemini-bin> <cap>
-  local bin=$1 cap=$2 checkout ref repo
+# Gemini installs one Agent Skill at a time. Most capabilities ship one `skill/`; collection
+# capabilities enumerate their independently-discoverable children here so install/update/uninstall
+# operate on the complete capability bundle even though Gemini registers Skill and MCP separately.
+gemini_skill_components() {  # gemini_skill_components <cap> -> one component per line; `.` = skill/
+  case "$1" in
+    omni-chatcut) printf '%s\n' music-to-mv movie-commentary video-translation ;;
+    *)            printf '.\n' ;;
+  esac
+}
+
+gemini_skill_path() {  # gemini_skill_path <cap> <component>
+  local cap=$1 component=$2
+  if [ "$component" = . ]; then
+    printf 'src/capabilities/%s/skill' "$cap"
+  else
+    printf 'src/capabilities/%s/skill/%s' "$cap" "$component"
+  fi
+}
+
+gemini_skill_name() {  # gemini_skill_name <cap> <component>
+  local cap=$1 component=$2
+  if [ "$component" = . ]; then
+    printf 'qwen-mm-plugins-%s' "$cap"
+  else
+    printf 'qwen-mm-plugins-%s-%s' "$cap" "$component"
+  fi
+}
+
+gemini_has_capability_skill() {  # gemini_has_capability_skill <cap>
+  local cap=$1 component
+  for component in $(gemini_skill_components "$cap"); do
+    [ -d "$HOME/.gemini/skills/$(gemini_skill_name "$cap" "$component")" ] && return 0
+  done
+  return 1
+}
+
+install_gemini_skills() {  # install_gemini_skills <gemini-bin> <cap>
+  local bin=$1 cap=$2 checkout ref repo component path failed=0
   if is_local_repo "$REPO_URL"; then
     repo=${REPO_URL#file://}
-    run_cmd "$bin" skills install "$repo" --path "src/capabilities/${cap}/skill" --consent
-    return
+    for component in $(gemini_skill_components "$cap"); do
+      path=$(gemini_skill_path "$cap" "$component")
+      run_cmd "$bin" skills install "$repo" --path "$path" --consent || failed=1
+    done
+    return "$failed"
   fi
 
   # Gemini's skills installer has --path but no --ref. Materialize the same immutable ref used by
@@ -740,10 +790,20 @@ install_gemini_skill() {  # install_gemini_skill <gemini-bin> <cap>
   run_cmd git -C "$checkout" remote add origin "$repo" || { rm -rf "$checkout"; return 1; }
   run_cmd git -C "$checkout" fetch --depth 1 origin "$ref" || { rm -rf "$checkout"; return 1; }
   run_cmd git -C "$checkout" checkout --detach FETCH_HEAD || { rm -rf "$checkout"; return 1; }
-  run_cmd "$bin" skills install "$checkout" --path "src/capabilities/${cap}/skill" --consent
-  local rc=$?
+  for component in $(gemini_skill_components "$cap"); do
+    path=$(gemini_skill_path "$cap" "$component")
+    run_cmd "$bin" skills install "$checkout" --path "$path" --consent || failed=1
+  done
   rm -rf "$checkout"
-  return "$rc"
+  return "$failed"
+}
+
+uninstall_gemini_skills() {  # uninstall_gemini_skills <gemini-bin> <cap>
+  local bin=$1 cap=$2 component failed=0
+  for component in $(gemini_skill_components "$cap"); do
+    run_cmd "$bin" skills uninstall "$(gemini_skill_name "$cap" "$component")" || failed=1
+  done
+  return "$failed"
 }
 
 # CodeBuddy can report success after a failed plugin operation. Verify its inventory instead.
@@ -862,7 +922,7 @@ install_for() {  # install_for <harness> <plugin...>
         fi
       done ;;
     gemini)
-      # MCP + skill use the selected tag or checkout. No `--` before uvx args (gemini drops them).
+      # MCP + Skills use the selected tag or checkout. No `--` before uvx args (gemini drops them).
       for p in "$@"; do
         cap=${p#qwen-mm-plugins-}
         if ! is_skill_only "$cap"; then
@@ -872,7 +932,7 @@ install_for() {  # install_for <harness> <plugin...>
             run_cmd "$bin" mcp add -s user "$p" uvx --from "$(cap_spec "$cap")" "$p" || failed=1
           fi
         fi
-        install_gemini_skill "$bin" "$cap" || failed=1
+        install_gemini_skills "$bin" "$cap" || failed=1
       done
       warn "gemini uses Google models only — no external / OpenAI-compatible providers." ;;
     *)
@@ -960,7 +1020,7 @@ update_for() {
         if ! is_skill_only "$cap"; then
           run_cmd "$bin" mcp add -s user "$p" uvx --from "$(cap_spec "$cap")" "$p" || failed=1
         fi
-        install_gemini_skill "$bin" "$cap" || failed=1
+        install_gemini_skills "$bin" "$cap" || failed=1
       done ;;
     *)
       warn "Unknown harness '$h' — use its native marketplace/plugin update command."
@@ -1000,7 +1060,7 @@ _cfg_has() {
   case "$h" in
     qwen-code) [ -d "$HOME/.qwen/extensions/$id" ] ||
                { [ -f "$HOME/.qwen/settings.json" ] && grep -q "\"$id\"" "$HOME/.qwen/settings.json"; } ;;
-    gemini)    [ -d "$HOME/.gemini/extensions/$id" ] || [ -d "$HOME/.gemini/skills/$id" ] ||
+    gemini)    [ -d "$HOME/.gemini/extensions/$id" ] || gemini_has_capability_skill "$2" ||
                { [ -f "$HOME/.gemini/settings.json" ] && grep -q "\"$id\"" "$HOME/.gemini/settings.json"; } ;;
     *) return 1 ;;
   esac
@@ -1144,31 +1204,35 @@ menu_pick() {
 
 # _multi_rows <cur> — render MP_ITEMS/MP_DESC/MP_SEL/MP_DIS (cur=-1 → num mode: no pointer / no clear)
 _multi_rows() {
-  local cur=$1 i box ptr num body clr='' cols desc_w name_w desc name num_w
+  local cur=$1 i box ptr num body clr='' cols desc_w name_w=0 desc name
   [ "$cur" != -1 ] && clr='\033[2K'
-  # Index column is as wide as the largest index, so ten-plus capabilities stay aligned and inside
-  # the width budget instead of every row growing by a column.
-  num_w=${#MP_ITEMS[@]}; num_w=${#num_w}
-  cols=$(term_cols); desc_w=$(( cols - 25 - num_w ))
+  # Widths are derived, never fixed: the longest capability name sizes the name column, and the two
+  # spare columns cover a two-digit row number (10+). Every rendered row therefore stays strictly
+  # narrower than the terminal, so cursor-based redraws never wrap.
+  cols=$(term_cols)
+  for name in "${MP_ITEMS[@]}"; do
+    [ ${#name} -gt "$name_w" ] && name_w=${#name}
+  done
   for ((i = 0; i < ${#MP_ITEMS[@]}; i++)); do
     num=$((i + 1)); [ "$i" = "$cur" ] && ptr="${CB}${CC}❯${C0}" || ptr=' '
-    if [ "$cols" -lt $(( 26 + num_w )) ]; then
+    if [ "$cols" -lt $(( name_w + 14 )) ]; then
       # At very small widths omit the description and spend the remaining columns on the name.
-      name_w=$(( cols - 11 - num_w )); [ "$name_w" -lt 1 ] && name_w=1
+      name_w=$(( cols - 13 )); [ "$name_w" -lt 1 ] && name_w=1
       name=$(_fit "${MP_ITEMS[$i]}" "$name_w")
       if [ "${MP_DIS[$i]}" = 1 ]; then
-        body=$(printf '%b[-] %*d) %s%b' "$CD" "$num_w" "$num" "$name" "$C0")
+        body=$(printf '%b[-] %d) %s%b' "$CD" "$num" "$name" "$C0")
       else
         [ "${MP_SEL[$i]}" = 1 ] && box="${CG}[✓]${C0}" || box='[ ]'
-        body=$(printf '%s %*d) %s' "$box" "$num_w" "$num" "$name")
+        body=$(printf '%s %d) %s' "$box" "$num" "$name")
       fi
     else
+      desc_w=$(( cols - name_w - 14 )); [ "$desc_w" -lt 1 ] && desc_w=1
       desc=$(_fit "${MP_DESC[$i]}" "$desc_w")
       if [ "${MP_DIS[$i]}" = 1 ]; then
-        body=$(printf '%b[-] %*d) %-13s %s%b' "$CD" "$num_w" "$num" "${MP_ITEMS[$i]}" "$desc" "$C0")
+        body=$(printf '%b[-] %d) %-*s %s%b' "$CD" "$num" "$name_w" "${MP_ITEMS[$i]}" "$desc" "$C0")
       else
         [ "${MP_SEL[$i]}" = 1 ] && box="${CG}[✓]${C0}" || box='[ ]'
-        body=$(printf '%s %*d) %-13s %b%s%b' "$box" "$num_w" "$num" "${MP_ITEMS[$i]}" "$CD" "$desc" "$C0")
+        body=$(printf '%s %d) %-*s %b%s%b' "$box" "$num" "$name_w" "${MP_ITEMS[$i]}" "$CD" "$desc" "$C0")
       fi
     fi
     printf '%b  %s %s\n' "$clr" "$ptr" "$body"
@@ -1207,12 +1271,11 @@ multi_pick() {
       [ -z "$ans" ] && break
       for tok in $ans; do
         case "$tok" in
-          # Two digits, not one: with ten capabilities a single-digit pattern silently dropped "10".
-          [1-9]|[1-9][0-9])
-            i=$((tok - 1))
-            if [ "$i" -ge "$n" ]; then warn "ignored: $tok"
-            elif [ "${MP_DIS[$i]}" = 1 ]; then warn "${MP_ITEMS[$i]} locked — skipped"
-            else MP_SEL[$i]=$(( 1 - ${MP_SEL[$i]} )); fi ;;
+          # Two digits too: the catalog passed ten capabilities, so row 10 needs to be reachable.
+          [1-9]|[1-9][0-9]) i=$((tok - 1))
+                 if [ "$i" -ge "$n" ]; then warn "ignored: $tok"
+                 elif [ "${MP_DIS[$i]}" = 1 ]; then warn "${MP_ITEMS[$i]} locked — skipped"
+                 else MP_SEL[$i]=$(( 1 - ${MP_SEL[$i]} )); fi ;;
           *) warn "ignored: $tok" ;;
         esac
       done
@@ -1762,7 +1825,7 @@ do_uninstall() {
       gemini)   if ! is_skill_only "$p"; then
                   run_cmd "$bin" mcp remove -s user "qwen-mm-plugins-${p}" || plugin_rc=1
                 fi
-                run_cmd "$bin" skills uninstall "qwen-mm-plugins-${p}" || plugin_rc=1 ;;
+                uninstall_gemini_skills "$bin" "$p" || plugin_rc=1 ;;
       *) warn "Unknown harness '$h' — use its native uninstall verb."; plugin_rc=1 ;;
     esac
     if [ "$plugin_rc" = 0 ]; then removed="$removed $p"; else failed=1; fi

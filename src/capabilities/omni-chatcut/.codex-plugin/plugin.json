@@ -1,0 +1,27 @@
+{
+  "name": "qwen-mm-plugins-omni-chatcut",
+  "version": "1.0.1",
+  "description": "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation.",
+  "author": {
+    "name": "Qwen Team"
+  },
+  "skills": "./skill",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Omni ChatCut",
+    "shortDescription": "Music-to-MV, Movie Commentary, and video translation Skills",
+    "longDescription": "A video-creation Skill collection with Music-to-MV, movie-commentary, and reference-voice video-translation workflows.",
+    "developerName": "Qwen Team",
+    "category": "Creativity",
+    "capabilities": [
+      "Music-to-MV",
+      "Movie Commentary",
+      "Video Translation"
+    ],
+    "defaultPrompt": [
+      "Create a complete MV for this music track.",
+      "Turn this movie into a narrated commentary video.",
+      "Translate this video into another language."
+    ]
+  }
+}

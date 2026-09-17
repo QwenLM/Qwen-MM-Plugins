@@ -1,0 +1,22 @@
+{
+  "schema": "omni-chatcut/movie-commentary-project/v1",
+  "target": "analysis_only|plan_only|full|resume",
+  "source_movie": "",
+  "project_root": "",
+  "artifacts": {
+    "execution_facts": "plan/execution_facts.json",
+    "watch_notes": "plan/watch_notes",
+    "editing_plan": "plan/editing_plan.json",
+    "narration_script": "plan/narration_script.md",
+    "shards": "shards",
+    "execution": "out",
+    "final_video": "full/commentary.mp4",
+    "final_qa": "full/orchestrator_qa_full.json"
+  },
+  "stages": {
+    "analysis": "pending",
+    "authoring": "pending",
+    "execution": "pending"
+  },
+  "blockers": []
+}

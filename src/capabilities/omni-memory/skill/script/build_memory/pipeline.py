@@ -373,10 +373,6 @@ def _build_memory(
         s2_agg["elapsed"] += round(time.time() - _t, 2)
         active = [v for v in sem_store.values() if v.get("status") != "superseded"]
         store.set_semantic(json.loads(json.dumps(active)))  # deep-copy snapshot: safe vs main-thread serialize
-        try:
-            stages.gs_add_segment(client, store, batch)  # ① hierarchical global state (bounded, background)
-        except Exception as e:
-            omni_core.diag(f"[MEM] 🌐 global-state 段归纳跳过：{str(e)[:80]}", flush=True)
         msg = (
             f"🔗 [后台并行] rollup {tag}: +{ops['create']} 新 / {ops['update']} 更新 / "
             f"{ops['conflict']} 冲突 → 活跃 {len(active)}（{ops['tokens'] // 1000}k tok）"
@@ -391,8 +387,6 @@ def _build_memory(
         yield emit(
             f"🧠 正在处理片段 {i + 1}（本段 {rel_i + 1}/{len(clips)}，t≈{round(c['win_start'] + offset)}s，串行有状态）…"
         )
-        # extract_clip builds its own previous_state via prev_state_for_prompt(state), without
-        # global_context — the rolling global summary never enters the extraction prompt (§8.1).
         omni_core.diag(f"[MEM] EXTRACT global#{i} (seg {rel_i + 1}/{len(clips)}) start (omni video call)…", flush=True)
         try:
             rec, _ = yield from _run_hb(
@@ -486,7 +480,7 @@ def _build_memory(
         yield emit("⚠️ 没有成功抽取任何片段（可能限流/切片问题），请重试。")
         return
 
-    store.scene_env = list(state.get("scene_env", []))  # ① global_summary managed by gs (flushed below)
+    store.scene_env = list(state.get("scene_env", []))
     store.set_entities(state.get("known_entities", []))
     # ---- finalize name-alignment step A: one final pass over the FULL cumulative transcript, BEFORE
     # driver_state is frozen (so the persisted state carries corrected names for the next append). ----
@@ -519,8 +513,7 @@ def _build_memory(
     store.driver_state = json.loads(json.dumps(state))  # persist final state for the NEXT segment
     store.processed_sec = round(store.episodic[-1].get("win_end", offset), 3) if store.episodic else offset
     log.append(
-        f"🗂 容器就绪：🌐Global「{(store.global_summary or '')[:50]}」·"
-        f"🔑{len(store.entities)} 实体（keys 常驻）·🎞{len(store.episodic)} 复合片段"
+        f"🗂 容器就绪：🔑{len(store.entities)} 实体（keys 常驻）·🎞{len(store.episodic)} 复合片段"
         f"（时间轴 0–{store.processed_sec / 60:.1f} 分钟）"
     )
 
@@ -580,8 +573,6 @@ def _build_memory(
         except Exception as e:
             log.append(f"🪪 人名传播跳过：{str(e)[:80]}")
 
-    stages.gs_flush(store)  # refresh global_summary from the final nodes; no model call
-
     # ---- dense index over episodic records and semantic triples ----
     t_i0 = time.time()
     t_idx = 0.0
@@ -640,19 +631,3 @@ def _build_memory(
         f"✅ 记忆就绪：🎞{len(store.episodic)} 复合片段 · 🔑{len(store.entities)} 常驻实体 · "
         f"🧩{len(store.semantic)} 三元组。右侧可提问了。"
     )
-
-
-def _fmt_retry(events):
-    """One-line backoff summary for the retrieval panel (per stage)."""
-    if not events:
-        return ""
-    tot = round(sum(e.get("wait", 0) for e in events), 1)
-    detail = ", ".join(f"#{e['attempt']}·{e['reason']}·{e['wait']}s" for e in events)
-    return f"  ⏳ **退避 {len(events)} 次 / 共 {tot}s**（{detail}）"
-
-
-def _retry_sum(events):
-    """Compact backoff summary for stdout [TIME] logs."""
-    if not events:
-        return "0"
-    return f"{len(events)}x/{round(sum(e.get('wait', 0) for e in events), 1)}s"

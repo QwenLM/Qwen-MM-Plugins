@@ -62,18 +62,23 @@ def test_tool_schema_inlines_optional_complex():
 # ── build_registry discovery hardening (E1) ──────────────────────────
 
 _GOOD = """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 class A(BaseModel):
-    x: int = Field(default=0, description="x")
-TOOL = {{"name": "{name}", "description": "d", "args": A}}
+    x: int = 0
+TOOL = {{"name": "{name}", "args": A}}
 def handle(arguments):
+    '''A documented tool.
+
+    Args:
+        x: A number.
+    '''
     return [{{"type": "text", "text": "ok"}}]
 """
 _HALF = """
 from pydantic import BaseModel
 class A(BaseModel):
     x: int = 0
-TOOL = {"name": "half", "description": "d", "args": A}
+TOOL = {"name": "half", "args": A}
 """  # exports TOOL but not handle
 _HELPER = "VALUE = 1\n"  # neither TOOL nor handle — a legit helper module, must be skipped
 

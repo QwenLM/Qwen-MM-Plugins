@@ -9,45 +9,40 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import text
 
 from ..errors import guarded
 from ..http_client import AdapterError, request, segment
+from ..protocol import command_accepted
 from ..registry import invalidate, resolve
 
 
 class ResetArgs(BaseModel):
-    device_id: str = Field(
-        description=("Device to reset ('<adapter>/<device_id>', or a bare device id when unambiguous).")
-    )
-    mode: Literal["soft", "estop"] = Field(
-        default="soft",
-        description=(
-            "'soft' returns the device to its idle/known-good state, clearing an error. "
-            "'estop' is an emergency stop: halt motion and output now, recovery second. "
-            "Use 'estop' whenever something looks wrong and you are not sure why."
-        ),
-    )
+    device_id: str
+    mode: Literal["soft", "estop"] = "soft"
 
 
-TOOL: dict[str, Any] = {
-    "name": "mhs_reset",
-    "description": (
-        "Recover or stop a physical device. mode='soft' clears an error state and returns the device "
-        "to idle; mode='estop' is an emergency stop that halts motion and output immediately. Needs no "
-        "confirmation — stopping hardware is always allowed. Use after an error state, or the moment "
-        "something looks wrong."
-    ),
-    "args": ResetArgs,
-}
+TOOL: dict[str, Any] = {"name": "mhs_reset", "args": ResetArgs}
 
 _UNSUPPORTED = (404, 405, 501)
 
 
 @guarded
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Recover or stop a physical device.
+
+    mode='soft' clears an error state and returns the device to idle; mode='estop' is an emergency stop that
+    halts motion and output immediately. Needs no confirmation — stopping hardware is always allowed. Use
+    after an error state, or the moment something looks wrong.
+
+    Args:
+        device_id: Device to reset ('<adapter>/<device_id>', or a bare device id when unambiguous).
+        mode: 'soft' returns the device to its idle/known-good state, clearing an error. 'estop' is an
+            emergency stop: halt motion and output now, recovery second. Use 'estop' whenever something
+            looks wrong and you are not sure why.
+    """
     mode = arguments.get("mode", "soft")
     adapter, local_id = resolve(arguments["device_id"])
     qualified = f"{adapter.name}/{local_id}"
@@ -65,10 +60,10 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             ]
         raise
 
-    # State changed, so anything cached about this device may now be stale.
+    # A reset may have changed state even if its acknowledgement is malformed.
     invalidate()
 
-    ok = payload.get("ok") is not False
+    ok = command_accepted(payload, f"{qualified} {mode} reset")
     state = payload.get("state")
     suffix = f" Device state: {state}." if isinstance(state, str) and state else ""
     if not ok:

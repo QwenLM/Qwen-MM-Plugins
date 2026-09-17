@@ -11,19 +11,11 @@ from . import MemoryRef
 
 
 class GetTimelineArgs(MemoryRef):
-    start_sec: float = Field(default=0, ge=0, description="Window start in video seconds.")
-    end_sec: float = Field(
-        default=0, ge=0, description="Window end in video seconds. 0 means through the end of the video."
-    )
+    start_sec: float = Field(default=0, ge=0)
+    end_sec: float = Field(default=0, ge=0)
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_timeline",
-    "description": "Moments within a time window, in order — one brief per 30s clip (caption, who "
-    "is present, how many lines were spoken). Use it for 'what happens around 12:30' "
-    "or to walk a stretch of the video; then call get_moment on the interesting idxs.",
-    "args": GetTimelineArgs,
-}
+TOOL = {"name": "get_timeline", "args": GetTimelineArgs}
 
 
 def get_timeline(
@@ -42,4 +34,15 @@ def get_timeline(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Moments within a time window, in order — one brief per 30s clip (caption, who is present, how
+    many lines were spoken). Use it for 'what happens around 12:30' or to walk a stretch of the
+    video; then call get_moment on the interesting idxs.
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        start_sec: Window start in video seconds.
+        end_sec: Window end in video seconds. 0 means through the end of the video.
+    """
     return [json_text(get_timeline(**arguments))]

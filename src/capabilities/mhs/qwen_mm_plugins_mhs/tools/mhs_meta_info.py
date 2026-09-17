@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import json_text, text
 
@@ -13,28 +13,11 @@ from ..registry import meta_of
 
 
 class MetaInfoArgs(BaseModel):
-    device_id: str = Field(
-        description=(
-            "Device to describe, as reported by mhs_discover ('<adapter>/<device_id>'). A bare "
-            "device id also works when only one adapter has it."
-        )
-    )
-    refresh: bool = Field(
-        default=False,
-        description="Re-query the adapter instead of using cached metadata (e.g. after a firmware change).",
-    )
+    device_id: str
+    refresh: bool = False
 
 
-TOOL: dict[str, Any] = {
-    "name": "mhs_meta_info",
-    "description": (
-        "Full metadata for one device: identity (manufacturer, model, serial, firmware), a natural-"
-        "language description, every capability with its direction/unit/parameters, and the safety "
-        "limits the device declares. Read this before the first mhs_write to a device — it is how you "
-        "learn the permitted ranges and which capabilities need confirmation."
-    ),
-    "args": MetaInfoArgs,
-}
+TOOL: dict[str, Any] = {"name": "mhs_meta_info", "args": MetaInfoArgs}
 
 
 def _number(value: float) -> str:
@@ -44,6 +27,18 @@ def _number(value: float) -> str:
 
 @guarded
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Full metadata for one device: identity (manufacturer, model, serial, firmware), a natural-language
+    description, every capability with its direction/unit/parameters, and the safety limits the device
+    declares.
+
+    Read this before the first mhs_write to a device — it is how you learn the permitted ranges and which
+    capabilities need confirmation.
+
+    Args:
+        device_id: Device to describe, as reported by mhs_discover ('<adapter>/<device_id>'). A bare device
+            id also works when only one adapter has it.
+        refresh: Re-query the adapter instead of using cached metadata (e.g. after a firmware change).
+    """
     _, _, meta = meta_of(arguments["device_id"], refresh=bool(arguments.get("refresh")))
     blocks: list[dict[str, Any]] = [json_text(meta)]
 

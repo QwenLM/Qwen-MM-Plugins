@@ -1,0 +1,32 @@
+{
+  "schema": "omni-chatcut/model-connections",
+  "omni": {
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "api_key_env": "DASHSCOPE_API_KEY",
+    "model": "qwen3.5-omni-plus"
+  },
+  "image_providers": {
+    "qwen_image_3": {
+      "base_url": "https://dashscope.aliyuncs.com",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "model": "qwen-image-3.0-pro"
+    },
+    "seedream": {
+      "base_url": "https://ark.cn-beijing.volces.com",
+      "api_key_env": "ARK_API_KEY",
+      "model": "doubao-seedream-4-5-251128"
+    }
+  },
+  "video_providers": {
+    "wan3": {
+      "base_url": "https://dashscope.aliyuncs.com",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "model": "wan3.0-video"
+    },
+    "seedance": {
+      "base_url": "https://ark.cn-beijing.volces.com",
+      "api_key_env": "ARK_API_KEY",
+      "model": "doubao-seedance-2-5-260628"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "omni-chatcut/video-translation-project/v1",
+  "target": "analysis_only|translation_only|full|resume",
+  "source_movie": "",
+  "source_sha256": "",
+  "duration_sec": 0,
+  "project_root": "",
+  "source_language": "auto",
+  "target_language": "en",
+  "style_brief": "",
+  "artifacts": {
+    "vad": "analysis/vad.json",
+    "transcript": "analysis/transcript.json",
+    "translation_plan": "plan/translation_plan.json",
+    "render_report": "full/render_report.json",
+    "final_video": "full/translated.mp4",
+    "final_qa": "full/final_qa.json",
+    "agent_review": "full/agent_review.json"
+  }
+}

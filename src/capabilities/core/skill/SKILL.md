@@ -1,25 +1,29 @@
 ---
 name: qwen-mm-plugins-core
-description: Local MCP tools to read and visualize any file — images, video, documents, code, data, 3D, NIfTI, notebooks, and more — plus image tools for cropping, annotating, and extracting frames.
+description: Read and visualize any file — images, video, documents, code, data, 3D models, NIfTI volumes, and more — with MCP tools. Use when the agent needs to inspect file contents or media metadata, crop an image, draw bounding boxes, or save document pages and video frames.
 ---
 
-# Qwen-MM-Plugins Core
+# Local File Inspection
 
-You have `qwen-mm-plugins-core` MCP tools available. Use them to read and visualize any file (images, videos, documents, code, data, 3D models, NIfTI volumes, notebooks, etc.) and to crop/annotate images. Prefer these MCP tools over manual scripting.
+You have `qwen-mm-plugins-core` MCP tools available. Use them to read and visualize supported local files, inspect media metadata, crop/annotate images, and save document pages or video frames. Prefer these MCP tools over manual scripting.
+
+In the default native mode, these tools return text and images for the agent to inspect without a model API call. With `QWEN_MM_NATIVE_MODE=0`, the shared caption fallback sends image results to the configured VL endpoint and returns text captions.
 
 Check the `qwen-mm-plugins-core` tools in your tool list for full schemas and parameters.
 
 ## When to Use Which Tool
 
-Native reading (feeds content directly to you):
+Reading and inspection:
 - **Inspect metadata FIRST** for any video/audio (duration, resolution, fps, codecs, bitrate, audio/video/subtitle tracks, rotation, chapters) → `media_info`. Run it before `read_video` and before any clip/edit — see *Metadata first* below.
 - **See a file** (PDF, Office, CSV, code, notebook, 3D, ...) → `visualize`
 - **Read an image** with dynamic resolution → `read_image`
 - **Read a video** (extract frames) → `read_video`
 - **Save specific frame(s)** of a video to file → `save_view` (pass `times=[...]`)
+- **Save document page(s)** as images → `save_view` (pass `pages="..."`)
 
 Producing / annotating (writes an image file):
 - **Crop a rectangular region** from an image → `crop`
+- **Photo coordinates**: `read_image`, `crop`, and `draw_bbox` apply EXIF orientation. Use 0–1000 coordinates in the displayed image, including boxes returned by `grounding`.
 - **Draw bounding boxes** on an image → `draw_bbox`
 
 ## Visualize — Supported Formats
@@ -40,6 +44,8 @@ Producing / annotating (writes an image file):
 | Notebooks | `.ipynb` | Text cells + embedded images |
 | LaTeX | `.tex` | Compiles to PDF; falls back to source on failure |
 | Images/Videos | `.jpg`, `.mp4`, ... | Delegates to `read_image`/`read_video` |
+
+The table lists supported formats; files with unknown extensions return an unsupported-type error.
 
 Use `pages` for page ranges, `budget` for resolution, `max_pages` to cap output.
 
@@ -65,6 +71,6 @@ When juggling heterogeneous assets (action-cam clips, VFX/stock footage, voiceov
 
 ## Relationship to Other Capabilities
 
-Core is local-only. Cloud model/API calls live in separate capabilities — install them if you need those:
+Core handles file reading, rendering, and basic image operations. Install these capabilities for dedicated model inference or search:
 - **Understand media with a model** → `qwen-mm-plugins-api`, grouped by model family: VL (`vision_chat`, `ocr`, `grounding`), Omni A/V (timestamped captioning, multi-speaker ASR, temporal grounding, event counting), plus `transcribe_audio` and `segmentation`. Annotate its `grounding` output with `draw_bbox` here.
 - **Confirm a fact / identify an entity** (reverse image + web) → `qwen-mm-plugins-search`. Grab the frame with `save_view` here first.

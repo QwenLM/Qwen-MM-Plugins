@@ -4,29 +4,30 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class DownloadPolyhavenAssetArgs(BaseModel):
-    asset_id: str = Field(description="The ID of the asset to download.")
-    asset_type: str = Field(description="The type of asset (hdris, textures, models).")
-    resolution: str = Field(default="1k", description="The resolution to download (e.g., 1k, 2k, 4k).")
-    file_format: Optional[str] = Field(
-        default=None,
-        description=("Optional file format (e.g., hdr, exr for HDRIs; jpg, png for textures; gltf, fbx for models)."),
-    )
+    asset_id: str
+    asset_type: str
+    resolution: str = "1k"
+    file_format: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "download_polyhaven_asset",
-    "description": (
-        "Download and import a Polyhaven asset into Blender. Returns a message indicating success or failure."
-    ),
-    "args": DownloadPolyhavenAssetArgs,
-}
+TOOL = {"name": "download_polyhaven_asset", "args": DownloadPolyhavenAssetArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Download and import a Polyhaven asset into Blender. Returns a message indicating success or
+    failure.
+
+    Args:
+        asset_id: The ID of the asset to download.
+        asset_type: The type of asset (hdris, textures, models).
+        resolution: The resolution to download (e.g., 1k, 2k, 4k).
+        file_format: Optional file format (e.g., hdr, exr for HDRIs; jpg, png for textures; gltf,
+            fbx for models).
+    """
     from qwen_mm_plugins_blender.loader import get_connection
 
     asset_id = arguments.get("asset_id", "")

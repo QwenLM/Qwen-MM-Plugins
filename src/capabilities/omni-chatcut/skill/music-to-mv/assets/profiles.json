@@ -1,0 +1,14 @@
+{
+  "standard": {
+    "lyrics": {"merge_dense_cues": false},
+    "visual": {"visible_singing": "allowed", "minimum_narrative_ratio": 0.0},
+    "subtitles": {"enabled": true, "style": "white_noto"}
+  },
+  "merged-lyrics": {
+    "extends": "standard",
+    "lyrics": {"merge_dense_cues": true}
+  },
+  "no-asset-qc": {
+    "extends": "standard"
+  }
+}

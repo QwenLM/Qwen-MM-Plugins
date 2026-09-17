@@ -10,25 +10,24 @@ CONTENT_LIMIT = 8000  # chars of scraped page kept per URL
 
 
 class WebExtractorArgs(BaseModel):
-    urls: list[str] = Field(description="URLs to crawl and extract content from.", min_length=1)
-    goal: str = Field(description="What information to extract or focus on.")
-    api_key: Optional[str] = Field(
-        default=None,
-        description="API key for the selected search backend (defaults to its backend-specific environment key).",
-    )
+    urls: list[str] = Field(min_length=1)
+    goal: str
+    api_key: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "web_extractor",
-    "description": (
-        "Crawl and extract content from web pages, with optional summarization. "
-        "Returns the extracted text or a summary focused on the specified goal."
-    ),
-    "args": WebExtractorArgs,
-}
+TOOL = {"name": "web_extractor", "args": WebExtractorArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Crawl and extract content from web pages, with optional summarization. Returns the extracted
+    text or a summary focused on the specified goal.
+
+    Args:
+        urls: URLs to crawl and extract content from.
+        goal: What information to extract or focus on.
+        api_key: API key for the selected search backend (defaults to its backend-specific
+            environment key).
+    """
     from qwen_mm_plugins_search.backends import (
         backend_error,
         extract_page,

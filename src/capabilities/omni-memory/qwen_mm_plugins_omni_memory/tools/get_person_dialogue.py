@@ -11,24 +11,13 @@ from . import MemoryRef
 
 
 class GetPersonDialogueArgs(MemoryRef):
-    person_id: str = Field(
-        default="",
-        description="Canonical id such as P001 (see get_memory_overview / get_people). "
-        "Empty means every speaker, in time order.",
-    )
-    start_sec: float | None = Field(default=None, description="Optional time window start.")
-    end_sec: float | None = Field(default=None, description="Optional time window end.")
+    person_id: str = ""
+    start_sec: float | None = None
+    end_sec: float | None = None
     limit: int = Field(default=200, ge=1, le=1000)
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_person_dialogue",
-    "description": "Everything one person said, in time order, with timestamps and tone. Use this "
-    "for 'what did X say', 'did X mention Y', 'who said Z'. Each line was bound to "
-    "its speaker by the omni model from lip movement and who is visibly speaking, so "
-    "attribution survives overlapping speech and similar voices.",
-    "args": GetPersonDialogueArgs,
-}
+TOOL = {"name": "get_person_dialogue", "args": GetPersonDialogueArgs}
 
 
 def get_person_dialogue(
@@ -54,4 +43,19 @@ def get_person_dialogue(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Everything one person said, in time order, with timestamps and tone. Use this for 'what did X
+    say', 'did X mention Y', 'who said Z'. Each line was bound to its speaker by the omni model from
+    lip movement and who is visibly speaking, so attribution survives overlapping speech and similar
+    voices.
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        person_id: Canonical id such as P001 (see get_memory_overview / get_people). Empty means
+            every speaker, in time order.
+        start_sec: Optional time window start.
+        end_sec: Optional time window end.
+        limit: Maximum number of dialogue entries to return.
+    """
     return [json_text(get_person_dialogue(**arguments))]

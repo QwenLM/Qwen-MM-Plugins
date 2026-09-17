@@ -9,35 +9,20 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ._common import json_block, run_omni, summary_block
 
 
 class OmniMusicCaptionArgs(BaseModel):
-    file_path: str = Field(description="Absolute path to a local music audio/video file, or an http(s)/OSS URL.")
-    model: Optional[str] = Field(
-        default=None,
-        description="Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.5-omni-plus.",
-    )
-    api_key: Optional[str] = Field(default=None, description="DashScope API key (defaults to DASHSCOPE_API_KEY).")
-    base_url: Optional[str] = Field(default=None, description="OpenAI-compatible base URL override.")
-    dry_run: bool = Field(default=False, description="Return the request that would be sent, without calling the API.")
+    file_path: str
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    dry_run: bool = False
 
 
-TOOL: dict[str, Any] = {
-    "name": "omni_music_caption",
-    "description": (
-        "Analyze a music track and return structured tags (genre, moods, instruments, key, time "
-        "signature, vocal profile) plus a dense English caption suitable as a music-generation prompt, "
-        "using the Qwen-Omni model. Whole-track global analysis — NO timestamps or per-section "
-        "breakdown. Extracts the audio track if given a video. "
-        "An audio file that fits the endpoint's inline cap (10 MB of base64) is sent untouched; a longer "
-        "one is downmixed to 16 kHz mono MP3 to fit, which costs some fidelity — pass an http(s)/OSS URL "
-        "to avoid that."
-    ),
-    "args": OmniMusicCaptionArgs,
-}
+TOOL = {"name": "omni_music_caption", "args": OmniMusicCaptionArgs}
 
 _PROMPT = (
     "You are an expert in music theory, arrangement, and audio engineering. Analyze this music audio "
@@ -66,6 +51,20 @@ _PROMPT = (
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Analyze a music track and return structured tags (genre, moods, instruments, key, time
+    signature, vocal profile) plus a dense English caption suitable as a music-generation prompt,
+    using the Qwen-Omni model. Whole-track global analysis — NO timestamps or per-section breakdown.
+    Extracts the audio track if given a video. An audio file that fits the endpoint's inline cap (10
+    MB of base64) is sent untouched; a longer one is downmixed to 16 kHz mono MP3 to fit, which
+    costs some fidelity — pass an http(s)/OSS URL to avoid that.
+
+    Args:
+        file_path: Absolute path to a local music audio/video file, or an http(s)/OSS URL.
+        model: Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.5-omni-plus.
+        api_key: API key override; otherwise selected by endpoint.
+        base_url: OpenAI-compatible base URL override.
+        dry_run: Return the request that would be sent, without calling the API.
+    """
     data, blocks = run_omni(arguments, prompt=_PROMPT, mode="audio")
     if blocks is not None:
         return blocks

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
-
 from shared.content import json_text
 
 from ..service import load_store, memory_label, utterances
@@ -11,19 +9,10 @@ from . import MemoryRef
 
 
 class GetPeopleArgs(MemoryRef):
-    person_id: str | None = Field(
-        default=None, description="Canonical id such as P001. Omit to get every person in the video."
-    )
+    person_id: str | None = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_people",
-    "description": "Person dossiers: canonical person_id, resolved name, appearance, when they are "
-    "on screen, how much they speak, and the semantic facts attached to them. "
-    "Identities are carried across overlapping clips, so the same person keeps one "
-    "person_id for the whole video.",
-    "args": GetPeopleArgs,
-}
+TOOL = {"name": "get_people", "args": GetPeopleArgs}
 
 
 def get_people(
@@ -60,4 +49,14 @@ def get_people(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Person dossiers: canonical person_id, resolved name, appearance, when they are on screen, how
+    much they speak, and the semantic facts attached to them. Identities are carried across
+    overlapping clips, so the same person keeps one person_id for the whole video.
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        person_id: Canonical id such as P001. Omit to get every person in the video.
+    """
     return [json_text(get_people(**arguments))]

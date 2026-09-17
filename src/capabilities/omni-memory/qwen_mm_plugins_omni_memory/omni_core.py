@@ -507,8 +507,6 @@ class StoreBase:
     """
 
     def __init__(self):
-        self.global_summary = ""  # rolling summary; maintained but not consumed (see DEVIATIONS.md)
-        self.global_nodes = []  # resolution-decaying nodes [{level, text, t0, t1}]
         self.scene_env = []
         self.entities = []
         self.episodic = []  # each record gets an "emb"
@@ -537,8 +535,6 @@ class StoreBase:
         JSON array — so a store.json in either encoding loads unchanged, and is rewritten in the current
         one only when something saves it."""
         s = cls()
-        s.global_summary = d.get("global_summary", "") or ""
-        s.global_nodes = list(d.get("global_nodes", []) or [])  # v3.1+; older libs → [] (back-compat)
         s.scene_env = list(d.get("scene_env", []) or [])
         s.set_entities(d.get("entities", []) or [])  # rebuilds _by_id / _by_name
         s.episodic = [_emb_in(r) for r in (d.get("episodic") or [])]

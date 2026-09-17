@@ -3,8 +3,6 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from pydantic import Field
-
 from shared.content import json_text
 
 from ..service import load_store, memory_label
@@ -12,17 +10,10 @@ from . import MemoryRef
 
 
 class GetMomentArgs(MemoryRef):
-    idxs: list[int] = Field(description="Clip indices to expand, from search_* or get_timeline.")
+    idxs: list[int]
 
 
-TOOL: dict[str, Any] = {
-    "name": "get_moment",
-    "description": "Full detail for one or more clips — the most information-dense read. Returns the "
-    "visual caption, every spoken line with its speaker, who is present and what they are doing, "
-    "acoustic events, scene changes, and the path to the 30s clip file itself. Reach for this when a "
-    "moment brief from plan_and_search or get_timeline is too coarse.",
-    "args": GetMomentArgs,
-}
+TOOL = {"name": "get_moment", "args": GetMomentArgs}
 
 
 def get_moment(
@@ -97,4 +88,15 @@ def get_moment(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Full detail for one or more clips — the most information-dense read. Returns the visual caption,
+    every spoken line with its speaker, who is present and what they are doing, acoustic events,
+    scene changes, and the path to the 30s clip file itself. Reach for this when a moment brief from
+    plan_and_search or get_timeline is too coarse.
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        idxs: Clip indices to expand, from search_* or get_timeline.
+    """
     return [json_text(get_moment(**arguments))]

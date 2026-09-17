@@ -1,0 +1,8 @@
+{
+  "name": "qwen-mm-plugins-omni-video2note",
+  "displayName": "Omni Video2Note",
+  "version": "1.0.1",
+  "description": "Convert a local tutorial video into an audited, illustrated PDF with resumable processing and review status.",
+  "skills": "./skill",
+  "mcp": ".mcp.json"
+}

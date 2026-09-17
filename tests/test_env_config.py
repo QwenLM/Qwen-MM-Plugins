@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from scripts.gen_env_docs import check, load_config_fields
 
+from shared import env as env_config
 from shared.env import _int_env, get_bool_env
 
 _VAR = "QMP_TEST_INT_ENV"
@@ -74,3 +75,30 @@ def test_bool_env_unset_or_invalid_uses_default(monkeypatch, caplog):
     monkeypatch.setenv(_BOOL_VAR, "maybe")
     assert get_bool_env(_BOOL_VAR, default=True) is True
     assert f"invalid {_BOOL_VAR}" in caplog.text
+
+
+def test_get_env_can_refresh_config_changed_by_another_process(tmp_path, monkeypatch):
+    """A caller can opt in to seeing config written by a separate setup command."""
+    config = tmp_path / "config"
+    replacement = tmp_path / "config.new"
+    monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
+    monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
+    monkeypatch.setattr(env_config, "_config_cache", None)
+
+    config.write_text("DASHSCOPE_BASE_URL=https://first.example/v1\n", encoding="utf-8")
+    assert env_config.get_env("DASHSCOPE_BASE_URL") == "https://first.example/v1"
+
+    replacement.write_text("DASHSCOPE_BASE_URL=https://second.example/v1\n", encoding="utf-8")
+    replacement.replace(config)
+    assert env_config.get_env("DASHSCOPE_BASE_URL") == "https://first.example/v1"
+    assert env_config.get_env("DASHSCOPE_BASE_URL", refresh_config=True) == "https://second.example/v1"
+
+
+def test_environment_override_does_not_need_config_refresh(tmp_path, monkeypatch):
+    config = tmp_path / "config"
+    config.write_text("DASHSCOPE_BASE_URL=https://config.example/v1\n", encoding="utf-8")
+    monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://environment.example/v1")
+    monkeypatch.setattr(env_config, "_config_cache", None)
+
+    assert env_config.get_env("DASHSCOPE_BASE_URL", refresh_config=True) == "https://environment.example/v1"

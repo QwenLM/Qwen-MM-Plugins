@@ -18,7 +18,7 @@ _TOOL_INSTALL_HINT = {
     "ffmpeg": "apt install ffmpeg   |   brew install ffmpeg",
     "ffprobe": "apt install ffmpeg   |   brew install ffmpeg",
     "libreoffice": "apt install libreoffice   |   brew install --cask libreoffice",
-    "pdflatex": "apt install texlive-latex-base texlive-latex-extra",
+    "pdflatex": "apt install texlive-latex-base texlive-latex-extra   |   brew install --cask basictex",
     "blender": "apt install blender   |   brew install --cask blender",
 }
 

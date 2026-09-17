@@ -15,6 +15,11 @@ from shared.env import CONFIG_FIELDS
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _release_tag(cap: str) -> str:
+    index = json.loads((ROOT / "plugin-versions.json").read_text(encoding="utf-8"))
+    return index["tag_format"].format(cap=cap, version=index["plugins"][cap])
+
+
 def _bash(script: str, **env_overrides: str) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "NO_COLOR": "1", **env_overrides}
     return subprocess.run(
@@ -39,15 +44,23 @@ def test_config_spec_lists_search_backend_selector_and_keys():
     assert any(row.startswith("SERPER_API_KEY|1|search||") for row in rows)
     assert any(row.startswith("TAVILY_API_KEY|1|search||") for row in rows)
     assert any(row.startswith("EXA_API_KEY|1|search||") for row in rows)
+    assert any(row.startswith("SERPLY_API_KEY|1|search||") for row in rows)
 
 
 def test_config_spec_lists_api_model_defaults():
     result = _bash('printf "%s\\n" "${CONFIG_SPEC[@]}"')
     assert result.returncode == 0, result.stderr
     rows = result.stdout.splitlines()
+    assert any(row.startswith("MINIMAX_API_KEY|1|services||") for row in rows)
     assert any(row.startswith("QWEN_MM_API_VL_MODEL|0|services|qwen3.7-plus|") for row in rows)
     assert any(row.startswith("QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|") for row in rows)
     assert any(row.startswith("QWEN_MM_NATIVE_MODE|0|runtime|1|") for row in rows)
+
+
+def test_config_spec_lists_omni_chatcut_model_config():
+    result = _bash('printf "%s\\n" "${CONFIG_SPEC[@]}"')
+    assert result.returncode == 0, result.stderr
+    assert any(row.startswith("QWEN_MM_OMNI_CHATCUT_MODEL_CONFIG|0|chatcut||") for row in result.stdout.splitlines())
 
 
 def test_config_spec_mirrors_shared_catalog():
@@ -56,6 +69,7 @@ def test_config_spec_mirrors_shared_catalog():
     actual = [row.split("|", 4) for row in result.stdout.splitlines()]
     group_tags = {
         "Media APIs & endpoints": "services",
+        "Omni ChatCut": "chatcut",
         "Search providers": "search",
         "Runtime paths & limits": "runtime",
         "Video-memory": "memory",
@@ -449,14 +463,14 @@ def test_codebuddy_install_checks_inventory_when_cli_falsely_returns_zero(tmp_pa
                 "git ls-remote --exit-code",
                 "qwen extensions uninstall qwen-mm-plugins-core",
                 "qwen extensions install",
-                "--ref=qwen-mm-plugins-core-v1.0.5",
+                f"--ref={_release_tag('core')}",
             ),
         ),
         (
             "gemini",
             (
                 "gemini mcp add -s user qwen-mm-plugins-core uvx --from",
-                "fetch --depth 1 origin qwen-mm-plugins-core-v1.0.5",
+                f"fetch --depth 1 origin {_release_tag('core')}",
                 "gemini skills install",
             ),
         ),
@@ -491,12 +505,12 @@ def test_qwen_update_restores_previous_ref_when_new_install_fails(tmp_path):
 confirm() { return 0; }
 run_cmd() {
   printf '$ %s\n' "$*"
-  case "$*" in *--ref=qwen-mm-plugins-core-v1.0.5*) return 1 ;; *) return 0 ;; esac
+  case "$*" in *--ref="$EXPECTED_CORE_TAG"*) return 1 ;; *) return 0 ;; esac
 }
 update_for qwen-code qwen-mm-plugins-core
 test "$?" -eq 1
 """
-    result = _bash(script, HOME=str(tmp_path))
+    result = _bash(script, HOME=str(tmp_path), EXPECTED_CORE_TAG=_release_tag("core"))
     assert result.returncode == 0, result.stderr
     assert "restoring qwen-mm-plugins-core from its previous ref qwen-mm-plugins-core-v1.0.0" in result.stdout
     assert "--ref=qwen-mm-plugins-core-v1.0.0" in result.stdout
@@ -505,7 +519,7 @@ test "$?" -eq 1
 def test_cap_spec_defaults_to_capability_stable_tag():
     result = _bash("REPO_REF=; cap_spec search")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.endswith("@qwen-mm-plugins-search-v1.0.4")
+    assert result.stdout.endswith(f"@{_release_tag('search')}")
 
 
 def test_explicit_ref_overrides_package_and_marketplace():
@@ -519,10 +533,50 @@ def test_explicit_ref_overrides_package_and_marketplace():
 
 
 def test_gemini_skill_checkout_uses_same_stable_tag():
-    result = _bash("QMP_DRY=1; REPO_REF=; install_gemini_skill gemini search")
+    result = _bash("QMP_DRY=1; REPO_REF=; install_gemini_skills gemini search")
     assert result.returncode == 0, result.stderr
-    assert "fetch --depth 1 origin qwen-mm-plugins-search-v1.0.4" in result.stdout
+    assert f"fetch --depth 1 origin {_release_tag('search')}" in result.stdout
     assert "--path src/capabilities/search/skill" in result.stdout
+
+
+def test_gemini_installs_every_omni_chatcut_skill_from_its_own_root():
+    result = _bash("QMP_DRY=1; REPO_REF=; install_gemini_skills gemini omni-chatcut")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("gemini skills install") == 3
+    for child in ("music-to-mv", "movie-commentary", "video-translation"):
+        assert f"--path src/capabilities/omni-chatcut/skill/{child}" in result.stdout
+    assert "--path src/capabilities/omni-chatcut/skill --consent" not in result.stdout
+
+
+def test_gemini_omni_chatcut_uninstall_names_match_skill_frontmatter():
+    result = _bash(
+        "for component in $(gemini_skill_components omni-chatcut); do "
+        'gemini_skill_name omni-chatcut "$component"; printf "\\n"; done'
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "qwen-mm-plugins-omni-chatcut-music-to-mv",
+        "qwen-mm-plugins-omni-chatcut-movie-commentary",
+        "qwen-mm-plugins-omni-chatcut-video-translation",
+    ]
+    for name in result.stdout.splitlines():
+        child = name.removeprefix("qwen-mm-plugins-omni-chatcut-")
+        skill = ROOT / "src/capabilities/omni-chatcut/skill" / child / "SKILL.md"
+        assert skill.is_file()
+        assert f"name: {name}\n" in skill.read_text()
+
+    uninstall = _bash("QMP_DRY=1; uninstall_gemini_skills gemini omni-chatcut")
+    assert uninstall.returncode == 0, uninstall.stderr
+    assert uninstall.stdout.count("gemini skills uninstall") == 3
+    for name in result.stdout.splitlines():
+        assert f"gemini skills uninstall {name}" in uninstall.stdout
+
+
+def test_gemini_detects_omni_chatcut_from_any_installed_child_skill(tmp_path):
+    skill = tmp_path / ".gemini/skills/qwen-mm-plugins-omni-chatcut-movie-commentary"
+    skill.mkdir(parents=True)
+    result = _bash("gemini_has_capability_skill omni-chatcut", HOME=str(tmp_path))
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize(
@@ -546,7 +600,7 @@ def test_post_update_hint_explains_how_to_activate_updated_components(harness, e
 def test_manual_update_prints_same_tag_for_skill_and_mcp_without_claiming_detection():
     result = _bash("show_manual update qwen-mm-plugins-search")
     assert result.returncode == 0, result.stderr
-    tag = "qwen-mm-plugins-search-v1.0.4"
+    tag = _release_tag("search")
     repo = "https://github.com/QwenLM/Qwen-MM-Plugins.git"
     assert f"/tree/{tag}/src/capabilities/search/skill" in result.stdout
     assert f"qwen-mm-plugins[search] @ git+{repo}@{tag}" in result.stdout
@@ -559,30 +613,26 @@ def test_capability_rows_never_wrap_at_narrow_terminal_widths(width):
     result = _bash(f"term_cols() {{ printf {width}; }}; load_caps core; _multi_rows 0")
     assert result.returncode == 0, result.stderr
     lines = [line.replace("\x1b[2K", "") for line in result.stdout.splitlines()]
-    # One row per capability, derived from the catalog so adding one doesn't fail here spuriously.
-    expected = _bash('printf "%s" "${#CAP_ITEMS[@]}"')
-    assert len(lines) == int(expected.stdout)
+    # One row per published capability — read the count rather than restating it, so adding a
+    # capability does not need this literal updated.
+    published_count = len(json.loads((ROOT / "plugin-versions.json").read_text())["plugins"])
+    assert len(lines) == published_count
     assert all(len(line) < width for line in lines), result.stdout
+    if width >= 36:
+        assert any("omni-video2note" in line for line in lines), result.stdout
 
 
-def test_numbered_fallback_reaches_double_digit_capabilities():
-    """The non-TTY picker must reach every capability.
-
-    It matched only `[1-9]`, so once the catalog passed nine entries the tenth was silently
-    "ignored" and could never be selected without a TTY (CI, piped installs).
-    """
+def test_numeric_toggle_reaches_double_digit_rows():
+    # The catalog passed ten capabilities, so the text-mode prompt has to accept "10", not just 1-9.
     script = """
-load_caps none
-last=$(( ${#MP_ITEMS[@]} - 1 ))
-_tty_ui() { return 1; }
-exec 3< <(printf '%s\\n\\n' "$(( last + 1 ))")
-multi_pick "pick" >/dev/null 2>&1
-printf 'selected=%s\\n' "${MP_SEL[$last]}"
+load_caps ''
+exec 3< <(printf '10\\n\\n')
+multi_pick 'pick' >/dev/null
+printf 'last=%s first=%s\\n' "${MP_SEL[9]}" "${MP_SEL[0]}"
 """
     result = _bash(script)
     assert result.returncode == 0, result.stderr
-    assert "selected=1" in result.stdout, result.stdout
-
+    assert "last=1 first=0" in result.stdout, result.stdout + result.stderr
 
 def test_installer_version_index_matches_release_index():
     versions = json.loads((ROOT / "plugin-versions.json").read_text())["plugins"]
