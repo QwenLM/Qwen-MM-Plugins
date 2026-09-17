@@ -50,14 +50,14 @@ def test_upload_temporary_file_uses_model_bound_policy(tmp_path):
         source,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key="secret",
-        model="qwen3.5-omni-plus",
+        model="qwen3.8-omni-flash",
         session=session,
     )
 
     policy_url, get_kwargs = session.get_call
     assert policy_url == "https://dashscope.aliyuncs.com/api/v1/uploads"
     assert get_kwargs["headers"] == {"Authorization": "Bearer secret"}
-    assert get_kwargs["params"] == {"action": "getPolicy", "model": "qwen3.5-omni-plus"}
+    assert get_kwargs["params"] == {"action": "getPolicy", "model": "qwen3.8-omni-flash"}
     assert get_kwargs["timeout"] == dashscope_upload.DEFAULT_UPLOAD_TIMEOUT
     upload_url, post_kwargs = session.post_call
     assert upload_url == "https://temporary.example.com"
@@ -75,7 +75,7 @@ def test_upload_temporary_file_honors_longer_explicit_timeout(tmp_path):
         source,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key="secret",
-        model="qwen3.5-omni-plus",
+        model="qwen3.8-omni-flash",
         timeout=2400,
         session=session,
     )
@@ -101,6 +101,6 @@ def test_temporary_upload_rejects_files_over_one_gib(monkeypatch, tmp_path):
             source,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             api_key="secret",
-            model="qwen3.5-omni-plus",
+            model="qwen3.8-omni-flash",
             session=_Session(_policy()),
         )

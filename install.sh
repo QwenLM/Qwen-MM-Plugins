@@ -75,7 +75,7 @@ CONFIG_SPEC=(
   "DASHSCOPE_BASE_URL|0|services|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
   "DASHSCOPE_UPLOAD_POLICY_URL|0|services|inferred for official DashScope hosts|override the model-bound temporary OSS policy endpoint used for oversized Omni and VL media"
   "QWEN_MM_API_VL_MODEL|0|services|qwen3.7-plus|default VL model for vision_chat, OCR, grounding, and text-only image captions"
-  "QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|default Omni model for audio/video understanding tools, omni-memory, and Omni ChatCut"
+  "QWEN_MM_API_OMNI_MODEL|0|services|qwen3.8-omni-flash|default Omni model for audio/video understanding tools, omni-memory, and Omni ChatCut"
   "SAM3_SERVER_URL|0|services||segmentation SAM3 server URL"
   "ASR_SERVER_URLS|0|services||self-hosted ASR fallback URLs (comma-separated)"
   "QWEN_MM_OMNI_CHATCUT_MODEL_CONFIG|0|chatcut||path to the shared Omni, image-provider, and video-provider connection JSON"

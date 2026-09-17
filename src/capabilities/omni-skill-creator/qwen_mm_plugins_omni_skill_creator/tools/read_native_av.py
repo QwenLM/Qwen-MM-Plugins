@@ -33,7 +33,7 @@ from ._media_utils import ffmpeg_path, ffprobe_path
 
 
 def _default_model() -> str:
-    return get_env("QWEN_MM_API_OMNI_MODEL") or "qwen3.5-omni-plus"
+    return get_env("QWEN_MM_API_OMNI_MODEL") or "qwen3.8-omni-flash"
 
 
 def _default_openai_base() -> str:
