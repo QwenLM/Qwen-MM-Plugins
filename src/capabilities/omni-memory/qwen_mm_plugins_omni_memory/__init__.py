@@ -17,7 +17,7 @@ import threading
 
 from mcp_framework import build_registry
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 log = logging.getLogger("qwen-mm-plugins-omni-memory")
 

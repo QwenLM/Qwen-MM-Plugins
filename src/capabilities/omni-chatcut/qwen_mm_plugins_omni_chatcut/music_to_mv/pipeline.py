@@ -18,6 +18,7 @@ import urllib.request
 from collections import deque
 from pathlib import Path
 
+from shared.api_omni import resolve_omni_model
 from shared.env import get_env
 
 from .image_providers import canonical_image_provider_name, create_image_provider
@@ -488,9 +489,7 @@ class Pipeline:
         self.state["models"]["image"] = None if self.video_provider.name == "seedance" else self.image_provider.model
         self.state["models"]["video"] = self.video_provider.model
         self.state["models"]["quality_control"] = (
-            self.qc_config.get("model") or get_env("QWEN_MM_API_OMNI_MODEL", "qwen3.8-omni-flash")
-            if self.qc_config.get("enabled")
-            else None
+            resolve_omni_model(self.qc_config.get("model")) if self.qc_config.get("enabled") else None
         )
         self.state["image_provider"] = {
             "name": self.image_provider.name,
@@ -1885,7 +1884,7 @@ class Pipeline:
                 "raw_omni_response": raw_result,
                 "review_media": self.relative(media_path),
                 "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-                "model": self.qc_config.get("model") or get_env("QWEN_MM_API_OMNI_MODEL", "qwen3.8-omni-flash"),
+                "model": resolve_omni_model(self.qc_config.get("model")),
             },
         )
         return normalized, report_path
