@@ -30,7 +30,7 @@ LOCAL_REPO_ROOT=''
 CAP_ITEMS=(core api search video-memory omni-memory video-edit blender freecad edu-agent omni-video2note omni-chatcut omni-skill-creator)
 # Latest stable plugin versions, in exactly the same order as CAP_ITEMS. Keep this release index in
 # sync with plugin-versions.json; scripts/check_manifests.py and tests/test_install_sh.py enforce it.
-CAP_VERSIONS=(1.1.0 1.1.2 1.1.0 1.1.0 1.1.2 1.1.0 1.1.0 1.1.0 1.1.0 1.0.2 1.0.2 1.0.1)
+CAP_VERSIONS=(1.1.0 1.1.2 1.1.0 1.1.0 1.1.2 1.1.0 1.1.0 1.1.0 1.1.0 1.0.3 1.0.2 1.0.1)
 CAP_DESC=("Inspect local files and media, extract video frames, and crop or annotate images."
           "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription."
           "Search the web, read pages, and identify objects or places with reverse-image search."

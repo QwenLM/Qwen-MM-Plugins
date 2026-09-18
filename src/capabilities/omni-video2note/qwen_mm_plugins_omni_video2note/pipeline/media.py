@@ -19,9 +19,7 @@ from shared.video import probe_media
 
 from .schemas import ProbeResult
 
-_VIDEO_SUFFIXES = frozenset(
-    {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".flv", ".ts", ".m2ts", ".mpg", ".mpeg"}
-)
+_VIDEO_SUFFIXES = frozenset({".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".flv", ".ts", ".m2ts", ".mpg", ".mpeg"})
 _URL_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _SCENE_TIME = re.compile(r"pts_time:([0-9]+(?:\.[0-9]+)?)")
 
@@ -139,6 +137,7 @@ def extract_frame(
     *,
     width: int | None = None,
     jpeg_quality: int = 2,
+    timeout: float | None = None,
     _probe_result: ProbeResult | None = None,
 ) -> Path:
     """Extract one JPEG with keyframe seeking and atomic replacement."""
@@ -152,6 +151,8 @@ def extract_frame(
         raise ValueError("frame width must be at least 2")
     if not 2 <= jpeg_quality <= 31:
         raise ValueError("jpeg_quality must be in [2, 31]")
+    if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
+        raise ValueError("frame extraction timeout must be finite and positive")
     output = Path(output_path).expanduser().resolve()
     if output == source:
         raise ValueError("frame output cannot overwrite the input video")
@@ -175,11 +176,11 @@ def extract_frame(
     ]
     if width is not None:
         command.extend(["-vf", f"scale={width}:-2"])
-    command.extend(
-        ["-pix_fmt", "yuvj420p", "-threads", "1", "-q:v", str(jpeg_quality), "-y", str(temporary)]
-    )
+    command.extend(["-pix_fmt", "yuvj420p", "-threads", "1", "-q:v", str(jpeg_quality), "-y", str(temporary)])
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT if timeout is None else timeout
+        )
         if result.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
             raise RuntimeError(f"ffmpeg frame extraction failed: {result.stderr.strip() or 'empty output'}")
         temporary.replace(output)
@@ -296,10 +297,7 @@ def coarse_sample_times(
         if scene_slots == 1:
             scenes = [scenes[len(scenes) // 2]]
         else:
-            scenes = [
-                scenes[round(index * (len(scenes) - 1) / (scene_slots - 1))]
-                for index in range(scene_slots)
-            ]
+            scenes = [scenes[round(index * (len(scenes) - 1) / (scene_slots - 1))] for index in range(scene_slots)]
     combined = sorted(set(anchors + scenes))
     if len(combined) < max_frames:
         combined = sorted(set(combined + uniform_anchor_times(probe.duration, max_frames)))
@@ -403,11 +401,7 @@ def transcode_chunk(
         if encoder == "libx264"
         else ["-c:v", encoder, "-b:v", "600k" if crf >= 35 else "1500k"]
     )
-    audio_options = (
-        ["-map", "0:a:0?", "-c:a", "aac", "-b:a", audio_bitrate]
-        if include_audio
-        else ["-an"]
-    )
+    audio_options = ["-map", "0:a:0?", "-c:a", "aac", "-b:a", audio_bitrate] if include_audio else ["-an"]
     command = [
         find_tool("ffmpeg"),
         "-nostdin",

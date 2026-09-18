@@ -8,8 +8,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from shared.api_omni import resolve_omni_model
-from shared.api_openai import resolve_openai_endpoint, resolve_vl_model
+from shared.api_omni import resolve_omni_endpoint, resolve_omni_model
+from shared.env import get_env
 
 _LOCAL_VIDEO_SUFFIXES = frozenset(
     {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".flv", ".ts", ".m2ts", ".mpg", ".mpeg"}
@@ -83,7 +83,7 @@ class PipelineConfig:
     language: str = "auto"
     title: str | None = None
     overwrite: bool = False
-    quality_profile: str = "balanced"
+    quality_profile: str = "fast"
     omni_model: str | None = None
     vl_model: str | None = None
     review_model: str | None = None
@@ -92,7 +92,11 @@ class PipelineConfig:
     no_asr: bool = False
     require_asr: bool = False
     dry_run: bool = False
+    time_budget_seconds: float = 150.0
     profile: QualityProfile = field(init=False, repr=False)
+    deadline: float | None = field(default=None, init=False, repr=False)
+    api_calls: list[dict[str, Any]] = field(default_factory=list, init=False, repr=False)
+    warnings: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self) -> None:
         raw_video = str(self.video_path)
@@ -104,10 +108,18 @@ class PipelineConfig:
         self.bold_font = _optional_path(self.bold_font)
         self.profile = resolve_quality_profile(self.quality_profile)
         self.quality_profile = self.profile.name
-        self.omni_model = resolve_omni_model(self.omni_model)
-        self.vl_model = resolve_vl_model(self.vl_model)
-        self.review_model = resolve_vl_model(self.review_model) if self.review_model else self.vl_model
-        self._base_url, self._api_key = resolve_openai_endpoint({})
+        # Refresh the GUI-readable user config once per run; environment overrides still win.
+        api_key = get_env("DASHSCOPE_API_KEY", refresh_config=True)
+        configured_model = get_env("QWEN_MM_API_OMNI_MODEL", refresh_config=True)
+        self.omni_model = resolve_omni_model(self.omni_model or configured_model)
+        for name in ("vl_model", "review_model"):
+            if getattr(self, name) and getattr(self, name) != self.omni_model:
+                self.warnings.append(f"{name} is deprecated and ignored; all model stages use omni_model.")
+            setattr(self, name, self.omni_model)
+        # Pass the configured key explicitly: compatible endpoints may use an unlisted host.
+        self._base_url, self._api_key = resolve_omni_endpoint(
+            {"base_url": get_env("DASHSCOPE_BASE_URL", refresh_config=True), "api_key": api_key}
+        )
         self.validate()
 
     @property
@@ -138,6 +150,14 @@ class PipelineConfig:
         for name in ("overwrite", "no_asr", "require_asr", "dry_run"):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"{name} must be a boolean")
+        if (
+            isinstance(self.time_budget_seconds, bool)
+            or not isinstance(self.time_budget_seconds, (int, float))
+            or not math.isfinite(self.time_budget_seconds)
+            or not 1 <= self.time_budget_seconds <= 1800
+        ):
+            raise ValueError("time_budget_seconds must be a finite number between 1 and 1800")
+        self.time_budget_seconds = float(self.time_budget_seconds)
         if self.no_asr and self.require_asr:
             raise ValueError("no_asr and require_asr are mutually exclusive")
         if not isinstance(self.language, str) or not self.language.strip():
@@ -167,4 +187,6 @@ class PipelineConfig:
             "no_asr": self.no_asr,
             "require_asr": self.require_asr,
             "dry_run": self.dry_run,
+            "time_budget_seconds": self.time_budget_seconds,
+            "warnings": list(self.warnings),
         }

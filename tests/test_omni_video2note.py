@@ -32,6 +32,16 @@ def import_pipeline_module(name: str):
     return import_capability_module(f"pipeline.{name}")
 
 
+@pytest.fixture(autouse=True)
+def no_live_omni_requests(monkeypatch):
+    gateway = import_pipeline_module("model_gateway")
+    monkeypatch.setattr(
+        gateway,
+        "call_omni_text",
+        lambda *_args, **_kwargs: pytest.fail("unexpected live Omni request in offline tests"),
+    )
+
+
 def _video_encoder() -> tuple[str, list[str]]:
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         pytest.skip("ffmpeg and ffprobe are required")
@@ -91,9 +101,7 @@ def short_av_video(tmp_path: Path) -> Path:
     return make_short_av_video(tmp_path / "short-av.mp4")
 
 
-def test_pipeline_config_and_dry_run_do_not_create_workdir(
-    short_av_video: Path, tmp_path: Path, monkeypatch
-):
+def test_pipeline_config_and_dry_run_do_not_create_workdir(short_av_video: Path, tmp_path: Path, monkeypatch):
     config_module = import_pipeline_module("config")
     runner = import_pipeline_module("runner")
     output = tmp_path / "notes.pdf"
@@ -102,7 +110,8 @@ def test_pipeline_config_and_dry_run_do_not_create_workdir(
 
     config = config_module.PipelineConfig(video_path=short_av_video, output_path=output, dry_run=True)
     assert config.language == "auto"
-    assert config.profile.name == "balanced"
+    assert config.profile.name == "fast"
+    assert config.time_budget_seconds == 150.0
     assert not workdir.exists()
 
     result = runner.run_video2note(video_path=short_av_video, output_path=output, dry_run=True)
@@ -111,7 +120,7 @@ def test_pipeline_config_and_dry_run_do_not_create_workdir(
     assert result["status"] == "dry_run"
     assert "api_key" not in serialized
     assert "dry-run-secret" not in serialized
-    assert len(result["phases"]) == 4
+    assert len(result["phases"]) == 3
     assert not output.exists()
     assert not workdir.exists()
 
@@ -316,27 +325,12 @@ def _high_review(schemas, verdict: str):
     )
 
 
-def test_review_gate_requires_the_model_pass_verdict():
-    audit_module = import_pipeline_module("audit")
-    schemas = import_pipeline_module("schemas")
-    audit = _clean_audit(schemas)
-
-    assert audit_module.passes_review_gate(audit, _high_review(schemas, "pass")) is True
-    # A repair verdict must never be accepted, however high the numeric scores are.
-    assert audit_module.passes_review_gate(audit, _high_review(schemas, "repair")) is False
-    unavailable = _high_review(schemas, "pass")
-    unavailable.available = False
-    assert audit_module.passes_review_gate(audit, unavailable) is False
-
-
 def test_model_interfaces_expose_only_current_names(short_av_video: Path, tmp_path: Path):
     config_module = import_pipeline_module("config")
     tool = import_capability_module("tools.create_video_note")
     cli = import_capability_module("cli")
 
-    config_fields = {
-        name for name, field in config_module.PipelineConfig.__dataclass_fields__.items() if field.init
-    }
+    config_fields = {name for name, field in config_module.PipelineConfig.__dataclass_fields__.items() if field.init}
     tool_fields = set(tool.CreateVideoNoteArgs.model_json_schema()["properties"])
     cli_fields = {action.dest for action in cli._parser()._actions}
     required_models = {"omni_model", "vl_model", "review_model"}
@@ -376,8 +370,8 @@ def test_canonical_model_and_endpoint_resolution(short_av_video: Path, tmp_path:
 
     resolved = config_module.PipelineConfig(short_av_video, tmp_path / "resolved.pdf")
     assert resolved.omni_model == "canonical-omni"
-    assert resolved.vl_model == "canonical-vl"
-    assert resolved.review_model == "canonical-vl"
+    assert resolved.vl_model == "canonical-omni"
+    assert resolved.review_model == "canonical-omni"
     assert resolved._base_url == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     assert resolved._api_key == "canonical-secret"
 
@@ -386,7 +380,7 @@ def test_canonical_model_and_endpoint_resolution(short_av_video: Path, tmp_path:
     monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://gateway.example/v1")
     unlisted = config_module.PipelineConfig(short_av_video, tmp_path / "unlisted.pdf")
     assert unlisted._base_url == "https://gateway.example/v1"
-    assert unlisted._api_key == "EMPTY"
+    assert unlisted._api_key == "canonical-secret"
     monkeypatch.setenv("DASHSCOPE_BASE_URL", canonical["DASHSCOPE_BASE_URL"])
 
     explicit = config_module.PipelineConfig(
@@ -398,8 +392,8 @@ def test_canonical_model_and_endpoint_resolution(short_av_video: Path, tmp_path:
     )
     assert (explicit.omni_model, explicit.vl_model, explicit.review_model) == (
         "explicit-omni",
-        "explicit-vl",
-        "explicit-review",
+        "explicit-omni",
+        "explicit-omni",
     )
 
 
@@ -414,14 +408,14 @@ def test_config_reports_endpoint_and_models_but_never_key(short_av_video: Path, 
     assert payload["base_url"] == "https://first.example/v1"
     assert (payload["omni_model"], payload["vl_model"], payload["review_model"]) == (
         "omni-a",
-        "vl-a",
-        "vl-a",
+        "omni-a",
+        "omni-a",
     )
+    assert first.warnings == ["vl_model is deprecated and ignored; all model stages use omni_model."]
     assert "api_key" not in first.to_dict()
     assert "_api_key" not in asdict(first)
     assert "api_key" not in payload
     assert "first-secret" not in json.dumps(first.to_dict())
-
 
 
 def test_plan_size_is_bounded():
@@ -467,10 +461,16 @@ def test_model_gateway_uses_resolved_endpoint_and_role_models(short_av_video: Pa
     )
 
     endpoint_calls = []
-    monkeypatch.setattr(gateway, "call_openai_chat", lambda **kwargs: endpoint_calls.append(kwargs) or {})
+    monkeypatch.setattr(
+        gateway,
+        "call_omni_text",
+        lambda resolved, **kwargs: endpoint_calls.append((resolved, kwargs)) or "{}",
+    )
     gateway._openai_json(config, model="vl-role", system="system", content="content")
-    assert endpoint_calls[0]["base_url"] == base_url
-    assert endpoint_calls[0]["api_key"] == "gateway-secret"
+    assert endpoint_calls[0][0]._base_url == base_url
+    assert endpoint_calls[0][0]._api_key == "gateway-secret"
+    assert endpoint_calls[0][0].omni_model == "omni-role"
+    assert "model" not in endpoint_calls[0][1]  # The caller cannot override the single Omni model.
 
     understanding = schemas.VideoUnderstanding(
         language="en",
@@ -479,7 +479,11 @@ def test_model_gateway_uses_resolved_endpoint_and_role_models(short_av_video: Pa
         events=[schemas.TimedEvent(0.0, 1.0, "Action")],
     )
     omni_calls = []
-    monkeypatch.setattr(gateway, "call_omni_json", lambda **kwargs: omni_calls.append(kwargs) or understanding.to_dict())
+    monkeypatch.setattr(
+        gateway,
+        "call_omni_text",
+        lambda resolved, **kwargs: omni_calls.append((resolved, kwargs)) or json.dumps(understanding.to_dict()),
+    )
     frame_one = tmp_path / "frame-one.png"
     frame_two = tmp_path / "frame-two.png"
     Image.new("RGB", (16, 16), "white").save(frame_one)
@@ -501,9 +505,11 @@ def test_model_gateway_uses_resolved_endpoint_and_role_models(short_av_video: Pa
         has_audio=True,
     )
     gateway.understand_video(config, probe, [chunk])
-    assert omni_calls[0]["model"] == "omni-role"
-    assert omni_calls[0]["base_url"] == base_url
-    assert omni_calls[0]["api_key"] == "gateway-secret"
+    assert len(omni_calls) == 1
+    assert omni_calls[0][0].omni_model == "omni-role"
+    assert omni_calls[0][0]._base_url == base_url
+    assert omni_calls[0][0]._api_key == "gateway-secret"
+    assert omni_calls[0][1]["stage"] == "understand_video"
 
     plan = schemas.DocumentPlan(
         title="Title",
@@ -542,21 +548,23 @@ def test_model_gateway_uses_resolved_endpoint_and_role_models(short_av_video: Pa
     preview_dir = tmp_path / "previews"
     preview_dir.mkdir()
     Image.new("RGB", (16, 16), "white").save(preview_dir / "page-001.png")
-    assert gateway.review_pdf(
-        config,
-        tmp_path / "unused.pdf",
-        _clean_audit(schemas),
-        understanding=understanding,
-        plan=plan,
-        draft=draft,
-        preview_dir=preview_dir,
-    ) is review
+    assert (
+        gateway.review_pdf(
+            config,
+            tmp_path / "unused.pdf",
+            _clean_audit(schemas),
+            understanding=understanding,
+            plan=plan,
+            draft=draft,
+            preview_dir=preview_dir,
+        )
+        is review
+    )
     assert parsed_roles == [
-        ("DocumentPlan", "vl-role"),
-        ("DocumentDraft", "vl-role"),
-        ("ReviewReport", "review-role"),
+        ("DocumentPlan", "omni-role"),
+        ("DocumentDraft", "omni-role"),
+        ("ReviewReport", "omni-role"),
     ]
-
 
 
 def test_candidate_reviews_are_batched_under_the_image_budget(short_av_video: Path, tmp_path: Path, monkeypatch):
@@ -740,8 +748,15 @@ def _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw):
     probe = media.probe_video(short_av_video)
     chunk = media.MediaChunk(short_av_video, 0.0, probe.duration, {})
     monkeypatch.setattr(gateway, "_chunk_content", lambda _config, _chunk, prompt: [{"type": "text", "text": prompt}])
-    monkeypatch.setattr(gateway, "call_omni_json", lambda **_kwargs: raw)
-    return gateway.understand_video(config, probe, [chunk])
+    calls = []
+    monkeypatch.setattr(
+        gateway,
+        "call_omni_text",
+        lambda _config, **kwargs: calls.append(kwargs) or (raw if isinstance(raw, str) else json.dumps(raw)),
+    )
+    result = gateway.understand_video(config, probe, [chunk])
+    assert len(calls) == 1  # Even malformed formatting must not trigger a second model request.
+    return result
 
 
 def test_understanding_accepts_screenshot_aliases_and_extra_fields(short_av_video, tmp_path, monkeypatch):
@@ -758,59 +773,67 @@ def test_understanding_accepts_screenshot_aliases_and_extra_fields(short_av_vide
     assert "security_and_safety_notes" in raw  # Normalization does not mutate the response.
 
 
-@pytest.mark.parametrize("repair_succeeds", [True, False])
-def test_understanding_repairs_invalid_required_fields_once(short_av_video, tmp_path, monkeypatch, repair_succeeds):
+@pytest.mark.parametrize("start_value", ["not a timestamp", "0.0", None])
+def test_understanding_normalizes_invalid_required_fields_without_repair(
+    short_av_video, tmp_path, monkeypatch, start_value
+):
     gateway = import_pipeline_module("model_gateway")
     raw = _understanding_payload()
-    raw["events"][0]["start"] = "not a timestamp"
-    attempts = []
-
-    def repair(_config, **kwargs):
-        attempts.append(kwargs)
-        return _understanding_payload() if repair_succeeds else raw
-
-    monkeypatch.setattr(gateway, "_openai_json", repair)
-    if repair_succeeds:
-        result = _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw)
-        assert result.events[0].start == 0.0
-        assert result.safety == ["避开血线。"]
-    else:
-        with pytest.raises((ValueError, TypeError)):
-            _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw)
-    assert len(attempts) == 1
-    assert "Validation error" in json.dumps(attempts[0]["content"])
-    assert "VideoUnderstanding" in attempts[0]["system"]
+    raw["events"][0]["start"] = start_value
+    monkeypatch.setattr(
+        gateway, "_openai_json", lambda *_args, **_kwargs: pytest.fail("format errors must be normalized locally")
+    )
+    result = _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw)
+    assert result.events[0].start == 0.0
+    assert result.events[0].fact == "剪去指甲尖端。"
+    assert result.safety == ["避开血线。"]
+    result.validate()
 
 
-def test_candidate_review_repair_keeps_original_target_context(short_av_video, tmp_path, monkeypatch):
+def test_understanding_retains_prose_without_json_repair(short_av_video, tmp_path, monkeypatch):
+    gateway = import_pipeline_module("model_gateway")
+    monkeypatch.setattr(
+        gateway, "_openai_json", lambda *_args, **_kwargs: pytest.fail("prose must not cause a model repair request")
+    )
+    prose = "The demonstrator holds the cat's paw and trims only the clear tip of one claw."
+    result = _understand_with_payload(short_av_video, tmp_path, monkeypatch, prose)
+    assert result.summary == prose
+    assert result.events == []
+
+
+def test_candidate_review_malformed_result_falls_back_without_repair(short_av_video, tmp_path, monkeypatch):
     gateway = import_pipeline_module("model_gateway")
     schemas = import_pipeline_module("schemas")
     config = import_pipeline_module("config").PipelineConfig(short_av_video, tmp_path / "note.pdf")
     image = tmp_path / "frame.jpg"
     Image.new("RGB", (16, 16), "white").save(image)
     step = schemas.PlanStep(
-        1, "Trim the tip", "Show the claw", 0.0, 1.0,
+        1,
+        "Trim the tip",
+        "Show the claw",
+        0.0,
+        1.0,
         [schemas.VisualTarget("claw-primary", "primary", "claw and clipper")],
     ).to_dict()
     calls = []
 
     def respond(_config, **kwargs):
         calls.append(kwargs)
-        if len(calls) == 1:
-            # Actual live response shape: a selection without a target ID or relevance score.
-            return {"reviews": [{"step_id": 1, "selected_id": "frame-1", "ranked_ids": ["frame-1"]}]}
-        assert json.dumps(step["visual_targets"][0]) in kwargs["content"]
-        assert '"id": "frame-1"' in kwargs["content"]
-        return {"reviews": [{
-            "step_id": 1, "target_id": "claw-primary", "selected_id": "frame-1",
-            "relevance": 0.9, "reason": "The claw is clear.", "ranked_ids": ["frame-1"],
-        }]}
+        # Historical live shape: no target ID or relevance. It must not force a repair call.
+        return {"reviews": [{"step_id": 1, "selected_id": "frame-1", "ranked_ids": ["frame-1"]}]}
 
     monkeypatch.setattr(gateway, "_openai_json", respond)
-    reviews = gateway.review_candidates(config, [{
-        "step": step, "candidates": [{"id": "frame-1", "absolute_path": str(image)}],
-    }])
-    assert len(calls) == 2
+    reviews = gateway.review_candidates(
+        config,
+        [
+            {
+                "step": step,
+                "candidates": [{"id": "frame-1", "absolute_path": str(image)}],
+            }
+        ],
+    )
+    assert len(calls) == 1
     assert reviews[0].target_id == "claw-primary"
-    assert reviews[0].selected_id == "frame-1"
-    assert reviews[0].relevance == 0.9
+    assert reviews[0].selected_id is None
+    assert reviews[0].relevance == 0.0
+    assert config.warnings

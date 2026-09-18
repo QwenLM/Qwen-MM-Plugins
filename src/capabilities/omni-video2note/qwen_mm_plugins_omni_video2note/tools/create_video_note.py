@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from shared.content import text
 
@@ -18,7 +18,7 @@ class CreateVideoNoteArgs(BaseModel):
     language: str = "auto"
     title: str | None = None
     overwrite: bool = False
-    quality_profile: str = "balanced"
+    quality_profile: str = "fast"
     omni_model: str | None = None
     vl_model: str | None = None
     review_model: str | None = None
@@ -27,17 +27,18 @@ class CreateVideoNoteArgs(BaseModel):
     no_asr: bool = False
     require_asr: bool = False
     dry_run: bool = False
+    time_budget_seconds: float = Field(default=150.0, ge=1, le=1800, allow_inf_nan=False, strict=True)
 
 
 TOOL = {"name": "omni_video2note_create", "args": CreateVideoNoteArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    """Convert one local tutorial video into an audited, illustrated PDF.
+    """Convert one local tutorial video into an illustrated PDF using Omni.
 
-    Runs audio-video understanding, planning, writing/screenshot selection, and PDF rendering
-    synchronously. Returns status=complete with output_path and review feedback, or status=failed
-    with an error. Review feedback does not block delivery or trigger an automatic repair loop.
+    Runs video understanding, combined note writing, local screenshot selection and PDF rendering
+    synchronously. Model errors preserve usable content and return warnings when a PDF can be made.
+    There are no model-based screenshot scoring, JSON repair, or final PDF review calls.
 
     Args:
         video_path: Path to the local tutorial video. URLs are not accepted.
@@ -45,16 +46,18 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         language: Language for the generated note; auto follows the video.
         title: Use this exact document title when supplied.
         overwrite: Replace an existing PDF only after successful generation.
-        quality_profile: Pipeline quality profile to use.
-        omni_model: Override the audio-visual understanding model.
-        vl_model: Override the planning and writing model.
-        review_model: Override the candidate and PDF review model; defaults to the resolved vl_model.
+        quality_profile: Local sampling profile; fast is the default.
+        omni_model: Override the Omni model used for every model request.
+        vl_model: Deprecated compatibility argument; ignored in favor of omni_model.
+        review_model: Deprecated compatibility argument; ignored in favor of omni_model.
         font: Path to the regular PDF font file.
         bold_font: Path to the bold PDF font file.
         no_asr: Ignore the video's audio and speech during Omni understanding.
         require_asr: Require an audio track and have the Omni model understand it; no separate ASR
             model is used.
         dry_run: Validate only without creating paths or calling a model.
+        time_budget_seconds: Shared model-request time budget, including retries (default: 150).
+            Local media processing and PDF rendering require additional time.
     """
     try:
         args = CreateVideoNoteArgs.model_validate(arguments)

@@ -9,16 +9,18 @@ from typing import Any
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Convert a local tutorial video into an audited illustrated PDF.")
+    parser = argparse.ArgumentParser(description="Convert a local tutorial video into an illustrated PDF using Omni.")
     parser.add_argument("video_path", help="Path to the local tutorial video.")
     parser.add_argument("--output-path", required=True, help="Destination PDF path.")
     parser.add_argument("--language", default="auto", help="Language for the generated note (default: auto).")
     parser.add_argument("--title", help="Use this exact document title.")
-    parser.add_argument("--overwrite", action="store_true", help="Replace the existing PDF after successful generation.")
-    parser.add_argument("--quality-profile", default="balanced", help="Pipeline quality profile (default: balanced).")
-    parser.add_argument("--omni-model", help="Audio-visual understanding model override.")
-    parser.add_argument("--vl-model", help="Planning and writing model override.")
-    parser.add_argument("--review-model", help="Candidate and PDF review model override (default: resolved VL model).")
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Replace the existing PDF after successful generation."
+    )
+    parser.add_argument("--quality-profile", default="fast", help="Local sampling profile (default: fast).")
+    parser.add_argument("--omni-model", help="Omni model override for every model request.")
+    parser.add_argument("--vl-model", help="Deprecated compatibility argument; ignored in favor of --omni-model.")
+    parser.add_argument("--review-model", help="Deprecated compatibility argument; ignored in favor of --omni-model.")
     parser.add_argument("--font", help="Regular PDF font path.")
     parser.add_argument("--bold-font", help="Bold PDF font path.")
     audio = parser.add_mutually_exclusive_group()
@@ -31,6 +33,12 @@ def _parser() -> argparse.ArgumentParser:
         "--require-asr",
         action="store_true",
         help="Require an audio track and have Omni understand it; no separate ASR model is used.",
+    )
+    parser.add_argument(
+        "--time-budget-seconds",
+        type=float,
+        default=150.0,
+        help="Shared model-request budget including retries (default: 150); local processing adds time.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Validate only; never create output or call a model.")
     return parser
