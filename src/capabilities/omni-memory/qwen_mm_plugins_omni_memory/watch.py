@@ -99,6 +99,44 @@ def _is_misconfigured(msg):
     )
 
 
+def _exception_status(error):
+    """Return a structured HTTP status without depending on provider-controlled message text."""
+    status = getattr(error, "status_code", None)
+    if not isinstance(status, int):
+        status = getattr(getattr(error, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def _safe_exception_label(error):
+    """Describe an upstream failure without exposing provider-controlled text.
+
+    Exception messages can contain echoed request bodies or headers, including credentials. Keep
+    them available to local classification checks, but expose only the exception type and numeric
+    HTTP status in logs and tool results.
+    """
+    status = _exception_status(error)
+    suffix = f" (HTTP {status})" if isinstance(status, int) else ""
+    return f"{type(error).__name__}{suffix}"
+
+
+def _classify_exception(error):
+    """Classify an upstream failure while keeping its raw message local to this decision."""
+    status = _exception_status(error)
+    if status == 429:
+        return "rate"
+    if status in {401, 403, 404}:
+        return "config"
+    if is_rate_limit(error):
+        return "rate"
+    if _is_misconfigured(error):
+        return "config"
+    # Include the exception type for empty-message TimeoutError/ReadTimeout variants. This string is
+    # used only for classification and is never logged or returned to the caller.
+    if _is_stall(f"{type(error).__name__}: {error}"):
+        return "timeout"
+    return "reject"
+
+
 def probe_media(src):
     """Just what the encode decision needs, flattened out of shared.video's ffprobe. Zeros on failure.
 
@@ -294,14 +332,14 @@ def replay_answer_stream(client, video_uris, evidence_text, query, max_retries=5
             yield "(no output from the model, retrying…)"
             sleep_note(attempt, 2 * attempt, "empty")
         except Exception as e:
-            if is_rate_limit(e):
+            if _classify_exception(e) == "rate":
                 if attempt >= max_retries:
                     yield "⚠️ rate-limited by the endpoint; try again shortly."
                     return
                 yield f"⏳ rate-limited, retrying ({attempt}/{max_retries})…"
                 sleep_note(attempt, backoff(attempt, True), "rate")
             else:
-                yield f"⚠️ failed: {str(e)[:200]}"
+                yield f"⚠️ failed: {_safe_exception_label(e)}"
                 return
 
 
@@ -341,22 +379,14 @@ def watch_answer(client, video_uri, query, max_retries=4, model_override=None):
             last = "model returned no text"
             sleep_note(attempt, 2 * attempt, "empty")
         except Exception as e:
-            last = f"{type(e).__name__}: {str(e)[:300]}"
-            # Log the message, not just the category. Everything downstream branches on the category —
-            # whether to retry, whether to tell the caller to build a memory instead — so a log that
-            # records only "(error)" leaves no way to tell a misclassification from a real refusal.
-            if is_rate_limit(last):
-                kind = "rate"
-            elif _is_misconfigured(last):
-                kind = "config"
-            elif _is_stall(last):
-                kind = "timeout"
-            else:
-                kind = "reject"
+            # Provider-controlled messages are used only for classification. They may echo request
+            # bodies or headers, so never include them in WatchError or the diagnostic log.
+            kind = _classify_exception(e)
+            last = _safe_exception_label(e)
             diag(f"[WATCH] attempt {attempt}/{max_retries} failed as {kind}: {last}", flush=True)
             if kind == "rate":
                 if attempt >= max_retries:
-                    raise WatchError(last, kind) from e
+                    raise WatchError(last, kind) from None
                 sleep_note(attempt, backoff(attempt, True), "rate")
                 continue
             # A stall gets one more go; anything the endpoint refuses outright it will refuse again, so
@@ -364,5 +394,5 @@ def watch_answer(client, video_uri, query, max_retries=4, model_override=None):
             if kind == "timeout" and attempt < 2:
                 sleep_note(attempt, backoff(attempt, False), "error")
                 continue
-            raise WatchError(last, kind) from e
+            raise WatchError(last, kind) from None
     raise WatchError(last or "no answer", "empty" if empties else "reject")

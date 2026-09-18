@@ -62,12 +62,19 @@ if _MISSING:
             f"        Install them into {sys.executable} and retry."
         )
 
+
+def _environment_tuning_names(environment) -> tuple[str, ...]:
+    """Return configured MEM_* names without retaining values that may contain credentials."""
+    return tuple(sorted(k for k in environment if k.startswith("MEM_")))
+
+
 # Which MEM_* the ENVIRONMENT brought in, captured before the defaults below land on top of it.
 # The tuning knobs these modules read are deliberately undocumented, so an exported one is more
 # likely to be a name collision than an intention — and it changes retrieval or determinism silently,
-# leaving a build whose numbers moved for no visible reason. Reported at startup, where the log
-# keeps it. Only what came from outside is listed; the defaults set here are not news.
-_ENV_TUNING = {k: v for k, v in sorted(os.environ.items()) if k.startswith("MEM_")}
+# leaving a build whose numbers moved for no visible reason. Report only names: historical or
+# third-party variables under this broad prefix may contain credentials. The defaults set here are
+# not included because they did not come from the caller's environment.
+_ENV_TUNING = _environment_tuning_names(os.environ)
 
 os.environ.setdefault("MEM_ANON_ENTITIES", "1")  # extraction never binds names; alignment does
 os.environ.setdefault("MEM_TEMPERATURE", "0")
@@ -392,7 +399,7 @@ def main() -> int:
     print(f"=== model: {omni_core.MODEL} @ {omni_core.BASE_URL} ===", flush=True)
     print(f"=== log: {log_path} ===", flush=True)
     if _ENV_TUNING:
-        print(f"=== from the environment: {' '.join(f'{k}={v}' for k, v in _ENV_TUNING.items())} ===", flush=True)
+        print(f"=== environment overrides (values redacted): {' '.join(_ENV_TUNING)} ===", flush=True)
     kw = dict(
         mode=a.mode,
         namespace=a.namespace,

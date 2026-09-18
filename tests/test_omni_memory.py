@@ -13,6 +13,7 @@ import contextlib
 import importlib
 import importlib.util
 import json
+import logging
 import os
 import pathlib
 import sys
@@ -59,6 +60,32 @@ def test_omni_chat_config_uses_shared_dashscope_settings(monkeypatch):
         "qwen-omni-test",
         "dashscope-key",
     )
+
+
+def test_om_server_startup_never_logs_mem_environment_values(monkeypatch, caplog):
+    from qwen_mm_plugins_omni_memory import on_start, service
+
+    secret = "safe-test-credential-sentinel"
+    environment = {
+        "MEM_API_KEY": secret,
+        "MEM_TEMPERATURE": "0.25",
+        "UNRELATED_TOKEN": "not-selected",
+    }
+    names = service._environment_tuning_names(environment)
+    assert names == ("MEM_API_KEY", "MEM_TEMPERATURE")
+    assert secret not in repr(names)
+
+    monkeypatch.setattr(service, "ENV_TUNING", names)
+    monkeypatch.setattr(service, "memory_root", lambda: "")
+    monkeypatch.setattr(service, "preload", lambda: None)
+    with caplog.at_level(logging.INFO, logger="qwen-mm-plugins-omni-memory"):
+        on_start()
+
+    assert "MEM_API_KEY" in caplog.text
+    assert "MEM_TEMPERATURE" in caplog.text
+    assert "values redacted" in caplog.text
+    assert secret not in caplog.text
+    assert "0.25" not in caplog.text
 
 
 def test_om_server_lists_tools():
@@ -176,15 +203,24 @@ def test_watch_encode_leaves_an_already_small_source_alone():
     ],
 )
 def test_failure_is_classified_by_what_the_caller_should_do_next(message, expected):
-    if omni_core.is_rate_limit(message):
-        kind = "rate"
-    elif watch._is_misconfigured(message):
-        kind = "config"
-    elif watch._is_stall(message):
-        kind = "timeout"
-    else:
-        kind = "reject"
-    assert kind == expected
+    assert watch._classify_exception(RuntimeError(message)) == expected
+
+
+def test_failure_classification_uses_structured_status_and_exception_type():
+    class StatusError(RuntimeError):
+        def __init__(self, status_code):
+            super().__init__()
+            self.status_code = status_code
+
+    class ResponseError(RuntimeError):
+        def __init__(self, status_code):
+            super().__init__()
+            self.response = type("Response", (), {"status_code": status_code})()
+
+    assert watch._classify_exception(StatusError(401)) == "config"
+    assert watch._classify_exception(StatusError(429)) == "rate"
+    assert watch._classify_exception(ResponseError(403)) == "config"
+    assert watch._classify_exception(TimeoutError()) == "timeout"
 
 
 @pytest.mark.parametrize(
@@ -195,6 +231,34 @@ def test_only_failures_a_build_would_survive_suggest_building(kind, build_helps)
     """Throttling is transient and a wrong endpoint breaks a build too, so neither should send the
     caller off to spend tens of minutes reproducing the error."""
     assert watch.WatchError("x", kind).build_helps is build_helps
+
+
+def test_watch_failures_do_not_expose_provider_controlled_error_text(capsys):
+    secret = "safe-test-bearer-token-sentinel"
+
+    class EchoedRequestError(RuntimeError):
+        status_code = 401
+
+    def fail(**_kwargs):
+        raise EchoedRequestError(f"upstream echoed Authorization: Bearer {secret}; error code: 401")
+
+    class Client:
+        class chat:
+            class completions:
+                create = staticmethod(fail)
+
+    replay = list(
+        watch.replay_answer_stream(Client(), "data:video/mp4;base64,AA==", "evidence", "question", max_retries=1)
+    )
+    with pytest.raises(watch.WatchError) as caught:
+        watch.watch_answer(Client(), "data:video/mp4;base64,AA==", "question", max_retries=1)
+
+    visible = "\n".join(replay) + "\n" + str(caught.value) + "\n" + capsys.readouterr().out
+    assert secret not in visible
+    assert "Authorization" not in visible
+    assert "EchoedRequestError (HTTP 401)" in visible
+    assert caught.value.kind == "config"
+    assert caught.value.__suppress_context__
 
 
 # ───────────────────────────────────────────────────────── routing by duration
@@ -272,6 +336,18 @@ def _load_build():
     build = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(build)
     return build
+
+
+def test_memory_builder_never_retains_mem_environment_values():
+    secret = "safe-test-build-credential-sentinel"
+    with _build_side_path():
+        build = _load_build()
+
+    names = build._environment_tuning_names(
+        {"MEM_LEGACY_TOKEN": secret, "MEM_CALL_TIMEOUT": "240", "OTHER_SECRET": secret}
+    )
+    assert names == ("MEM_CALL_TIMEOUT", "MEM_LEGACY_TOKEN")
+    assert secret not in repr(names)
 
 
 def _storage_root_for(monkeypatch, video, namespace, config_file):
