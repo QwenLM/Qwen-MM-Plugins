@@ -74,6 +74,7 @@ OMNI_MAX_B64_FRAMES = 250
 # Qwen3-Omni-Flash ≤ 20 min, Qwen-Omni-Turbo ≤ 3 min. Prefix-matched; unknown model → no cap. Only
 # relevant where the whole file is sampled server-side (a signed URL).
 _OMNI_VIDEO_MAX_SEC: dict[str, int] = {
+    "qwen3.8-omni": 3600,
     "qwen3.5-omni": 3600,
     "qwen3-omni-flash": 20 * 60,
     "qwen-omni-turbo": 3 * 60,
