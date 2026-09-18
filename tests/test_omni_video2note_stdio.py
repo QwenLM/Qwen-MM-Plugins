@@ -39,8 +39,8 @@ def test_stdio_initialize_list_and_create_dry_run(tmp_path: Path):
 
     listed, called = mcp_call(str(SERVER_DIR), exercise)
     tools = listed.tools
-    assert [tool.name for tool in tools] == ["omni_video2note_create", "omni_video2note_status"]
-    assert len({tool.name for tool in tools}) == 2
+    assert [tool.name for tool in tools] == ["omni_video2note_create"]
+    assert len({tool.name for tool in tools}) == 1
     for tool in tools:
         schema = tool.inputSchema
         assert schema["type"] == "object"
@@ -48,8 +48,8 @@ def test_stdio_initialize_list_and_create_dry_run(tmp_path: Path):
         assert "$ref" not in json.dumps(schema)
     create_schema = next(tool.inputSchema for tool in tools if tool.name == "omni_video2note_create")
     properties = create_schema["properties"]
-    assert "workdir" in properties
-    assert "workdir" not in create_schema.get("required", [])
+    assert {"workdir", "resume", "max_iterations"}.isdisjoint(properties)
+    assert properties["language"]["default"] == "auto"
     assert {"omni_model", "vl_model", "review_model"} <= properties.keys()
     assert {"api_key", "base_url", "text_model", "judge_model"}.isdisjoint(properties)
 
@@ -57,6 +57,5 @@ def test_stdio_initialize_list_and_create_dry_run(tmp_path: Path):
     result = json.loads(called.content[0].text)
     assert result["exit_code"] == 0
     assert result["status"] == "dry_run"
-    assert result["workdir"] == str(output.with_suffix(".pdf.work"))
     assert not output.exists()
     assert not output.with_suffix(".pdf.work").exists()

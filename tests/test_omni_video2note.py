@@ -101,7 +101,7 @@ def test_pipeline_config_and_dry_run_do_not_create_workdir(
     monkeypatch.setenv("DASHSCOPE_API_KEY", "dry-run-secret")
 
     config = config_module.PipelineConfig(video_path=short_av_video, output_path=output, dry_run=True)
-    assert config.workdir == workdir
+    assert config.language == "auto"
     assert config.profile.name == "balanced"
     assert not workdir.exists()
 
@@ -136,40 +136,11 @@ def test_strict_schemas_validate_nested_data_and_paths():
         }
     )
     assert plan.to_dict()["steps"][0]["visual_targets"][0]["id"] == "panel"
-    with pytest.raises(ValueError, match="unknown DocumentPlan field"):
-        schemas.DocumentPlan.parse(plan.to_dict() | {"unexpected": True})
+    assert schemas.DocumentPlan.parse(plan.to_dict() | {"explanation": "extra model context"}) == plan
     with pytest.raises(ValueError, match="unsafe"):
         schemas.safe_relative_path("../outside.jpg")
     with pytest.raises(ValueError, match="continuous"):
         schemas.DocumentPlan.parse(plan.to_dict() | {"steps": [plan.steps[0].to_dict() | {"id": 2}]})
-
-
-def test_state_checkpoint_resume_hash_conflict_and_status(short_av_video: Path, tmp_path: Path):
-    state_module = import_pipeline_module("state")
-    workdir = tmp_path / "job"
-    state = state_module.PipelineState.create(workdir, short_av_video, "a" * 64)
-    state.transition("understanding")
-    artifact = workdir / "phase1" / "probe.json"
-    artifact.parent.mkdir()
-    artifact.write_text("{}\n", encoding="utf-8")
-    state.checkpoint("phase1_understanding", "complete", artifacts={"probe": "phase1/probe.json"})
-
-    status = state_module.offline_status(workdir)
-    assert status["status"] == "understanding"
-    assert status["resumable"] is True
-    assert status["checkpoints"]["phase1_understanding"]["complete"] is True
-
-    state.transition("failed", error="interrupted")
-    assert state_module.offline_status(workdir)["resumable"] is True
-    resumed = state_module.PipelineState.resume(workdir, short_av_video, "a" * 64)
-    assert resumed.status == "planning"
-    assert resumed.is_checkpoint_complete("phase1_understanding")
-
-    with pytest.raises(RuntimeError, match="configuration fingerprint"):
-        state_module.PipelineState.resume(workdir, short_av_video, "b" * 64)
-    short_av_video.write_bytes(short_av_video.read_bytes() + b"changed")
-    with pytest.raises(RuntimeError, match="input hash"):
-        state_module.PipelineState.resume(workdir, short_av_video, "a" * 64)
 
 
 def test_media_probe_and_frame_extraction(short_av_video: Path, tmp_path: Path):
@@ -321,9 +292,7 @@ def test_validation_and_error_results_are_structured(short_av_video: Path, tmp_p
     failed = runner.run_video2note(video_path=tmp_path / "missing.mp4", output_path=tmp_path / "out.pdf")
     assert failed["exit_code"] == 1
     assert failed["status"] == "failed"
-    missing_status = runner.get_status(workdir=tmp_path / "missing-workdir")
-    assert missing_status["exit_code"] == 1
-    assert missing_status["resumable"] is False
+    assert "existing regular file" in failed["error"]
 
 
 def _clean_audit(schemas):
@@ -371,7 +340,7 @@ def test_model_interfaces_expose_only_current_names(short_av_video: Path, tmp_pa
     tool_fields = set(tool.CreateVideoNoteArgs.model_json_schema()["properties"])
     cli_fields = {action.dest for action in cli._parser()._actions}
     required_models = {"omni_model", "vl_model", "review_model"}
-    removed_fields = {"api_key", "base_url", "text_model", "judge_model"}
+    removed_fields = {"api_key", "base_url", "text_model", "judge_model", "workdir", "resume", "max_iterations"}
 
     assert required_models <= config_fields
     assert required_models <= tool_fields
@@ -434,13 +403,13 @@ def test_canonical_model_and_endpoint_resolution(short_av_video: Path, tmp_path:
     )
 
 
-def test_fingerprint_includes_endpoint_and_models_but_never_key(short_av_video: Path, tmp_path: Path, monkeypatch):
+def test_config_reports_endpoint_and_models_but_never_key(short_av_video: Path, tmp_path: Path, monkeypatch):
     config_module = import_pipeline_module("config")
     output = tmp_path / "note.pdf"
     monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://first.example/v1")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "first-secret")
     first = config_module.PipelineConfig(short_av_video, output, omni_model="omni-a", vl_model="vl-a")
-    payload = first.fingerprint_payload()
+    payload = first.to_dict()
 
     assert payload["base_url"] == "https://first.example/v1"
     assert (payload["omni_model"], payload["vl_model"], payload["review_model"]) == (
@@ -453,32 +422,10 @@ def test_fingerprint_includes_endpoint_and_models_but_never_key(short_av_video: 
     assert "api_key" not in payload
     assert "first-secret" not in json.dumps(first.to_dict())
 
-    monkeypatch.setenv("DASHSCOPE_API_KEY", "second-secret")
-    key_changed = config_module.PipelineConfig(short_av_video, output, omni_model="omni-a", vl_model="vl-a")
-    assert key_changed.fingerprint() == first.fingerprint()
-
-    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://second.example/v1")
-    endpoint_changed = config_module.PipelineConfig(short_av_video, output, omni_model="omni-a", vl_model="vl-a")
-    assert endpoint_changed.fingerprint() != first.fingerprint()
-    model_changed = config_module.PipelineConfig(short_av_video, output, omni_model="omni-b", vl_model="vl-a")
-    assert model_changed.fingerprint() != endpoint_changed.fingerprint()
 
 
-def test_iteration_and_plan_limits_are_hard_capped(short_av_video: Path, tmp_path: Path):
-    config_module = import_pipeline_module("config")
+def test_plan_size_is_bounded():
     schemas = import_pipeline_module("schemas")
-    tool = import_capability_module("tools.create_video_note")
-
-    assert config_module.MAX_ITERATIONS_LIMIT == 8
-    capped = config_module.PipelineConfig(short_av_video, tmp_path / "capped.pdf", max_iterations=8)
-    assert capped.max_iterations == 8
-    with pytest.raises(ValueError, match="must not exceed 8"):
-        config_module.PipelineConfig(short_av_video, tmp_path / "over.pdf", max_iterations=9)
-
-    with pytest.raises(Exception, match="less than or equal to 8"):
-        tool.CreateVideoNoteArgs.model_validate(
-            {"video_path": str(short_av_video), "output_path": str(tmp_path / "tool.pdf"), "max_iterations": 9}
-        )
 
     def plan_with(step_count: int) -> dict:
         return {
@@ -610,14 +557,6 @@ def test_model_gateway_uses_resolved_endpoint_and_role_models(short_av_video: Pa
         ("ReviewReport", "review-role"),
     ]
 
-    repair_roles = []
-    monkeypatch.setattr(
-        gateway,
-        "_openai_json",
-        lambda _config, *, model, **_kwargs: repair_roles.append(model) or json.dumps({"actions": []}),
-    )
-    assert gateway.propose_repairs(config, plan, draft, _clean_audit(schemas), review) == []
-    assert repair_roles == ["vl-role"]
 
 
 def test_candidate_reviews_are_batched_under_the_image_budget(short_av_video: Path, tmp_path: Path, monkeypatch):
@@ -679,7 +618,7 @@ def test_candidate_reviews_are_batched_under_the_image_budget(short_av_video: Pa
     assert [(item.step_id, item.target_id) for item in reviews] == [(1, "target1"), (2, "target2"), (3, "target3")]
 
 
-def test_omni_payload_aliases_are_normalized_without_relaxing_schemas():
+def test_omni_payload_aliases_are_normalized():
     gateway = import_pipeline_module("model_gateway")
     schemas = import_pipeline_module("schemas")
 
@@ -782,15 +721,96 @@ def test_review_candidates_handles_qualitative_scores_and_omissions(short_av_vid
     ]
 
 
-def test_resume_is_bound_to_its_output_path(short_av_video: Path, tmp_path: Path):
-    config_module = import_pipeline_module("config")
-    state_module = import_pipeline_module("state")
-    workdir = tmp_path / "job"
-    first = config_module.PipelineConfig(short_av_video, tmp_path / "first.pdf", workdir=workdir)
-    redirected = config_module.PipelineConfig(short_av_video, tmp_path / "second.pdf", workdir=workdir)
-    assert first.fingerprint() != redirected.fingerprint()
+def _understanding_payload():
+    return {
+        "language": "zh-CN",
+        "subject": "修剪猫咪指甲",
+        "summary": "展示如何固定猫爪并剪去指甲尖端。",
+        "events": [{"start": 0, "end": 1, "fact": "剪去指甲尖端。", "confidence": 0.9}],
+        "security_and_safety_notes": ["避开血线。"],
+        "uncertainties_or_ambiguities": "血线位置不够清楚。",
+        "extra_context": "室内演示",
+    }
 
-    state_module.PipelineState.create(workdir, short_av_video, first.fingerprint())
-    assert state_module.PipelineState.resume(workdir, short_av_video, first.fingerprint()).status == "new"
-    with pytest.raises(RuntimeError, match="configuration fingerprint"):
-        state_module.PipelineState.resume(workdir, short_av_video, redirected.fingerprint())
+
+def _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw):
+    gateway = import_pipeline_module("model_gateway")
+    config = import_pipeline_module("config").PipelineConfig(short_av_video, tmp_path / "note.pdf")
+    media = import_pipeline_module("media")
+    probe = media.probe_video(short_av_video)
+    chunk = media.MediaChunk(short_av_video, 0.0, probe.duration, {})
+    monkeypatch.setattr(gateway, "_chunk_content", lambda _config, _chunk, prompt: [{"type": "text", "text": prompt}])
+    monkeypatch.setattr(gateway, "call_omni_json", lambda **_kwargs: raw)
+    return gateway.understand_video(config, probe, [chunk])
+
+
+def test_understanding_accepts_screenshot_aliases_and_extra_fields(short_av_video, tmp_path, monkeypatch):
+    gateway = import_pipeline_module("model_gateway")
+    monkeypatch.setattr(gateway, "_openai_json", lambda *_args, **_kwargs: pytest.fail("valid aliases need no repair"))
+    raw = _understanding_payload()
+    raw["safety"] = ["先固定猫爪。"]
+    result = _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw)
+    assert result.language == "zh-CN"
+    assert result.safety == ["先固定猫爪。", "避开血线。"]
+    assert result.uncertainties == ["血线位置不够清楚。"]
+    assert result.events[0].fact == "剪去指甲尖端。"
+    assert "extra_context" not in result.to_dict()
+    assert "security_and_safety_notes" in raw  # Normalization does not mutate the response.
+
+
+@pytest.mark.parametrize("repair_succeeds", [True, False])
+def test_understanding_repairs_invalid_required_fields_once(short_av_video, tmp_path, monkeypatch, repair_succeeds):
+    gateway = import_pipeline_module("model_gateway")
+    raw = _understanding_payload()
+    raw["events"][0]["start"] = "not a timestamp"
+    attempts = []
+
+    def repair(_config, **kwargs):
+        attempts.append(kwargs)
+        return _understanding_payload() if repair_succeeds else raw
+
+    monkeypatch.setattr(gateway, "_openai_json", repair)
+    if repair_succeeds:
+        result = _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw)
+        assert result.events[0].start == 0.0
+        assert result.safety == ["避开血线。"]
+    else:
+        with pytest.raises((ValueError, TypeError)):
+            _understand_with_payload(short_av_video, tmp_path, monkeypatch, raw)
+    assert len(attempts) == 1
+    assert "Validation error" in json.dumps(attempts[0]["content"])
+    assert "VideoUnderstanding" in attempts[0]["system"]
+
+
+def test_candidate_review_repair_keeps_original_target_context(short_av_video, tmp_path, monkeypatch):
+    gateway = import_pipeline_module("model_gateway")
+    schemas = import_pipeline_module("schemas")
+    config = import_pipeline_module("config").PipelineConfig(short_av_video, tmp_path / "note.pdf")
+    image = tmp_path / "frame.jpg"
+    Image.new("RGB", (16, 16), "white").save(image)
+    step = schemas.PlanStep(
+        1, "Trim the tip", "Show the claw", 0.0, 1.0,
+        [schemas.VisualTarget("claw-primary", "primary", "claw and clipper")],
+    ).to_dict()
+    calls = []
+
+    def respond(_config, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            # Actual live response shape: a selection without a target ID or relevance score.
+            return {"reviews": [{"step_id": 1, "selected_id": "frame-1", "ranked_ids": ["frame-1"]}]}
+        assert json.dumps(step["visual_targets"][0]) in kwargs["content"]
+        assert '"id": "frame-1"' in kwargs["content"]
+        return {"reviews": [{
+            "step_id": 1, "target_id": "claw-primary", "selected_id": "frame-1",
+            "relevance": 0.9, "reason": "The claw is clear.", "ranked_ids": ["frame-1"],
+        }]}
+
+    monkeypatch.setattr(gateway, "_openai_json", respond)
+    reviews = gateway.review_candidates(config, [{
+        "step": step, "candidates": [{"id": "frame-1", "absolute_path": str(image)}],
+    }])
+    assert len(calls) == 2
+    assert reviews[0].target_id == "claw-primary"
+    assert reviews[0].selected_id == "frame-1"
+    assert reviews[0].relevance == 0.9

@@ -1,4 +1,4 @@
-"""Deterministic PDF audits, review gates, candidate ranking, and repair normalization."""
+"""Deterministic PDF checks and advisory review assessment."""
 
 from __future__ import annotations
 
@@ -7,18 +7,16 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .artifacts import file_sha256
 from .image_quality import are_near_duplicates, evaluate_image
 from .rendering import rasterize_pdf
 from .schemas import (
     AuditReport,
     DocumentPlan,
-    IterationReport,
-    RepairAction,
     ReviewReport,
     SelectionResult,
     StepSelection,
 )
-from .state import file_sha256
 
 REVIEW_DIMENSIONS = ("accuracy", "completeness", "clarity", "visual_quality")
 _PLACEHOLDER = re.compile(
@@ -233,66 +231,3 @@ def passes_review_gate(audit: AuditReport, review: ReviewReport) -> bool:
         and all(review.scores.get(name, 0.0) >= 7.0 for name in REVIEW_DIMENSIONS)
         and not any(issue.severity == "high" for issue in review.issues)
     )
-
-
-def candidate_sort_key(report: IterationReport) -> tuple[Any, ...]:
-    """Return a deterministic key where a larger value means a better candidate."""
-    report.validate()
-    scores = report.review.scores
-    return (
-        int(passes_review_gate(report.audit, report.review)),
-        int(report.audit.passed),
-        round(report.audit.coverage, 6),
-        -sum(issue.severity == "high" for issue in report.review.issues),
-        min((scores.get(name, 0.0) for name in REVIEW_DIMENSIONS), default=0.0),
-        report.review.overall,
-        -len(report.audit.blank_pages),
-        -len(report.audit.duplicate_pairs),
-        -report.iteration,
-    )
-
-
-def best_candidate(reports: list[IterationReport]) -> IterationReport | None:
-    return max(reports, key=candidate_sort_key) if reports else None
-
-
-def normalize_repair_actions(
-    raw: Any,
-    *,
-    valid_step_ids: set[int] | None = None,
-    valid_target_ids: set[str] | None = None,
-    limit: int = 12,
-) -> list[RepairAction]:
-    """Strictly normalize model repair output and remove invalid or duplicate actions."""
-    if isinstance(raw, dict):
-        raw = raw.get("repairs", raw.get("actions", []))
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        raise TypeError("repair actions must be an array or an object containing actions")
-    result: list[RepairAction] = []
-    seen: set[tuple[Any, ...]] = set()
-    for value in raw:
-        try:
-            action = value if isinstance(value, RepairAction) else RepairAction.parse(value)
-        except (TypeError, ValueError):
-            continue
-        if valid_step_ids is not None and action.step_id is not None and action.step_id not in valid_step_ids:
-            continue
-        if valid_target_ids is not None and action.target_id and action.target_id not in valid_target_ids:
-            continue
-        if action.type in {"rewrite_text", "reselect_image"} and action.step_id is None:
-            continue
-        key = (action.type, action.step_id, action.target_id, action.instruction.strip())
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(action)
-        if len(result) >= limit:
-            break
-    return result
-
-
-quality_gate = passes_review_gate
-select_best_candidate = best_candidate
-normalize_repairs = normalize_repair_actions

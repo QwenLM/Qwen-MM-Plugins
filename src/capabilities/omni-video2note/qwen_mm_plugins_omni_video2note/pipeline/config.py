@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 import re
 from dataclasses import asdict, dataclass, field
@@ -17,10 +15,6 @@ _LOCAL_VIDEO_SUFFIXES = frozenset(
     {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".flv", ".ts", ".m2ts", ".mpg", ".mpeg"}
 )
 _URL_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
-# output_path belongs to the fingerprint: a resume must stay bound to the PDF it was started for.
-FINGERPRINT_EXCLUDED_KEYS = frozenset({"resume", "overwrite", "dry_run", "workdir"})
-# Repair loops are bounded so one job can never spend an unbounded number of model calls.
-MAX_ITERATIONS_LIMIT = 8
 
 
 @dataclass(frozen=True)
@@ -39,12 +33,11 @@ class QualityProfile:
     min_frame_score: float
     min_relevance: float
     chunk_seconds: float
-    default_iterations: int
 
     def validate(self) -> None:
         if not self.name:
             raise ValueError("quality profile name is required")
-        for name in ("coarse_frames", "candidate_limit", "max_step_candidates", "default_iterations"):
+        for name in ("coarse_frames", "candidate_limit", "max_step_candidates"):
             if getattr(self, name) < 1:
                 raise ValueError(f"quality profile {name} must be positive")
         for name in ("step_padding", "dense_step", "fine_step", "fine_radius", "chunk_seconds"):
@@ -60,9 +53,9 @@ class QualityProfile:
 
 
 QUALITY_PROFILES: dict[str, QualityProfile] = {
-    "fast": QualityProfile("fast", 8, 28, 0.32, 1.5, 1.5, 0.35, 0.7, 7, 0.32, 0.58, 120.0, 2),
-    "balanced": QualityProfile("balanced", 12, 48, 0.25, 2.0, 1.0, 0.2, 0.8, 10, 0.35, 0.62, 90.0, 3),
-    "high": QualityProfile("high", 18, 72, 0.2, 3.0, 0.6, 0.12, 1.0, 16, 0.38, 0.66, 60.0, 4),
+    "fast": QualityProfile("fast", 8, 28, 0.32, 1.5, 1.5, 0.35, 0.7, 7, 0.32, 0.58, 120.0),
+    "balanced": QualityProfile("balanced", 12, 48, 0.25, 2.0, 1.0, 0.2, 0.8, 10, 0.35, 0.62, 90.0),
+    "high": QualityProfile("high", 18, 72, 0.2, 3.0, 0.6, 0.12, 1.0, 16, 0.38, 0.66, 60.0),
 }
 
 
@@ -87,12 +80,10 @@ class PipelineConfig:
 
     video_path: str | Path
     output_path: str | Path
-    workdir: str | Path | None = None
-    language: str = "zh-CN"
-    resume: bool = False
+    language: str = "auto"
+    title: str | None = None
     overwrite: bool = False
     quality_profile: str = "balanced"
-    max_iterations: int | None = None
     omni_model: str | None = None
     vl_model: str | None = None
     review_model: str | None = None
@@ -109,17 +100,10 @@ class PipelineConfig:
             raise ValueError("URLs are not accepted; provide one local video file")
         self.video_path = Path(raw_video).expanduser().resolve()
         self.output_path = Path(self.output_path).expanduser().resolve()
-        self.workdir = (
-            Path(self.workdir).expanduser().resolve()
-            if self.workdir is not None
-            else self.output_path.with_suffix(self.output_path.suffix + ".work")
-        )
         self.font = _optional_path(self.font)
         self.bold_font = _optional_path(self.bold_font)
         self.profile = resolve_quality_profile(self.quality_profile)
         self.quality_profile = self.profile.name
-        if self.max_iterations is None:
-            self.max_iterations = self.profile.default_iterations
         self.omni_model = resolve_omni_model(self.omni_model)
         self.vl_model = resolve_vl_model(self.vl_model)
         self.review_model = resolve_vl_model(self.review_model) if self.review_model else self.vl_model
@@ -137,7 +121,6 @@ class PipelineConfig:
     def validate(self) -> None:
         assert isinstance(self.video_path, Path)
         assert isinstance(self.output_path, Path)
-        assert isinstance(self.workdir, Path)
         if _URL_PATTERN.match(str(self.video_path)):
             raise ValueError("URLs are not accepted; provide one local video file")
         if not self.video_path.is_file():
@@ -148,27 +131,19 @@ class PipelineConfig:
             raise ValueError("output_path must end in .pdf")
         if self.video_path == self.output_path:
             raise ValueError("input video and output PDF must differ")
-        if self.output_path == self.workdir:
-            raise ValueError("output_path and workdir must differ")
         if self.output_path.exists() and not self.output_path.is_file():
             raise ValueError("output_path must be a file path")
-        if self.output_path.exists() and not (self.overwrite or self.resume):
-            raise ValueError("output PDF already exists; use overwrite or resume")
-        if self.workdir.exists() and not self.workdir.is_dir():
-            raise ValueError("workdir must be a directory path")
-        if self.workdir == self.video_path or self.workdir in self.video_path.parents:
-            raise ValueError("workdir cannot be the input video or contain it")
-        for name in ("resume", "overwrite", "no_asr", "require_asr", "dry_run"):
+        if self.output_path.exists() and not self.overwrite:
+            raise ValueError("output PDF already exists; use overwrite=true to replace it")
+        for name in ("overwrite", "no_asr", "require_asr", "dry_run"):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"{name} must be a boolean")
         if self.no_asr and self.require_asr:
             raise ValueError("no_asr and require_asr are mutually exclusive")
         if not isinstance(self.language, str) or not self.language.strip():
             raise ValueError("language is required")
-        if isinstance(self.max_iterations, bool) or not isinstance(self.max_iterations, int) or self.max_iterations < 1:
-            raise ValueError("max_iterations must be a positive integer")
-        if self.max_iterations > MAX_ITERATIONS_LIMIT:
-            raise ValueError(f"max_iterations must not exceed {MAX_ITERATIONS_LIMIT}")
+        if self.title is not None and (not isinstance(self.title, str) or not self.title.strip()):
+            raise ValueError("title must be non-empty text when supplied")
         for name in ("font", "bold_font"):
             value = getattr(self, name)
             if value is not None and not value.is_file():
@@ -178,13 +153,11 @@ class PipelineConfig:
         return {
             "video_path": str(self.video_path),
             "output_path": str(self.output_path),
-            "workdir": str(self.workdir),
             "language": self.language,
-            "resume": self.resume,
+            "title": self.title,
             "overwrite": self.overwrite,
             "quality_profile": self.quality_profile,
             "quality": asdict(self.profile),
-            "max_iterations": self.max_iterations,
             "omni_model": self.omni_model,
             "vl_model": self.vl_model,
             "review_model": self.review_model,
@@ -195,10 +168,3 @@ class PipelineConfig:
             "require_asr": self.require_asr,
             "dry_run": self.dry_run,
         }
-
-    def fingerprint_payload(self) -> dict[str, Any]:
-        return {key: value for key, value in self.to_dict().items() if key not in FINGERPRINT_EXCLUDED_KEYS}
-
-    def fingerprint(self) -> str:
-        encoded = json.dumps(self.fingerprint_payload(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

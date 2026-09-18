@@ -1,4 +1,4 @@
-"""Strict, JSON-serializable data contracts for the Video2Note pipeline."""
+"""JSON-serializable data contracts for the Video2Note pipeline."""
 
 from __future__ import annotations
 
@@ -144,6 +144,12 @@ class StrictSchema:
         return {item.name: _json_value(getattr(self, item.name)) for item in fields(self)}
 
 
+class ModelSchema(StrictSchema):
+    """Validate consumed fields while ignoring extra model annotations."""
+
+    _allow_unknown: ClassVar[bool] = True
+
+
 def _required_text(name: str, value: str) -> None:
     if not value.strip():
         raise ValueError(f"{name} is required")
@@ -213,7 +219,7 @@ class Transcript(StrictSchema):
 
 
 @dataclass
-class TimedEvent(StrictSchema):
+class TimedEvent(ModelSchema):
     start: float
     end: float
     fact: str
@@ -224,7 +230,7 @@ class TimedEvent(StrictSchema):
 
 
 @dataclass
-class VideoUnderstanding(StrictSchema):
+class VideoUnderstanding(ModelSchema):
     language: str
     subject: str
     summary: str
@@ -248,7 +254,7 @@ class VideoUnderstanding(StrictSchema):
 
 
 @dataclass
-class VisualTarget(StrictSchema):
+class VisualTarget(ModelSchema):
     id: str
     role: Literal["primary", "supporting"]
     query: str
@@ -261,7 +267,7 @@ class VisualTarget(StrictSchema):
 
 
 @dataclass
-class PlanStep(StrictSchema):
+class PlanStep(ModelSchema):
     id: int
     title: str
     objective: str
@@ -291,7 +297,7 @@ class PlanStep(StrictSchema):
 
 
 @dataclass
-class DocumentPlan(StrictSchema):
+class DocumentPlan(ModelSchema):
     title: str
     audience: str
     overview_goal: str
@@ -320,7 +326,7 @@ class DocumentPlan(StrictSchema):
 
 
 @dataclass
-class DraftStep(StrictSchema):
+class DraftStep(ModelSchema):
     id: int
     title: str
     instruction: str
@@ -338,7 +344,7 @@ class DraftStep(StrictSchema):
 
 
 @dataclass
-class DocumentDraft(StrictSchema):
+class DocumentDraft(ModelSchema):
     title: str
     overview: str
     steps: list[DraftStep]
@@ -385,7 +391,7 @@ class FrameCandidate(StrictSchema):
 
 
 @dataclass
-class CandidateReview(StrictSchema):
+class CandidateReview(ModelSchema):
     step_id: int
     target_id: str
     selected_id: str | None
@@ -493,7 +499,7 @@ class AuditReport(StrictSchema):
 
 
 @dataclass
-class ReviewIssue(StrictSchema):
+class ReviewIssue(ModelSchema):
     dimension: str
     severity: Literal["low", "medium", "high"]
     location: str
@@ -506,7 +512,7 @@ class ReviewIssue(StrictSchema):
 
 
 @dataclass
-class ReviewReport(StrictSchema):
+class ReviewReport(ModelSchema):
     verdict: Literal["pass", "repair", "best_effort"]
     overall: float
     scores: dict[str, float]
@@ -519,64 +525,6 @@ class ReviewReport(StrictSchema):
         for name, value in self.scores.items():
             _required_text("review score name", name)
             _score(value, f"review score {name}", 10.0)
-        super().validate()
-
-
-@dataclass
-class RepairAction(StrictSchema):
-    type: Literal["replan_document", "rewrite_text", "reselect_image", "adjust_layout"]
-    instruction: str
-    step_id: int | None = None
-    target_id: str = ""
-
-    def validate(self) -> None:
-        _required_text("repair instruction", self.instruction)
-        if self.step_id is not None and self.step_id < 1:
-            raise ValueError("repair step id must be positive")
-
-
-@dataclass
-class IterationReport(StrictSchema):
-    iteration: int
-    candidate_pdf: str
-    audit: AuditReport
-    review: ReviewReport
-    repairs: list[RepairAction] = field(default_factory=list)
-    complete: bool = False
-    stop_reason: str = ""
-
-    def validate(self) -> None:
-        if self.iteration < 1:
-            raise ValueError("iteration must be positive")
-        self.candidate_pdf = safe_relative_path(self.candidate_pdf)
-        super().validate()
-
-
-@dataclass
-class FinalReport(StrictSchema):
-    status: Literal["pass", "best_effort", "failed"]
-    passed: bool
-    final_pdf: str | None
-    best_iteration: int | None
-    best_score: float
-    iterations: list[IterationReport] = field(default_factory=list)
-    error: str = ""
-
-    def validate(self) -> None:
-        if self.final_pdf is not None:
-            self.final_pdf = safe_relative_path(self.final_pdf)
-        if self.best_iteration is not None and self.best_iteration < 1:
-            raise ValueError("best iteration must be positive")
-        _score(self.best_score, "best score", 10.0)
-        if self.status == "pass" and not self.passed:
-            raise ValueError("pass status requires passed=true")
-        if self.status == "failed" and self.passed:
-            raise ValueError("failed status cannot have passed=true")
-        if self.status in {"pass", "best_effort"} and self.final_pdf is None:
-            raise ValueError("completed final report requires a final PDF")
-        if self.best_iteration is not None and self.iterations:
-            if self.best_iteration not in {item.iteration for item in self.iterations}:
-                raise ValueError("best iteration is absent from iteration history")
         super().validate()
 
 
