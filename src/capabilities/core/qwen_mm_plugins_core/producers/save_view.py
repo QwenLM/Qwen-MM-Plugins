@@ -88,9 +88,13 @@ def _save_pages(file_path: str, pages: str, dpi: int, budget: str, out_dir: str)
     doc = pdfium.PdfDocument(pdf_path)
     try:
         total = len(doc)
-        indices = parse_pages(pages, total)
+        try:
+            indices = parse_pages(pages, total)
+        except ValueError as exc:
+            return text_error(f"{exc}.")
+        # Only a blank spec on a zero-page document reaches this now.
         if not indices:
-            return text_error(f"no pages selected from '{pages}' (document has {total} pages).")
+            return text_error(f"no pages selected from '{pages}' (document has {total} page(s)).")
         saved = []
         for idx in indices:
             img = render_pdf_page(doc[idx], dpi)
