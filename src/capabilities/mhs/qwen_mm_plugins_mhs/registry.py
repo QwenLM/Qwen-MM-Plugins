@@ -1,12 +1,12 @@
-"""Device registry: which adapter owns which device, plus a short-lived cache of what they report.
+"""Live device discovery, with a short-lived cache of device metadata.
 
 Device ids are reported to the model *qualified* as "<adapter>/<device_id>", which stays stable when
 a second adapter joins and happens to use the same local id. A bare id is still accepted when it is
 unambiguous, because that is what a model will naturally type back.
 
-Metadata and the device list are cached briefly: every read/write validates against the device's
-declared capabilities and safety limits, so without a cache each hardware call would cost two HTTP
-round trips. Live state is deliberately NOT cached — health_check always hits the device.
+Every discovery reloads the registry file and queries the adapters. Only metadata is cached:
+read/write validate the device's declared capabilities and safety limits, so caching these avoids
+an extra HTTP request per operation.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from .protocol import normalize_device_summary, normalize_meta
 
 
 def cache_ttl() -> float:
-    """Seconds to trust a cached device list / metadata. 0 disables caching."""
+    """Seconds to trust cached metadata. 0 disables caching."""
     raw = get_env("QWEN_MM_MHS_CACHE_TTL", "60")
     try:
         return max(0.0, float(raw))
@@ -35,10 +35,10 @@ class _Cache:
     """Tiny TTL cache. Handlers run on the framework's worker threads, hence the lock."""
 
     def __init__(self) -> None:
-        self._entries: dict[str, tuple[float, Any]] = {}
+        self._entries: dict[tuple[Adapter, str], tuple[float, Any]] = {}
         self._lock = threading.Lock()
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: tuple[Adapter, str]) -> Any | None:
         ttl = cache_ttl()
         if ttl <= 0:
             return None
@@ -48,7 +48,7 @@ class _Cache:
             return None
         return hit[1]
 
-    def put(self, key: str, value: Any) -> None:
+    def put(self, key: tuple[Adapter, str], value: Any) -> None:
         with self._lock:
             self._entries[key] = (time.monotonic(), value)
 
@@ -61,7 +61,7 @@ _cache = _Cache()
 
 
 def invalidate() -> None:
-    """Drop every cached device list and metadata record (the tools' `refresh=true`)."""
+    """Drop cached metadata after discovery or reset."""
     _cache.clear()
 
 
@@ -70,23 +70,16 @@ def adapters() -> list[Adapter]:
     return load_adapters()
 
 
-def devices_of(adapter: Adapter, *, refresh: bool = False) -> list[dict[str, Any]]:
+def devices_of(adapter: Adapter) -> list[dict[str, Any]]:
     """Device summaries reported by one adapter. Raises AdapterError if it cannot be reached."""
-    key = f"devices::{adapter.name}"
-    if not refresh:
-        cached = _cache.get(key)
-        if cached is not None:
-            return cached
     payload = request(adapter, "GET", "/devices")
     raw = payload.get("devices")
     if not isinstance(raw, list):
         raise AdapterError(f"adapter {adapter.name!r} did not return a 'devices' list")
-    summaries = [s for s in (normalize_device_summary(entry, adapter.name) for entry in raw) if s is not None]
-    _cache.put(key, summaries)
-    return summaries
+    return [s for s in (normalize_device_summary(entry, adapter.name) for entry in raw) if s is not None]
 
 
-def all_devices(*, refresh: bool = False) -> tuple[list[dict[str, Any]], dict[str, str]]:
+def all_devices() -> tuple[list[dict[str, Any]], dict[str, str]]:
     """Every device across every adapter, plus per-adapter errors.
 
     Errors are returned rather than raised: one unplugged camera must not hide the arm that is still
@@ -96,13 +89,13 @@ def all_devices(*, refresh: bool = False) -> tuple[list[dict[str, Any]], dict[st
     failures: dict[str, str] = {}
     for adapter in adapters():
         try:
-            found.extend(devices_of(adapter, refresh=refresh))
+            found.extend(devices_of(adapter))
         except AdapterError as exc:
             failures[adapter.name] = str(exc)
     return found, failures
 
 
-def resolve(device_id: str, *, refresh: bool = False) -> tuple[Adapter, str]:
+def resolve(device_id: str) -> tuple[Adapter, str]:
     """Map a device id the model supplied onto (adapter, adapter-local id).
 
     Accepts the qualified "<adapter>/<device_id>" form, or a bare device_id when exactly one adapter
@@ -125,7 +118,7 @@ def resolve(device_id: str, *, refresh: bool = False) -> tuple[Adapter, str]:
             raise LookupError(f"{device_id!r} names an adapter but no device on it.")
         return adapter, local_id
 
-    matches = [d for d in all_devices(refresh=refresh)[0] if d["adapter_device_id"] == device_id]
+    matches = [d for d in all_devices()[0] if d["adapter_device_id"] == device_id]
     if not matches:
         raise LookupError(
             f"no device {device_id!r} on any configured adapter. Call mhs_discover to list what is reachable."
@@ -138,9 +131,9 @@ def resolve(device_id: str, *, refresh: bool = False) -> tuple[Adapter, str]:
 
 def meta_of(device_id: str, *, refresh: bool = False) -> tuple[Adapter, str, dict[str, Any]]:
     """Resolve `device_id` and fetch its (cached) DeviceMeta."""
-    adapter, local_id = resolve(device_id, refresh=refresh)
+    adapter, local_id = resolve(device_id)
     qualified = f"{adapter.name}/{local_id}"
-    key = f"meta::{qualified}"
+    key = (adapter, local_id)
     if not refresh:
         cached = _cache.get(key)
         if cached is not None:

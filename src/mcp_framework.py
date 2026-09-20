@@ -16,7 +16,7 @@ servers stay independent of sibling capabilities.
 
 from __future__ import annotations
 
-__version__ = "1.1.7"  # distribution/release-train version; plugin versions are per capability
+__version__ = "1.1.8"  # distribution/release-train version; plugin versions are per capability
 
 import asyncio
 import importlib

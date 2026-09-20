@@ -61,8 +61,10 @@ Adapters are listed in `~/.qwen-mm-plugins/mhs-devices.json` (override with `QWE
 {"adapters": [{"name": "lab-cam", "url": "http://192.168.1.20:8800"}]}
 ```
 
-If that file is missing, the tools say so and show the shape to create. `QWEN_MM_MHS_CACHE_TTL`
-(default 60s) controls how long device lists and metadata are cached; health is never cached.
+If that file is missing, the tools say so and show the shape to create. `mhs_discover` reloads it and
+queries every adapter on each call; device lists and health are never cached. An empty `adapters`
+list is valid. `QWEN_MM_MHS_CACHE_TTL` (default 60s) applies only to metadata, which discovery and
+reset also invalidate.
 
 No hardware to hand? Run the bundled mock adapter and point the registry at it:
 
@@ -106,8 +108,11 @@ at runtime.
    too. Do not skip this because the adapter "looks right" — the failures it catches are the ones that
    otherwise surface later as a tool error you cannot explain.
 5. Add it to `~/.qwen-mm-plugins/mhs-devices.json` (create the file if absent, and **preserve any
-   adapters already listed** — do not overwrite someone else's registry).
-6. `mhs_discover` — the device is there. Then proceed with the normal loop.
+   adapters already listed** — do not overwrite someone else's registry). Write the updated JSON to
+   a temporary file in the same directory, then atomically replace the registry so a concurrent call
+   cannot read a half-written file.
+6. `mhs_discover` — the device is there immediately. The same call reflects removed registrations,
+   changed adapter addresses, and unreachable adapters. Then proceed with the normal loop.
 
 Rules for an adapter you wrote yourself, because you are now on both sides of the safety boundary:
 

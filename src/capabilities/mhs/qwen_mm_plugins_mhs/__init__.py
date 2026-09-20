@@ -11,7 +11,7 @@ listed in ~/.qwen-mm-plugins/mhs-devices.json. Adding a new class of hardware me
 adapter and adding a line to that file; it never means changing this package.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 from mcp_framework import build_registry
 
