@@ -42,7 +42,7 @@ only a Skill entry.
 
 For the direct Skill + MCP registrations below, replace `<cap>` with `core`, `api`, `search`,
 `video-memory`, `omni-memory`, `omni-video2note`, `video-edit`, `omni-chatcut`, `blender`, `freecad`,
-or `omni-skill-creator`. `edu-agent` is Skill-only. Use one immutable tag for both the Skill and
+`omni-skill-creator`, or `mhs`. `edu-agent` is Skill-only. Use one immutable tag for both the Skill and
 MCP command:
 
 ```text

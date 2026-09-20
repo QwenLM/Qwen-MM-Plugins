@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "qwen-mm-plugins-mhs": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "qwen-mm-plugins[mhs] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-mhs-v1.0.0",
+        "qwen-mm-plugins-mhs"
+      ]
+    }
+  }
+}
