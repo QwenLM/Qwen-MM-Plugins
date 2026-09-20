@@ -1,6 +1,6 @@
 """Is the hardware actually there and working right now.
 
-Always hits the device — health is the one thing never served from cache.
+Always queries the device for its current health.
 """
 
 from __future__ import annotations

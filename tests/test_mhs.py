@@ -58,7 +58,9 @@ def _call(name: str, **kwargs):
 
 def _write_registry(tmp_path, adapters) -> str:
     path = tmp_path / "mhs-devices.json"
-    path.write_text(json.dumps({"adapters": adapters}))
+    staging = path.with_suffix(".tmp")
+    staging.write_text(json.dumps({"adapters": adapters}))
+    staging.replace(path)
     return str(path)
 
 
@@ -71,7 +73,7 @@ def _free_port() -> int:
 # ── fixtures ──
 @pytest.fixture(autouse=True)
 def _clear_caches():
-    """Device lists and metadata are cached in-process; isolate every test."""
+    """Metadata is cached in-process; isolate every test."""
     registry.invalidate()
     yield
     registry.invalidate()
@@ -108,6 +110,8 @@ def live(mock_adapter, tmp_path, monkeypatch):
 def test_exposes_exactly_the_six_fixed_tools():
     """The MHS surface is fixed: new hardware must not add tools."""
     assert {t["name"] for t in mhs.list_tools()} == EXPECTED_TOOLS
+    discover = next(t for t in mhs.list_tools() if t["name"] == "mhs_discover")
+    assert set(discover["inputSchema"]["properties"]) == {"device_type", "tag"}
 
 
 def test_every_tool_has_a_handler_and_a_description():
@@ -156,7 +160,6 @@ def test_devices_file_defaults_beside_the_shared_config(monkeypatch):
         ([{"name": "a", "url": "http://h", "timeout": 0}], "timeout must be a number"),
         ([{"name": "a", "url": "http://h", "auth": {"type": "basic"}}], 'auth.type must be "bearer"'),
         ([{"name": "a", "url": "http://h", "auth": {"type": "bearer"}}], "token_env"),
-        ([], "lists no adapters"),
     ],
 )
 def test_registry_validation_rejects_bad_entries(tmp_path, monkeypatch, adapters, expected):
@@ -276,6 +279,67 @@ def test_discover_filters_by_type_and_tag(live):
     assert [d["device_id"] for d in by_tag["devices"]] == ["mock/mock-camera"]
     empty = json.loads(_call("mhs_discover", device_type="submarine")[0]["text"])
     assert empty["devices"] == []
+
+
+def test_discover_reloads_added_removed_and_empty_registrations(live, tmp_path):
+    original = {"name": "mock", "url": live["url"]}
+    added = {"name": "online", "url": live["url"]}
+    assert len(json.loads(_call("mhs_discover")[0]["text"])["devices"]) == 2
+    for entries, names in [([original, added], {"mock", "online"}), ([added], {"online"}), ([], set())]:
+        _write_registry(tmp_path, entries)
+        report = json.loads(_call("mhs_discover")[0]["text"])
+        assert {d["device_id"].split("/")[0] for d in report["devices"]} == names
+        assert len(report["devices"]) == 2 * len(names)
+        assert "unreachable_adapters" not in report
+
+
+def test_discover_queries_device_changes_on_the_same_adapter(live, monkeypatch):
+    assert len(json.loads(_call("mhs_discover")[0]["text"])["devices"]) == 2
+    with monkeypatch.context() as patch:
+        patch.delitem(live["server"].devices, "mock-lamp")
+        report = json.loads(_call("mhs_discover")[0]["text"])
+        assert [d["device_id"] for d in report["devices"]] == ["mock/mock-camera"]
+    assert len(json.loads(_call("mhs_discover")[0]["text"])["devices"]) == 2
+
+
+def test_discover_reports_a_disconnected_adapter_after_a_successful_scan(live, monkeypatch):
+    assert len(json.loads(_call("mhs_discover")[0]["text"])["devices"]) == 2
+    from qwen_mm_plugins_mhs.http_client import AdapterError
+
+    with monkeypatch.context() as patch:
+
+        def disconnected(*args, **kwargs):
+            raise AdapterError("adapter disconnected")
+
+        patch.setattr(registry, "request", disconnected)
+        report = json.loads(_call("mhs_discover")[0]["text"])
+        assert report["devices"] == []
+        assert "disconnected" in report["unreachable_adapters"]["mock"]
+    assert len(json.loads(_call("mhs_discover")[0]["text"])["devices"]) == 2
+
+
+def test_replacing_an_adapter_address_drops_old_devices_and_metadata(live, tmp_path):
+    assert len(json.loads(_call("mhs_discover")[0]["text"])["devices"]) == 2
+    assert json.loads(_call("mhs_meta_info", device_id="mock/mock-camera")[0]["text"])["model"] == "MockCam-1"
+    with socket.socket() as unavailable:
+        unavailable.bind(("127.0.0.1", 0))
+        url = f"http://127.0.0.1:{unavailable.getsockname()[1]}"
+        _write_registry(tmp_path, [{"name": "mock", "url": url, "timeout": 0.5}])
+        # Even without a discovery first, metadata must belong to the new endpoint.
+        assert "Error:" in _blocks_text(_call("mhs_meta_info", device_id="mock/mock-camera"))
+        report = json.loads(_call("mhs_discover")[0]["text"])
+        assert report["devices"] == []
+        assert "mock" in report["unreachable_adapters"]
+
+
+def test_discover_invalidates_metadata_when_hardware_changes_at_the_same_address(live, monkeypatch):
+    assert json.loads(_call("mhs_meta_info", device_id="mock/mock-camera")[0]["text"])["model"] == "MockCam-1"
+    camera = live["server"].devices["mock-camera"]
+    original_meta = camera.meta
+    monkeypatch.setattr(camera, "meta", lambda: {**original_meta(), "model": "ReplacementCam"})
+    _call("mhs_discover")
+    meta = json.loads(_call("mhs_meta_info", device_id="mock/mock-camera")[0]["text"])
+    assert meta["model"] == "ReplacementCam"
 
 
 def test_meta_info_returns_capabilities_and_surfaces_hard_limits(live):

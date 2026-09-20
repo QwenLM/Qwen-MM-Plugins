@@ -162,7 +162,6 @@ def load_adapters() -> list[Adapter]:
     _require(isinstance(raw, dict), f"{path} must hold a JSON object with an 'adapters' list")
     entries = raw.get("adapters")
     _require(isinstance(entries, list), f"{path} must hold an 'adapters' list")
-    _require(len(entries) > 0, f"{path} lists no adapters. Add one:\n{_EXAMPLE}")
 
     adapters = [_parse_adapter(entry, i) for i, entry in enumerate(entries)]
     seen: set[str] = set()

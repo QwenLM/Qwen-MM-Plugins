@@ -15,7 +15,6 @@ from ..registry import all_devices, invalidate
 class DiscoverArgs(BaseModel):
     device_type: str | None = None
     tag: str | None = None
-    refresh: bool = False
 
 
 TOOL: dict[str, Any] = {"name": "mhs_discover", "args": DiscoverArgs}
@@ -27,18 +26,16 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     state and capability names.
 
     Call this FIRST — device ids come from here, never from a guess. Then use mhs_meta_info before writing
-    to a device you have not touched yet.
+    to a device you have not touched yet. Every call reloads the registry file, queries each configured
+    adapter, and clears cached metadata. Register or remove adapters while MHS is running; no restart
+    is needed.
 
     Args:
         device_type: Only list devices of this type (e.g. 'camera', 'robot_arm'). Case-insensitive.
         tag: Only list devices carrying this tag (e.g. 'lab-a', 'production').
-        refresh: Re-query every adapter instead of using the cached device list. Use after plugging in,
-            power-cycling, or reconfiguring hardware.
     """
-    if arguments.get("refresh"):
-        invalidate()
-
-    devices, unreachable = all_devices(refresh=bool(arguments.get("refresh")))
+    invalidate()
+    devices, unreachable = all_devices()
 
     wanted_type = (arguments.get("device_type") or "").strip().lower()
     if wanted_type:
