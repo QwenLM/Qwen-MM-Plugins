@@ -1,0 +1,23 @@
+name: Notify Hub of upstream changes
+
+on:
+  push:
+    branches: [main]
+    tags: ['qwen-mm-plugins-*-v*']
+
+permissions: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger an immediate Hub refresh when configured
+        env:
+          GH_TOKEN: ${{ secrets.HUB_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo 'No dispatch token configured. The Hub scheduled check will pick up this change.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh api --method POST repos/QwenLM/qwen-mm-plugins-hub/actions/workflows/pages.yml/dispatches -f ref=main

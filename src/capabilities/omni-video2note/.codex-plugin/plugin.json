@@ -1,0 +1,7 @@
+{
+  "name": "qwen-mm-plugins-omni-video2note",
+  "version": "1.0.3",
+  "description": "Convert a local tutorial video into an illustrated PDF using Omni audio-video understanding, screenshot selection, and PDF review.",
+  "skills": "./skill",
+  "mcpServers": "./.mcp.json"
+}

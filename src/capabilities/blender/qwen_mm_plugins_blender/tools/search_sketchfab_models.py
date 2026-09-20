@@ -4,32 +4,30 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class SearchSketchfabModelsArgs(BaseModel):
-    query: str = Field(description="Text to search for.")
-    categories: Optional[str] = Field(default=None, description="Optional comma-separated list of categories.")
-    count: int = Field(default=20, description="Maximum number of results to return (default 20).")
-    downloadable: bool = Field(default=True, description="Whether to include only downloadable models (default True).")
+    query: str
+    categories: Optional[str] = None
+    count: int = 20
+    downloadable: bool = True
 
 
-TOOL: dict[str, Any] = {
-    "name": "search_sketchfab_models",
-    "description": (
-        "Search for models on Sketchfab with optional filtering.\n\n"
-        "Parameters:\n"
-        "- query: Text to search for\n"
-        "- categories: Optional comma-separated list of categories\n"
-        "- count: Maximum number of results to return (default 20)\n"
-        "- downloadable: Whether to include only downloadable models (default True)\n\n"
-        "Returns a formatted list of matching models."
-    ),
-    "args": SearchSketchfabModelsArgs,
-}
+TOOL = {"name": "search_sketchfab_models", "args": SearchSketchfabModelsArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Search for models on Sketchfab with optional filtering.
+
+    Returns a formatted list of matching models.
+
+    Args:
+        query: Text to search for.
+        categories: Optional comma-separated list of categories.
+        count: Maximum number of results to return (default 20).
+        downloadable: Whether to include only downloadable models (default True).
+    """
     from qwen_mm_plugins_blender.loader import get_connection
 
     query = arguments.get("query", "")

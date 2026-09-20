@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 def _valid_url(u: Any) -> bool:
@@ -29,43 +29,28 @@ def _process_bbox(original_bbox: "list[float] | list[int] | None") -> "list[int]
 
 
 class GenerateHyper3DViaImagesArgs(BaseModel):
-    input_image_paths: Optional[list[str]] = Field(
-        default=None,
-        description=(
-            "The **absolute** paths of input images. Even if only one image is provided, wrap it "
-            "into a list. Required if Hyper3D Rodin in MAIN_SITE mode."
-        ),
-    )
-    input_image_urls: Optional[list[str]] = Field(
-        default=None,
-        description=(
-            "The URLs of input images. Even if only one image is provided, wrap it into a list. "
-            "Required if Hyper3D Rodin in FAL_AI mode."
-        ),
-    )
-    bbox_condition: Optional[list[float]] = Field(
-        default=None,
-        description=(
-            "Optional. If given, it has to be a list of floats of length 3. Controls the ratio "
-            "between [Length, Width, Height] of the model."
-        ),
-    )
+    input_image_paths: Optional[list[str]] = None
+    input_image_urls: Optional[list[str]] = None
+    bbox_condition: Optional[list[float]] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "generate_hyper3d_model_via_images",
-    "description": (
-        "Generate 3D asset using Hyper3D by giving images of the wanted asset, and import the "
-        "generated asset into Blender. The 3D asset has built-in materials. The generated model has "
-        "a normalized size, so re-scaling after generation can be useful. Only one of "
-        "{input_image_paths, input_image_urls} should be given at a time, depending on the Hyper3D "
-        "Rodin's current mode."
-    ),
-    "args": GenerateHyper3DViaImagesArgs,
-}
+TOOL = {"name": "generate_hyper3d_model_via_images", "args": GenerateHyper3DViaImagesArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Generate 3D asset using Hyper3D by giving images of the wanted asset, and import the generated
+    asset into Blender. The 3D asset has built-in materials. The generated model has a normalized
+    size, so re-scaling after generation can be useful. Only one of {input_image_paths,
+    input_image_urls} should be given at a time, depending on the Hyper3D Rodin's current mode.
+
+    Args:
+        input_image_paths: The **absolute** paths of input images. Even if only one image is
+            provided, wrap it into a list. Required if Hyper3D Rodin in MAIN_SITE mode.
+        input_image_urls: The URLs of input images. Even if only one image is provided, wrap it into
+            a list. Required if Hyper3D Rodin in FAL_AI mode.
+        bbox_condition: Optional. If given, it has to be a list of floats of length 3. Controls the
+            ratio between [Length, Width, Height] of the model.
+    """
     import base64
     import json
     import os

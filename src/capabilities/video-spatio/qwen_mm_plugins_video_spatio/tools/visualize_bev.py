@@ -7,61 +7,30 @@ import io
 import json
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import image, require_dep, text, text_error
 
 
 class VisualizeBevArgs(BaseModel):
     # Preferred: pass a `scene` from build_scene (auto-uses its instances/cameras + FOV)
-    scene: Optional[Any] = Field(
-        default=None,
-        description="`scene` object from build_scene (JSON or dict). Preferred input; instances/cameras drive the plot.",
-    )
-    scene_file: Optional[str] = Field(
-        default=None, description="Path to a JSON file holding the scene (alternative to `scene`)."
-    )
-    viewpoint: Optional[Any] = Field(
-        default=None,
-        description=(
-            "Draw a DASHED forward/right cross-hair with Front/Back/Left/Right quadrant labels centred on a viewpoint. "
-            "{frame:N}=camera frame N; virtual viewpoint = {at:[x,z]|label|{frame,label}, facing:label|[x,z]|heading_deg}. "
-            "For 'facing the OPPOSITE direction of X' questions, use `facing_away:label|[x,z]|heading_deg` (the tool "
-            "auto-adds 180°); do NOT try to hand-derive the reverse angle. "
-            "Turn any 'from X's perspective / left-right/front-behind' question into reading the object's quadrant."
-        ),
-    )
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    viewpoint: Optional[Any] = None
     # Legacy: raw point-cloud path (compatibility)
-    points_file: Optional[str] = Field(
-        default=None, description="Legacy: .npy 3D point cloud (H,W,3). Prefer `scene` above."
-    )
-    points_b64: Optional[str] = Field(default=None, description="Legacy: base64 numpy array of 3D points.")
-    masks_file: Optional[str] = Field(default=None, description="Legacy: .npy segmentation masks (N,H,W bool).")
-    masks_b64: Optional[str] = Field(default=None, description="Legacy: base64 numpy masks.")
-    labels: Optional[list[str]] = Field(
-        default=None, description="Labels for each mask object (legacy point-cloud path)."
-    )
-    image_size: Optional[list[int]] = Field(default=None, description="Image dims [H,W] for scaling (legacy).")
-    xlim: Optional[list[float]] = Field(default=None, description="X-axis limits [min,max] meters (default auto).")
-    zlim: Optional[list[float]] = Field(
-        default=None, description="Z-axis (depth) limits [min,max] meters (default auto)."
-    )
-    resolution: float = Field(default=0.02, description="BEV grid resolution in meters per pixel (legacy path).")
-    title: str = Field(default="Bird's-Eye View", description="Title for the BEV plot.")
+    points_file: Optional[str] = None
+    points_b64: Optional[str] = None
+    masks_file: Optional[str] = None
+    masks_b64: Optional[str] = None
+    labels: Optional[list[str]] = None
+    image_size: Optional[list[int]] = None
+    xlim: Optional[list[float]] = None
+    zlim: Optional[list[float]] = None
+    resolution: float = 0.02
+    title: str = "Bird's-Eye View"
 
 
-TOOL: dict[str, Any] = {
-    "name": "visualize_bev",
-    "description": (
-        "Top-down BEV. Preferred: pass `scene` from build_scene + a `viewpoint` — the plot draws a DASHED "
-        "forward/right cross-hair with Front/Back/Left/Right quadrant labels centred on that viewpoint "
-        "(camera frame OR virtual viewpoint like 'stand at X facing Y'), so left/right/front/behind is a "
-        "direct read of which quadrant an object sits in — no manual Pattern-B trig. Also shows camera "
-        "pitch as an annotation (if |pitch|≥20° the BEV forward/back is flagged unreliable). "
-        "Legacy: raw point cloud via points_file / points_b64 still works."
-    ),
-    "args": VisualizeBevArgs,
-}
+TOOL: dict[str, Any] = {"name": "visualize_bev", "args": VisualizeBevArgs}
 
 
 def _load_scene(arguments):
@@ -74,6 +43,34 @@ def _load_scene(arguments):
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Top-down BEV. Preferred: pass `scene` from build_scene + a `viewpoint` — the plot draws a DASHED
+    forward/right cross-hair with Front/Back/Left/Right quadrant labels centred on that viewpoint
+    (camera frame OR virtual viewpoint like 'stand at X facing Y'), so left/right/front/behind is a
+    direct read of which quadrant an object sits in — no manual Pattern-B trig. Also shows camera pitch
+    as an annotation (if |pitch|≥20° the BEV forward/back is flagged unreliable). Legacy: raw point
+    cloud via points_file / points_b64 still works.
+
+    Args:
+        scene: `scene` object from build_scene (JSON or dict). Preferred input; instances/cameras drive
+            the plot.
+        scene_file: Path to a JSON file holding the scene (alternative to `scene`).
+        viewpoint: Draw a DASHED forward/right cross-hair with Front/Back/Left/Right quadrant labels
+            centred on a viewpoint. {frame:N}=camera frame N; virtual viewpoint =
+            {at:[x,z]|label|{frame,label}, facing:label|[x,z]|heading_deg}. For 'facing the OPPOSITE
+            direction of X' questions, use `facing_away:label|[x,z]|heading_deg` (the tool auto-adds
+            180°); do NOT try to hand-derive the reverse angle. Turn any 'from X's perspective / left-
+            right/front-behind' question into reading the object's quadrant.
+        points_file: Legacy: .npy 3D point cloud (H,W,3). Prefer `scene` above.
+        points_b64: Legacy: base64 numpy array of 3D points.
+        masks_file: Legacy: .npy segmentation masks (N,H,W bool).
+        masks_b64: Legacy: base64 numpy masks.
+        labels: Labels for each mask object (legacy point-cloud path).
+        image_size: Image dims [H,W] for scaling (legacy).
+        xlim: X-axis limits [min,max] meters (default auto).
+        zlim: Z-axis (depth) limits [min,max] meters (default auto).
+        resolution: BEV grid resolution in meters per pixel (legacy path).
+        title: Title for the BEV plot.
+    """
     if err := require_dep("numpy"):
         return err
     import numpy as np

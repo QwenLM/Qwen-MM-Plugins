@@ -5,43 +5,26 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
-
 from shared.content import json_text
 
 from .. import watch
-from ..service import DEFAULT_OMNI_MODEL, load_store, memory_label
+from ..service import load_store, memory_label
 from . import MemoryRef
 
 # Replay sends clips inline as base64 (~3.5 MB per 30s clip), so an unbounded selection turns into a
 # request the endpoint will reject. Same bound the core uses when it suggests replay candidates. Read
-# by the schema and the description below, so it has to be bound before them.
+# by the replay handler to bound each request.
 REPLAY_CAP = max(1, watch.REPLAY_N)
 
 
 class ReplayAndAnswerArgs(MemoryRef):
-    question: str = Field(description="What to determine from watching the clips.")
-    idxs: list[int] = Field(
-        description="Clip indices to re-watch, e.g. suggested_replay_idxs from plan_and_search "
-        f"or idxs from search_dialogue / get_timeline. At most {REPLAY_CAP} are watched per call — "
-        "pick the most promising ones; extras come back in dropped_idxs."
-    )
-    evidence: str = Field(default="", description="Optional text context to give the model alongside the clips.")
-    model: str | None = Field(
-        default=None,
-        description="Omni model for this call. Leave unset to use the configured default "
-        f"({DEFAULT_OMNI_MODEL}). It need not match the model the memory was built with.",
-    )
+    question: str
+    idxs: list[int]
+    evidence: str = ""
+    model: str | None = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "replay_and_answer",
-    "description": "Re-watch specific source clips WITH THEIR AUDIO and have the omni model answer from "
-    "what it actually sees and hears. Reach for this only when the stored memory cannot settle the "
-    "question — reading detail back off the original video is the one thing the read-only tools "
-    f"cannot do. Watches at most {REPLAY_CAP} clips per call. Requires an omni model endpoint.",
-    "args": ReplayAndAnswerArgs,
-}
+TOOL = {"name": "replay_and_answer", "args": ReplayAndAnswerArgs}
 
 
 def replay_and_answer(
@@ -111,4 +94,20 @@ def replay_and_answer(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Re-watch source clips with audio when stored memory cannot settle a question. The Omni model
+    answers from what it sees and hears. Watches up to the configured replay limit per call;
+    requires an Omni model endpoint.
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        question: What to determine from watching the clips.
+        idxs: Clip indices to re-watch, such as suggested_replay_idxs from plan_and_search or idxs
+            from search_dialogue/get_timeline. Select the most promising clips; entries beyond the
+            configured replay limit are returned in dropped_idxs.
+        evidence: Optional text context to give the model alongside the clips.
+        model: Omni model for this call. Leave unset to use the configured default. It can differ
+            from the model used to build the memory.
+    """
     return [json_text(replay_and_answer(**arguments))]

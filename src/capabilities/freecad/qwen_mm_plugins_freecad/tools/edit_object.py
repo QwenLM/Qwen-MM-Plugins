@@ -4,32 +4,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class EditObjectArgs(BaseModel):
-    doc_name: str = Field(description="The name of the document to edit the object in.")
-    obj_name: str = Field(description="The name of the object to edit.")
-    obj_properties: dict = Field(description="The properties of the object to edit.")
+    doc_name: str
+    obj_name: str
+    obj_properties: dict
 
 
-TOOL: dict[str, Any] = {
-    "name": "edit_object",
-    "description": (
-        "Edit an object in FreeCAD.\n"
-        "This tool is used when the `create_object` tool cannot handle the object creation.\n\n"
-        "Args:\n"
-        "    doc_name: The name of the document to edit the object in.\n"
-        "    obj_name: The name of the object to edit.\n"
-        "    obj_properties: The properties of the object to edit.\n\n"
-        "Returns:\n"
-        "    A message indicating the success or failure of the object editing and a screenshot of the object."
-    ),
-    "args": EditObjectArgs,
-}
+TOOL = {"name": "edit_object", "args": EditObjectArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Edit an object in FreeCAD.
+
+    This tool is used when the `create_object` tool cannot handle the object creation.
+
+    Args:
+        doc_name: The name of the document to edit the object in.
+        obj_name: The name of the object to edit.
+        obj_properties: The properties of the object to edit.
+    """
     from qwen_mm_plugins_freecad._responses import add_screenshot_if_available, text_response
     from qwen_mm_plugins_freecad.loader import get_connection, only_text_feedback
 

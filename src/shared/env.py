@@ -16,14 +16,21 @@ _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
 
-def get_env(name: str, default: str | None = None) -> str | None:
+def get_env(name: str, default: str | None = None, *, refresh_config: bool = False) -> str | None:
     """Env config, read at CALL time. Precedence: environment > user config file > default.
 
     The config-file fallback lets GUI-launched harnesses (Codex/Claude desktop) find
-    DASHSCOPE_API_KEY etc. — they don't inherit a shell's exported vars. See config_file.
+    DASHSCOPE_API_KEY etc. — they don't inherit a shell's exported vars. Set
+    ``refresh_config`` for a long-lived process that must observe changes made by another
+    process. See config_file.
     """
+    global _config_cache
     val = os.environ.get(name)
-    return val if val is not None else _config().get(name, default)
+    if val is not None:
+        return val
+    if refresh_config:
+        _config_cache = None
+    return _config().get(name, default)
 
 
 def get_bool_env(name: str, default: bool = False) -> bool:
@@ -157,6 +164,27 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "vision, OCR, grounding, text-only image captions, ASR, generation, memory builds",
     ),
     (
+        "ORCAROUTER_API_KEY",
+        True,
+        "Media APIs & endpoints",
+        "",
+        "OpenAI-compatible calls to api.orcarouter.ai",
+    ),
+    (
+        "OPENROUTER_API_KEY",
+        True,
+        "Media APIs & endpoints",
+        "",
+        "OpenAI-compatible calls to openrouter.ai",
+    ),
+    (
+        "MINIMAX_API_KEY",
+        True,
+        "Media APIs & endpoints",
+        "",
+        "MiniMax text-to-speech generation",
+    ),
+    (
         "DASHSCOPE_BASE_URL",
         False,
         "Media APIs & endpoints",
@@ -164,28 +192,50 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "override the DashScope OpenAI-compatible base URL",
     ),
     (
+        "DASHSCOPE_UPLOAD_POLICY_URL",
+        False,
+        "Media APIs & endpoints",
+        "inferred for official DashScope hosts",
+        "override the model-bound temporary OSS policy endpoint used for oversized Omni and VL media",
+    ),
+    (
         "QWEN_MM_API_VL_MODEL",
         False,
         "Media APIs & endpoints",
         "qwen3.7-plus",
-        "default VL model for vision_chat, OCR, grounding, video-spatio's VLM tools, and text-only image captions",
+        "default VL model for vision_chat, OCR, grounding, text-only image captions, and video-spatio VLM tools",
     ),
     (
         "QWEN_MM_API_OMNI_MODEL",
         False,
         "Media APIs & endpoints",
-        "qwen3.5-omni-plus",
-        "default Omni model for audio/video understanding tools and omni-memory",
+        "qwen3.8-omni-flash",
+        "default Omni model for audio/video understanding tools, omni-memory, and Omni ChatCut",
     ),
     ("SAM3_SERVER_URL", False, "Media APIs & endpoints", "", "segmentation SAM3 server URL"),
     ("ASR_SERVER_URLS", False, "Media APIs & endpoints", "", "self-hosted ASR fallback URLs (comma-separated)"),
+    # Omni ChatCut
+    (
+        "QWEN_MM_OMNI_CHATCUT_MODEL_CONFIG",
+        False,
+        "Omni ChatCut",
+        "",
+        "path to the shared Omni, image-provider, and video-provider connection JSON",
+    ),
+    (
+        "QWEN_MM_DUBBING_SERVER_URL",
+        False,
+        "Omni ChatCut",
+        "",
+        "external IndexTTS2/Demucs/TEN-VAD service used by video translation",
+    ),
     # Search providers
     (
         "QWEN_MM_SEARCH_BACKEND",
         False,
         "Search providers",
         "auto",
-        "text search backend (auto: serper > tavily > exa; or choose one)",
+        "text search backend (auto: serper > tavily > exa > serply; or choose one)",
     ),
     (
         "SERPER_API_KEY",
@@ -196,6 +246,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
     ),
     ("TAVILY_API_KEY", True, "Search providers", "", "Tavily web_search / web_extractor"),
     ("EXA_API_KEY", True, "Search providers", "", "Exa web_search / web_extractor"),
+    ("SERPLY_API_KEY", True, "Search providers", "", "Serply web_search / web_extractor"),
     # Runtime paths & limits
     ("QWEN_MM_CACHE", False, "Runtime paths & limits", "OS cache dir", "cache dir for derived render artifacts"),
     ("QWEN_MM_FFMPEG_TIMEOUT", False, "Runtime paths & limits", "120", "ffmpeg/ffprobe timeout seconds"),

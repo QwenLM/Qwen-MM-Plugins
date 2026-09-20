@@ -5,40 +5,33 @@ from __future__ import annotations
 import io
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_video_spatio.tools import _scene
 from shared.content import image, text, text_error
 
 
 class RenderSceneViewsArgs(BaseModel):
-    scene: Optional[Any] = Field(
-        default=None, description="The `scene` object from build_scene (JSON object or JSON string)."
-    )
-    scene_file: Optional[str] = Field(
-        default=None, description="Path to a JSON file holding the scene (alternative to `scene`)."
-    )
-    faces: list[str] = Field(
-        default=["front", "top"],
-        description="Which orthographic faces to render: front / top (=bev) / left / right. Default front+top.",
-    )
-    frame: Optional[int] = Field(
-        default=None, description="Frame whose instances to render (default: aggregate/available)."
-    )
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    faces: list[str] = ["front", "top"]
+    frame: Optional[int] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "render_scene_views",
-    "description": (
-        "Render the scene's instances as orthographic 2D views (wireframe cuboids) from canonical "
-        "faces — DEFAULT front + top(BEV); add left/right only if a task needs more angles. Lets you "
-        "'look from another angle' at the reconstructed layout. Needs a `scene` from build_scene."
-    ),
-    "args": RenderSceneViewsArgs,
-}
+TOOL: dict[str, Any] = {"name": "render_scene_views", "args": RenderSceneViewsArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Render the scene's instances as orthographic 2D views (wireframe cuboids) from canonical faces —
+    DEFAULT front + top(BEV); add left/right only if a task needs more angles. Lets you 'look from
+    another angle' at the reconstructed layout. Needs a `scene` from build_scene.
+
+    Args:
+        scene: The `scene` object from build_scene (JSON object or JSON string).
+        scene_file: Path to a JSON file holding the scene (alternative to `scene`).
+        faces: Which orthographic faces to render: front / top (=bev) / left / right. Default front+top.
+        frame: Frame whose instances to render (default: aggregate/available).
+    """
     try:
         scene = _scene.load_scene(arguments)
         recon = _scene.scene_to_recon(scene, with_images=False)

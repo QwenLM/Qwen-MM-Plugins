@@ -53,11 +53,7 @@ FRAME_W, FRAME_H = 1600, 1200
 
 @pytest.fixture
 def frames(tmp_path):
-    """Two frames — only their size matters for the geometry (intrinsics are derived from it).
-
-    Both dimensions are >= 1000 so `build_scene` reads a bbox as raw pixels; on a smaller frame a
-    0-1000-ranged bbox is ambiguous and taken as already normalized.
-    """
+    """Two high-resolution frames for geometry and rendering tests."""
     from PIL import Image
 
     paths = []
@@ -68,10 +64,10 @@ def frames(tmp_path):
     return paths
 
 
-def _build_scene(frames, objects_by_frame, camera_motions=None):
+def _build_scene(frames, objects_by_frame, camera_motions=None, **kwargs):
     from qwen_mm_plugins_video_spatio.tools import build_scene
 
-    args = {"objects_by_frame": objects_by_frame, "frames": frames}
+    args = {"objects_by_frame": objects_by_frame, "frames": frames, **kwargs}
     if camera_motions is not None:
         args["camera_motions"] = camera_motions
     blocks = build_scene.handle(args)
@@ -94,7 +90,7 @@ def test_tools_advertise_descriptions_and_schemas():
 def test_build_scene_converts_pixel_bboxes_to_the_0_1000_convention(frames):
     # The bottom-right quadrant in pixels -> x in [500,1000], y in [500,1000] normalized.
     bbox = [FRAME_W / 2, FRAME_H / 2, FRAME_W, FRAME_H]
-    scene = _build_scene(frames[:1], [[{"label": "chair", "bbox": bbox, "depth_m": 2.5}]])
+    scene = _build_scene(frames[:1], [[{"label": "chair", "bbox": bbox, "depth_m": 2.5}]], bbox_format="pixels")
 
     assert scene["type"] == "video-spatio/scene@1"
     assert scene["image_size"] == {"w": FRAME_W, "h": FRAME_H}
@@ -109,7 +105,9 @@ def test_build_scene_converts_pixel_bboxes_to_the_0_1000_convention(frames):
 
 
 def test_build_scene_accepts_0_1_normalized_bboxes(frames):
-    scene = _build_scene(frames[:1], [[{"label": "cup", "bbox": [0.1, 0.2, 0.3, 0.4], "depth_m": 1.0}]])
+    scene = _build_scene(
+        frames[:1], [[{"label": "cup", "bbox": [0.1, 0.2, 0.3, 0.4], "depth_m": 1.0}]], bbox_format="normalized"
+    )
     assert scene["instances"]["0"][0]["bbox_1000"] == pytest.approx([100.0, 200.0, 300.0, 400.0])
 
 
@@ -174,3 +172,165 @@ def test_vlm_tool_degrades_to_an_error_block_without_a_reachable_endpoint(frames
     blocks = orient_facing.handle({"image": frames[0], "target": "chair", "votes": 1})
     assert blocks and all(b.get("type") == "text" for b in blocks)
     assert "error" in "\n".join(b.get("text", "") for b in blocks).lower()
+
+
+def test_normalized_boxes_do_not_depend_on_image_resolution(frames):
+    bbox = [100, 200, 300, 400]
+    scene = _build_scene(frames[:1], [[{"label": "chair", "bbox": bbox, "depth_m": 2}]])
+    assert scene["instances"]["0"][0]["bbox_1000"] == bbox
+    assert scene["instances"]["0"][0]["bbox_pixel"] == [160, 240, 480, 480]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"frame_indices": [0]},
+        {"frame_indices": [0, 0]},
+        {"camera_motions": []},
+        {"camera_motions": [{"yaw_deg": float("nan")}]},
+    ],
+)
+def test_build_scene_rejects_invalid_frame_metadata(frames, extra):
+    from qwen_mm_plugins_video_spatio.tools import build_scene
+
+    blocks = build_scene.handle({"frames": frames, "objects_by_frame": [[], []], **extra})
+    assert blocks[0]["text"].startswith("Error"), blocks
+
+
+@pytest.mark.parametrize(
+    "obj",
+    [
+        {"label": "chair", "bbox": [1, 2, 3], "depth_m": 2},
+        {"label": "chair", "bbox": [100, 200, 300, 400], "depth_m": -1},
+        {"label": "chair", "bbox": [100, 200, 300, 400], "depth_m": float("inf")},
+        {"label": "chair", "bbox": [300, 200, 100, 400], "depth_m": 2},
+    ],
+)
+def test_build_scene_rejects_invalid_objects(frames, obj):
+    from qwen_mm_plugins_video_spatio.tools import build_scene
+
+    blocks = build_scene.handle({"frames": frames[:1], "objects_by_frame": [[obj]]})
+    assert blocks[0]["text"].startswith("Error"), blocks
+
+
+def test_camera_translation_uses_the_previous_heading(frames):
+    scene = _build_scene(
+        [*frames, frames[0]],
+        [[], [], []],
+        camera_motions=[
+            {"yaw_deg": 90},
+            {"forward_m": 2},
+        ],
+    )
+    assert scene["cameras"]["2"]["pos_bev"] == pytest.approx([2, 0], abs=1e-8)
+
+
+def test_object_world_motion_reports_forward_along_negative_z(frames):
+    from qwen_mm_plugins_video_spatio.tools import object_world_motion
+
+    scene = _build_scene(
+        frames, [[{"label": "chair", "bbox": [400, 400, 600, 600], "depth_m": depth}] for depth in [2, 3]]
+    )
+    result = json.loads(object_world_motion.handle({"scene": scene, "target": "chair"})[0]["text"])
+    assert result["direction"] == "forward"
+    assert result["move_vec"] == [0, -1]
+
+
+@pytest.mark.parametrize(
+    "positions,bearings,reliable",
+    [
+        ([[0, 0], [2, 0]], [0, -20], True),
+        ([[0, 0], [0, 0]], [0, 20], False),
+        ([[0, 0], [0, -4]], [0, 180], False),
+        ([[0, 0], [2, 0]], [0, 20], False),
+    ],
+)
+def test_triangulation_rejects_degenerate_or_backward_rays(positions, bearings, reliable):
+    from qwen_mm_plugins_video_spatio.tools import triangulate
+
+    scene = {
+        "type": "video-spatio/scene@1",
+        "frame_indices": [0, 1],
+        "instances": {str(i): [{"label": "chair", "point_1000": [500, 500], "depth_m": 3}] for i in range(2)},
+        "cameras": {str(i): {"pos_bev": positions[i], "yaw_deg": bearings[i]} for i in range(2)},
+    }
+    result = json.loads(triangulate.handle({"scene": scene, "target": "chair", "frame_a": 0, "frame_b": 1})[0]["text"])
+    assert result["reliable"] is reliable
+    if reliable:
+        assert result["world_xz"] == pytest.approx([0, -2 / math.tan(math.radians(20))], abs=1e-4)
+
+
+def test_claude_model_uses_the_configured_openai_compatible_transport(monkeypatch):
+    from types import SimpleNamespace
+
+    from PIL import Image
+
+    from qwen_mm_plugins_video_spatio.tools._vlm import VLMShim
+    from shared import api_openai
+
+    calls = []
+
+    def chat(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="chair"))])
+
+    monkeypatch.setattr(api_openai, "call_openai_chat", chat)
+    shim = VLMShim(model="anthropic/claude-test", base_url="http://localhost:1234/v1", api_key="test-only")
+    assert shim.ask(Image.new("RGB", (10, 10)), "What is visible?") == "chair"
+    assert calls[0]["base_url"] == "http://localhost:1234/v1"
+    assert calls[0]["model"] == "anthropic/claude-test"
+    assert calls[0]["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+@pytest.mark.parametrize(
+    "tool,args",
+    [
+        ("assess_coverage", {}),
+        ("assess_reachable", {"target": "chair"}),
+        ("plan_exploration", {"target": "door"}),
+        ("calibrate_scale", {"target": "chair", "known_size_m": 1}),
+        ("count_objects", {}),
+        ("count_objects", {"frame": 0}),
+        ("match_entities", {}),
+        ("match_entities", {"op": "deduplicate"}),
+        ("mobile_manip", {"target": "chair"}),
+        ("mobile_manip", {"op": "reachability", "target": "chair"}),
+        ("mobile_manip", {"op": "plan_active_search", "target": "door"}),
+        ("render_scene_views", {}),
+        ("scene_map", {}),
+        ("scene_map", {"op": "appearance_order"}),
+        ("scene_map", {"op": "diff_frames", "frame_a": 0, "frame_b": 1}),
+        ("select_keyframes", {}),
+        ("select_keyframes", {"strategy": "uniform", "total_frames": 20, "n": 3}),
+        ("select_keyframes", {"strategy": "coverage", "label": "chair"}),
+        ("view_reason", {"frame": 0, "viewpoint": "chair"}),
+        ("motion", {"past_points": [[0, 0], [1, 1], [2, 2]], "order": 1}),
+    ],
+)
+def test_tools_return_mcp_content_with_offline_scene(frames, monkeypatch, tool, args):
+    import importlib
+
+    from qwen_mm_plugins_video_spatio.tools._vlm import VLMShim
+
+    # No remote calls: exercise real geometry/rendering with a deterministic VLM fallback.
+    monkeypatch.setattr(VLMShim, "_dispatch", lambda *a, **kw: "Unknown")
+    scene = _build_scene(frames, [[{"label": "chair", "bbox": [400, 400, 600, 600], "depth_m": 2}]] * 2)
+    module = importlib.import_module(
+        "qwen_mm_plugins_video_spatio.tools." + ("explore" if tool == "assess_coverage" else tool)
+    )
+    blocks = module.handle({"scene": scene, **args})
+    assert blocks
+    for block in blocks:
+        assert block["type"] in {"text", "image"}
+        if block["type"] == "text":
+            assert not block["text"].startswith("Error"), blocks
+
+
+@pytest.mark.parametrize("size", [(640, 480), (1600, 1200)])
+def test_grounding_crop_uses_normalized_boxes_at_every_resolution(size):
+    from PIL import Image
+
+    from qwen_mm_plugins_video_spatio.experts.grounding_verifier import GroundingVerifier
+
+    cropped = GroundingVerifier._crop_bbox(Image.new("RGB", size), [250, 250, 750, 750])
+    assert cropped.size == (int(size[0] * 0.6), int(size[1] * 0.6))

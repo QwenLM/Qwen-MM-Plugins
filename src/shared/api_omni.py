@@ -1,6 +1,6 @@
 """Qwen-Omni client (shared): streaming compatible-mode chat + robust JSON + A/V content parts.
 
-The Omni model (default ``qwen3.5-omni-plus``) reads video frames AND the embedded audio track in a
+The Omni model (default ``qwen3.8-omni-flash``) reads video frames AND the embedded audio track in a
 single call, and — unlike the plain VL path in ``api_openai`` — it **must** be called with
 ``stream=True`` + ``modalities=["text"]`` (+ ``stream_options.include_usage``). This module is the
 one place that speaks that protocol, so every Omni tool (the api ``omni/`` subpackage) shares it.
@@ -10,11 +10,12 @@ default ``base_url``) and reuses that module's endpoint resolution + URL helpers
 through the ``openai`` SDK (imported lazily) to stay consistent with the rest of the codebase, with
 retry via ``shared.retry.retry_call``. Native async generation still lives in ``api_dashscope``.
 
-Inline media is capped: a local file travels as a base64 ``data:`` URL and the encoded string must
-stay under ``OMNI_MAX_B64_BYTES`` (10 MB). This module owns both the budget constants and the gate
-that enforces them (see ``inline_b64_bytes`` / ``PayloadTooLargeError``); it offers three shapes for
-media — a video file (``omni_video_part``), a frame list (``omni_frames_part``, no audio of its own)
-and audio (``omni_audio_part``) — leaving the choice of which to send to the caller.
+Inline media is capped per item: a local file travels as a base64 ``data:`` URL and each encoded
+image, audio, or video item must stay under ``OMNI_MAX_B64_BYTES`` (10 MB). A request may contain
+multiple such items whose aggregate size is larger. This module owns both the budget constants and
+the per-item gate; it offers three shapes for media — a video file (``omni_video_part``), a frame
+list (``omni_frames_part``, no audio of its own) and audio (``omni_audio_part``) — leaving the choice
+of which to send to the caller.
 """
 
 from __future__ import annotations
@@ -26,13 +27,15 @@ import mimetypes
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from shared.api_openai import is_url, resolve_openai_endpoint
+from shared.api_openai import b64_len, expand_video_frames, is_model_url, resolve_openai_endpoint
+from shared.dashscope_upload import OSS_RESOLVE_HEADER, contains_temporary_oss_url
 from shared.env import get_env
 
 log = logging.getLogger(__name__)
 
-DEFAULT_OMNI_MODEL = "qwen3.5-omni-plus"
+DEFAULT_OMNI_MODEL = "qwen3.8-omni-flash"
 DEFAULT_MAX_RETRIES = 4
 DEFAULT_RETRY_BACKOFF = 1.0
 DEFAULT_OMNI_TIMEOUT = 1800  # streaming A/V completions can run long; overridable via QWEN_MM_CHAT_TIMEOUT
@@ -71,6 +74,7 @@ OMNI_MAX_B64_FRAMES = 250
 # Qwen3-Omni-Flash ≤ 20 min, Qwen-Omni-Turbo ≤ 3 min. Prefix-matched; unknown model → no cap. Only
 # relevant where the whole file is sampled server-side (a signed URL).
 _OMNI_VIDEO_MAX_SEC: dict[str, int] = {
+    "qwen3.8-omni": 3600,
     "qwen3.5-omni": 3600,
     "qwen3-omni-flash": 20 * 60,
     "qwen-omni-turbo": 3 * 60,
@@ -119,9 +123,19 @@ def _omni_timeout() -> int:
 
 
 # ── Content-part builders ────────────────────────────────────────────────────────────────────────
-def b64_len(n_bytes: int) -> int:
-    """Length of the base64 encoding of ``n_bytes`` raw bytes (4 chars per 3 bytes, padded)."""
-    return 4 * ((n_bytes + 2) // 3)
+def _source_suffix(source: str) -> str:
+    """Read the suffix from a local filename or a URL path, excluding host/query/fragment."""
+    return Path(urlsplit(source).path if is_omni_url(source) else source).suffix.lower()
+
+
+def is_omni_url(value: str) -> bool:
+    """URLs accepted by Omni, including DashScope's model-bound temporary ``oss://`` objects."""
+    return is_model_url(value)
+
+
+def has_video_extension(source: str) -> bool:
+    """Classify a media path without probing it, including URLs used in dry-run previews."""
+    return _source_suffix(source) in _VIDEO_EXTS
 
 
 def _local_b64(source: str) -> tuple[Path, str]:
@@ -156,16 +170,16 @@ def omni_video_part(source: str, *, fps: float = DEFAULT_OMNI_FPS, max_pixels: i
     ``fps`` and ``max_pixels`` are placed at the part's TOP level — the Omni endpoint only honors
     them there, not inside ``video_url`` (verified against the reference omni client).
     """
-    url = source if is_url(source) else _data_url(source, "video/mp4")
+    url = source if is_omni_url(source) else _data_url(source, "video/mp4")
     return {"type": "video_url", "video_url": {"url": url}, "fps": fps, "max_pixels": max_pixels}
 
 
 def omni_frames_part(frames: list[str]) -> dict:
-    """The image-list video form: ``{"type": "video", "video": [<image>, …]}``.
+    """Build an internal frame list; chat clients expand it to ordered ``image_url`` parts.
 
-    Each entry is an image URL or a base64 ``data:`` URL of one frame; Omni treats the list as a video
-    but — unlike the file form — it carries NO audio, so pair it with ``omni_audio_part`` whenever the
-    source had a sound track (combining modalities in one request needs a Qwen3.5-Omni model).
+    Each entry is an image URL or a base64 ``data:`` URL of one frame. The list carries no audio,
+    so pair it with ``omni_audio_part`` whenever the source had a sound track and the model supports
+    combined image and audio input.
     Frames must be in chronological order; tell the model their timestamps in the text part, since the
     list itself has no time base.
     """
@@ -190,8 +204,8 @@ def omni_audio_part(source: str, *, audio_format: str | None = None) -> dict:
     ("Incorrect padding"), so ``QWEN_MM_AUDIO_RAW_B64=1`` sends the encoded bytes directly. Both
     forms go through the same local-file size guard.
     """
-    fmt = (audio_format or Path(source).suffix.lstrip(".") or "wav").lower()
-    if is_url(source):
+    fmt = (audio_format or _source_suffix(source).lstrip(".") or "wav").lower()
+    if is_omni_url(source):
         data = source
     elif (get_env("QWEN_MM_AUDIO_RAW_B64") or "").lower() in ("1", "true", "yes", "on"):
         _, data = _local_b64(source)
@@ -200,15 +214,18 @@ def omni_audio_part(source: str, *, audio_format: str | None = None) -> dict:
     return {"type": "input_audio", "input_audio": {"data": data, "format": fmt}}
 
 
-def inline_b64_bytes(messages: list[dict[str, Any]]) -> int:
-    """Total base64 payload carried inline by ``messages`` (every ``data:`` URL in every part)."""
-    total = 0
+def inline_b64_item_bytes(messages: list[dict[str, Any]]) -> list[int]:
+    """Encoded byte lengths of individual inline media items in ``messages``.
+
+    Images and videos use ``data:`` URLs. Audio may instead use raw Base64 for OpenAI-spec servers,
+    so inspect ``input_audio.data`` explicitly as well.
+    """
+    lengths: list[int] = []
 
     def _count(value: Any) -> None:
-        nonlocal total
         if isinstance(value, str):
             if value.startswith("data:"):
-                total += len(value) - value.find(",") - 1
+                lengths.append(len(value) - value.find(",") - 1)
         elif isinstance(value, dict):
             for item in value.values():
                 _count(item)
@@ -217,13 +234,29 @@ def inline_b64_bytes(messages: list[dict[str, Any]]) -> int:
                 _count(item)
 
     _count(messages)
-    return total
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "input_audio":
+                continue
+            audio = part.get("input_audio")
+            data = audio.get("data") if isinstance(audio, dict) else None
+            if isinstance(data, str) and not data.startswith(("data:", "http://", "https://", "oss://")):
+                lengths.append(len(data))
+    return lengths
+
+
+def inline_b64_bytes(messages: list[dict[str, Any]]) -> int:
+    """Total inline Base64 bytes, retained as a diagnostic rather than an API limit."""
+    return sum(inline_b64_item_bytes(messages))
 
 
 def has_video_stream(path: str) -> bool:
     """True if ``path`` carries a real (non-cover-art) video stream. URLs fall back to extension."""
-    if is_url(path):
-        return Path(path.split("?", 1)[0]).suffix.lower() in _VIDEO_EXTS
+    if is_omni_url(path):
+        return has_video_extension(path)
     try:
         from shared.video import probe_media
 
@@ -235,7 +268,7 @@ def has_video_stream(path: str) -> bool:
             return True
         return False
     except Exception:  # noqa: BLE001 — ffprobe missing/unreadable: fall back to the extension
-        return Path(path).suffix.lower() in _VIDEO_EXTS
+        return has_video_extension(path)
 
 
 def text_msg(role: str, text: str) -> dict:
@@ -262,9 +295,8 @@ def call_omni(
     accumulates the streamed text deltas, and retries transient failures (typed openai errors,
     retryable HTTP statuses, and an empty completion) via ``shared.retry.retry_call``.
 
-    The inline base64 across all parts is checked once up front: an over-cap request is rejected here
-    (with the hint on how to shrink it) rather than sent to be 400'd — this is the single gate every
-    media path funnels through, whatever content parts the caller assembled.
+    Every inline Base64 media item is checked once up front. Aggregate request size is deliberately
+    not capped here: the endpoint's 10 MB limit applies independently to each media item.
     """
     import openai
     from openai import OpenAI
@@ -273,20 +305,19 @@ def call_omni(
 
     model = resolve_omni_model(model)
 
-    if api_key in ("", "EMPTY") and "dashscope" in base_url:
-        raise RuntimeError("no API key — set DASHSCOPE_API_KEY (or pass api_key)")
-
-    inline = inline_b64_bytes(messages)
-    if inline > OMNI_MAX_B64_BYTES:
+    oversized = [size for size in inline_b64_item_bytes(messages) if size > OMNI_MAX_B64_BYTES]
+    if oversized:
         raise PayloadTooLargeError(
-            f"the request carries {inline / 1e6:.1f} MB of inline base64 media, over the endpoint's "
-            f"{OMNI_MAX_B64_BYTES / 1e6:.0f} MB cap. Send fewer/smaller media items, pass an http(s) "
-            "URL, or configure OSS_* so oversized media is uploaded instead of inlined."
+            f"an inline media item carries {max(oversized) / 1e6:.1f} MB of base64, over the endpoint's "
+            f"per-item {OMNI_MAX_B64_BYTES / 1e6:.0f} MB cap. Shrink that item, pass an http(s)/OSS URL, "
+            "or use a DashScope endpoint so oversized local media can use temporary OSS."
         )
 
     body = {"modalities": ["text"]}
     if extra_body:
         body.update(extra_body)
+
+    messages = expand_video_frames(messages)
 
     retryable = (
         openai.RateLimitError,
@@ -303,6 +334,9 @@ def call_omni(
     client = OpenAI(api_key=api_key, base_url=base_url, timeout=_omni_timeout())
 
     def _once() -> tuple[str, Any]:
+        request: dict[str, Any] = {}
+        if contains_temporary_oss_url(messages):
+            request["extra_headers"] = dict(OSS_RESOLVE_HEADER)
         stream = client.chat.completions.create(
             model=model,
             messages=messages,
@@ -311,6 +345,7 @@ def call_omni(
             stream=True,
             stream_options={"include_usage": True},
             extra_body=body,
+            **request,
         )
         parts: list[str] = []
         usage = None
@@ -382,7 +417,7 @@ def call_omni_json(
     api_key: str,
     model: str | None = None,
     messages: list[dict[str, Any]],
-    max_tokens: int = 4096,
+    max_tokens: int = 65536,
     temperature: float = 0.3,
     max_retries: int = DEFAULT_MAX_RETRIES,
 ) -> Any:

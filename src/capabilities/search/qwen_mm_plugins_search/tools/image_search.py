@@ -21,45 +21,22 @@ _TIP = "\n\n---\nTip: Use `web_search` to cross-check this identification, then 
 
 
 class ImageSearchArgs(BaseModel):
-    image_path: str = Field(description="Absolute path to the image file to search, OR a public http(s) image URL.")
-    bbox: Optional[list[float]] = Field(
-        default=None,
-        description="Bounding box [x1, y1, x2, y2] in relative coordinates (0-1000). Optional.",
-        min_length=4,
-        max_length=4,
-    )
-    api_key: Optional[str] = Field(default=None, description="Serper API key (defaults to SERPER_API_KEY).")
-    allow_public_upload: bool = Field(
-        default=False,
-        description=(
-            "Explicit consent to upload a local image (or cropped copy) to the third-party public host uguu.se. "
-            "Required whenever image_path is local or bbox requires re-uploading a public URL."
-        ),
-    )
+    image_path: str
+    bbox: Optional[list[float]] = Field(default=None, min_length=4, max_length=4)
+    api_key: Optional[str] = None
+    allow_public_upload: bool = False
 
 
-TOOL: dict[str, Any] = {
-    "name": "image_search",
-    "description": (
-        "Reverse image search using an image file path (or a public image URL). "
-        "Returns similar images with their source URLs, titles, and descriptions. "
-        "Local images require allow_public_upload=true and are uploaded to the third-party public host uguu.se; "
-        "their contents leave the machine and become publicly accessible. "
-        "Use this (and/or web_search) to CONFIRM any specific identification — model/species/place/person/event — "
-        "before you answer; appearance alone is not proof. "
-        "Grab the frame to search with save_view (don't run ffmpeg yourself)."
-    ),
-    "args": ImageSearchArgs,
-}
+TOOL = {"name": "image_search", "args": ImageSearchArgs}
 
 
 def _crop_bbox(image_path: str, bbox: list[float]) -> str:
     """Crop image by bbox [x1,y1,x2,y2] in 0-1000 coords; returns path to temp file."""
     from PIL import Image
 
-    from shared.image import norm_to_pixel
+    from shared.image import norm_to_pixel, open_image
 
-    with Image.open(image_path) as img:
+    with open_image(image_path) as img:
         x1, y1, x2, y2 = norm_to_pixel([int(v) for v in bbox], img.width, img.height)
         cropped = img.crop((x1, y1, x2, y2))
 
@@ -143,6 +120,21 @@ def _format_results(docs: list[dict[str, Any]]) -> str:
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reverse image search using an image file path (or a public image URL). Returns similar images
+    with their source URLs, titles, and descriptions. Local images require allow_public_upload=true
+    and are uploaded to the third-party public host uguu.se; their contents leave the machine and
+    become publicly accessible. Use this (and/or web_search) to CONFIRM any specific identification
+    — model/species/place/person/event — before you answer; appearance alone is not proof. Grab the
+    frame to search with save_view (don't run ffmpeg yourself).
+
+    Args:
+        image_path: Absolute path to the image file to search, OR a public http(s) image URL.
+        bbox: Bounding box [x1, y1, x2, y2] in relative coordinates (0-1000). Optional.
+        api_key: Serper API key (defaults to SERPER_API_KEY).
+        allow_public_upload: Explicit consent to upload a local image (or cropped copy) to the
+            third-party public host uguu.se. Required whenever image_path is local or bbox requires
+            re-uploading a public URL.
+    """
     from qwen_mm_plugins_search.serper import resolve_serper_key
     from shared.content import require_dep, require_file, text_error
 

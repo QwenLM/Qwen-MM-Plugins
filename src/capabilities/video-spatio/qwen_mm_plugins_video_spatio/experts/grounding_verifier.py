@@ -89,22 +89,15 @@ print(f"Verified {len(valid)}/{len(insts)} grounded objects")
     def _crop_bbox(image, bbox) -> Any:
         """Crop an image to a bounding box ``[x1, y1, x2, y2]`` with padding.
 
-        Accepts boxes in 0..1000 normalized coords or raw pixels; values <= 1000
-        with a small image are treated as pixels, otherwise 0..1000 is rescaled.
+        Boxes always use 0..1000 normalized coordinates, independent of image size.
         """
         img = GroundingVerifier._to_pil(image)
         w, h = img.size
         x1, y1, x2, y2 = [float(v) for v in bbox]
-        x1, x2 = min(x1, x2), max(x1, x2)
-        y1, y2 = min(y1, y2), max(y1, y2)
-
-        mx = max(x1, y1, x2, y2)
-        if mx <= 1.0:  # 0..1
-            x1, x2, y1, y2 = x1 * w, x2 * w, y1 * h, y2 * h
-        elif mx <= 1000.0 and not (w <= 1000 and h <= 1000):
-            x1, x2 = x1 * w / 1000.0, x2 * w / 1000.0  # 0..1000 → pixels
-            y1, y2 = y1 * h / 1000.0, y2 * h / 1000.0
-        # else: already pixel coords on a small image.
+        if not (0 <= x1 < x2 <= 1000 and 0 <= y1 < y2 <= 1000):
+            raise ValueError("bbox must use ordered 0..1000 normalized coordinates")
+        x1, x2 = x1 * w / 1000.0, x2 * w / 1000.0
+        y1, y2 = y1 * h / 1000.0, y2 * h / 1000.0
 
         pad_x = (x2 - x1) * 0.1
         pad_y = (y2 - y1) * 0.1
@@ -156,7 +149,7 @@ print(f"Verified {len(valid)}/{len(insts)} grounded objects")
 
         Args:
             image: PIL Image or FrameImage (the frame the box lives on).
-            bbox: ``[x1, y1, x2, y2]`` grounded bounding box (0-1000 or pixels).
+            bbox: ``[x1, y1, x2, y2]`` grounded bounding box (0-1000 normalized).
             label: expected object name.
 
         Returns:

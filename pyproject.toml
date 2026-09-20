@@ -15,6 +15,8 @@ license-files = [
     "LICENSE",
     "src/capabilities/blender/NOTICE.md",
     "src/capabilities/freecad/NOTICE.md",
+    "src/capabilities/omni-chatcut/NOTICE.md",
+    "src/capabilities/omni-chatcut/skill/music-to-mv/workflows/video-generation/assets/fonts/OFL.txt",
     "src/capabilities/blender/qwen_mm_plugins_blender/vendor/LICENSE",
     "src/capabilities/freecad/qwen_mm_plugins_freecad/vendor/FreeCADMCP/LICENSE",
 ]
@@ -36,8 +38,10 @@ classifiers = [
 dependencies = [
     "mcp>=1.0.0,<2",
     "anyio>=4.0,<5",
+    "docstring-parser>=0.18,<0.19",
+    "pydantic>=2.11,<3",  # mcp_framework tool_schema needs union_format
     "pillow<12",
-    "openai",  # shared text-only fallback captions for MCP image results
+    "openai>=1,<2",  # shared OpenAI-compatible client; major upgrades require compatibility testing
 ]
 
 [project.urls]
@@ -48,7 +52,7 @@ Issues = "https://github.com/QwenLM/Qwen-MM-Plugins/issues"
 [project.optional-dependencies]
 # capability extras — compose via the profiles below
 api = ["dashscope", "httpx[socks]", "requests[socks]"]  # cloud media APIs + HTTP/SOCKS
-search = ["requests[socks]"]                    # Serper / Exa / Tavily + optional SOCKS proxy transport
+search = ["requests[socks]"]                    # Serper / Exa / Tavily / Serply + optional SOCKS proxy transport
 # viz = the full visualize stack — a `core` install then renders every format out of the box.
 viz = [
     "pypdfium2", "resvg-py", "lxml",          # PDF raster+text (pypdfium2) / SVG (resvg) / DrawIO / LaTeX
@@ -60,32 +64,41 @@ viz = [
     "trimesh", "pyrender", "cascadio",        # 3D (.obj/.stl/.glb)
     "playwright",                             # HTML screenshot
 ]
+video-spatio = ["numpy<3", "scipy", "matplotlib", "opencv-python-headless"]
 video-memory = ["numpy<3", "requests"]        # long-video graph-memory server
 omni-memory = ["numpy<3"]                     # long-video audio-visual memory server (openai client is a base dep)
+omni-video2note = ["reportlab", "pydantic>=2.11", "pypdfium2"]  # local tutorial video to audited illustrated PDF
 video-edit = ["dashscope>=1.25.16", "requests"]  # image/video/audio generation server
-# model-free 3D spatial reasoning: geometry math + BEV plots + single-shot VLM calls
-video-spatio = ["numpy<3", "scipy", "matplotlib", "opencv-python-headless", "requests"]
+omni-chatcut = [
+    "requests>=2,<3",
+]                                                # unified video creation; optional GPU services stay external
 example = []                                   # template capability — uses the base OpenAI client
 oss = ["oss2"]                                 # optional: upload large media to OSS for a signed URL (memory-build clip upload, api oversized-video upload)
 blender = []                                   # Blender live-session MCP client (stdlib socket; needs a running Blender + addon)
 freecad = []                                   # FreeCAD live-session MCP client (stdlib xml-rpc; needs a running FreeCAD + addon)
+omni-skill-creator = ["openai", "dashscope", "httpx", "numpy<3", "pyyaml"]  # video-to-skill creator: native AV perception + grounding + skill extraction (numpy: MFCC audio dedup; pyyaml: SKILL.md frontmatter)
+mhs = ["msgpack>=1.1,<2"]                      # Model Hardware Standard host (HTTP + MessagePack; adapters are external)
 # profiles — install ONE. `core` is now local-only (no API key); cloud tools are the api/search
 # capabilities. `all` layers every server on top.
 core = ["qwen-mm-plugins[viz]"]
 memory = ["qwen-mm-plugins[core,video-memory,omni-memory]"]
-all = ["qwen-mm-plugins[core,api,search,video-memory,omni-memory,video-edit,video-spatio,blender,freecad]"]
+all = ["qwen-mm-plugins[core,api,search,video-memory,omni-memory,omni-video2note,video-edit,omni-chatcut,blender,freecad,omni-skill-creator,mhs,video-spatio]"]
 
 [project.scripts]
+qwen-mm-plugins-video-spatio = "qwen_mm_plugins_video_spatio.__main__:main"
 qwen-mm-plugins-core = "qwen_mm_plugins_core.__main__:main"
 qwen-mm-plugins-api = "qwen_mm_plugins_api.__main__:main"
 qwen-mm-plugins-search = "qwen_mm_plugins_search.__main__:main"
 qwen-mm-plugins-video-memory = "qwen_mm_plugins_video_memory.__main__:main"
 qwen-mm-plugins-omni-memory = "qwen_mm_plugins_omni_memory.__main__:main"
+qwen-mm-plugins-omni-video2note = "qwen_mm_plugins_omni_video2note.__main__:main"
 qwen-mm-plugins-video-edit = "qwen_mm_plugins_video_edit.__main__:main"
-qwen-mm-plugins-video-spatio = "qwen_mm_plugins_video_spatio.__main__:main"
+qwen-mm-plugins-omni-chatcut = "qwen_mm_plugins_omni_chatcut.__main__:main"
 qwen-mm-plugins-example = "qwen_mm_plugins_example.__main__:main"
 qwen-mm-plugins-blender = "qwen_mm_plugins_blender.__main__:main"
 qwen-mm-plugins-freecad = "qwen_mm_plugins_freecad.__main__:main"
+qwen-mm-plugins-omni-skill-creator = "qwen_mm_plugins_omni_skill_creator.__main__:main"
+qwen-mm-plugins-mhs = "qwen_mm_plugins_mhs.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -110,15 +123,19 @@ qwen_mm_plugins_api = "src/capabilities/api/qwen_mm_plugins_api"
 qwen_mm_plugins_search = "src/capabilities/search/qwen_mm_plugins_search"
 qwen_mm_plugins_video_memory = "src/capabilities/video-memory/qwen_mm_plugins_video_memory"
 qwen_mm_plugins_omni_memory = "src/capabilities/omni-memory/qwen_mm_plugins_omni_memory"
+qwen_mm_plugins_omni_video2note = "src/capabilities/omni-video2note/qwen_mm_plugins_omni_video2note"
 qwen_mm_plugins_video_edit = "src/capabilities/video-edit/qwen_mm_plugins_video_edit"
-qwen_mm_plugins_video_spatio = "src/capabilities/video-spatio/qwen_mm_plugins_video_spatio"
+qwen_mm_plugins_omni_chatcut = "src/capabilities/omni-chatcut/qwen_mm_plugins_omni_chatcut"
 qwen_mm_plugins_example = "src/capabilities/example/qwen_mm_plugins_example"
 qwen_mm_plugins_blender = "src/capabilities/blender/qwen_mm_plugins_blender"
 qwen_mm_plugins_freecad = "src/capabilities/freecad/qwen_mm_plugins_freecad"
+qwen_mm_plugins_omni_skill_creator = "src/capabilities/omni-skill-creator/qwen_mm_plugins_omni_skill_creator"
+qwen_mm_plugins_mhs = "src/capabilities/mhs/qwen_mm_plugins_mhs"
+qwen_mm_plugins_video_spatio = "src/capabilities/video-spatio/qwen_mm_plugins_video_spatio"
 shared = "src/shared"
 
 [tool.setuptools.packages.find]
-where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/video-edit", "src/capabilities/video-spatio", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src"]
+where = ["src/capabilities/video-spatio", "src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/omni-video2note", "src/capabilities/video-edit", "src/capabilities/omni-chatcut", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src/capabilities/omni-skill-creator", "src/capabilities/mhs", "src"]
 include = ["qwen_mm_plugins*", "shared*"]
 
 # The vendored live-session addons ship as package DATA (not importable subpackages — no __init__ on

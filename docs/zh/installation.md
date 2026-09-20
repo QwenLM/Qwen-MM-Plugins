@@ -128,11 +128,19 @@ wsl --install -d Ubuntu
 | `SERPER_API_KEY` | Serper 网页搜索/抽取，以及所有反向图像搜索 |
 | `TAVILY_API_KEY` | Tavily 网页搜索和页面抽取 |
 | `EXA_API_KEY` | Exa 网页搜索和页面抽取 |
+| `SERPLY_API_KEY` | Serply 网页搜索和页面抽取 |
 
 本地 `core` 文件读取无需 API key。可通过安装器的 **Configure**、shell 环境变量或
 `~/.qwen-mm-plugins/config` 设置；环境变量优先。
+
+使用官方 DashScope 端点调用 Omni 工具时，超过 10 MB base64 限额的本地音视频会优先
+上传到与当前模型、API key 绑定的百炼临时 OSS（单文件最大 1 GiB，目前约保留 48 小时），
+随后以 `oss://` 地址请求模型；无需配置 `OSS_AK`、`OSS_SK`、`OSS_ENDPOINT` 或
+`OSS_BUCKET`。非官方兼容网关如支持该流程，可通过 `DASHSCOPE_UPLOAD_POLICY_URL` 指定完整的
+临时上传凭证接口。临时上传不可用或失败时，仍按原有规则转码、使用用户自管 OSS 或抽帧降级。
+
 未设置 `QWEN_MM_SEARCH_BACKEND` 或设为 `auto` 时，文本搜索按固定顺序选择第一个已配置
-key 的后端：Serper、Tavily、Exa。设为 `serper`、`tavily` 或 `exa` 会固定使用该后端；
+key 的后端：Serper、Tavily、Exa、Serply。设为 `serper`、`tavily`、`exa` 或 `serply` 会固定使用该后端；
 如果缺少对应 key，则直接报错，不会回退。
 `image_search` 独立于 `QWEN_MM_SEARCH_BACKEND`，始终使用 Serper Lens；缺少
 `SERPER_API_KEY` 时会直接报错。
@@ -145,6 +153,7 @@ key 的后端：Serper、Tavily、Exa。设为 `serper`、`tavily` 或 `exa` 会
 | LibreOffice | Office 与 DrawIO 可视化 |
 | TeX | LaTeX 可视化 |
 | Chromium | 网页截图和 edu-agent 渲染 |
+| `tesseract` | 从视频提取 Skill 时识别屏幕文字（可选） |
 | Blender / FreeCAD | 对应的实时应用集成 |
 
 运行 `bash install.sh verify` 或 `<entry> --check-system` 查看所选能力的具体要求。能力专属依赖

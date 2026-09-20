@@ -1,10 +1,10 @@
-"""Qwen-MM-Plugins video-edit: image/video/audio generation tools (DashScope), paired with the
+"""Qwen-MM-Plugins video-edit: image/video/audio generation tools (DashScope and MiniMax), paired with the
 ffmpeg-based video-editing skill.
 """
 
 from mcp_framework import build_registry
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"
 
 SPECS, get_handler, list_tools = build_registry(__name__, ["tools"])
 
@@ -22,5 +22,6 @@ SYSTEM_DEPS_NOTE = "  The generation MCP tools (image/tts/video) call remote API
 
 USAGE_NOTE = (
     "Generation tools (qwen_image / qwen_tts / wan_s2v / wan_t2v / happyhorse) via DashScope.\n"
-    "Needs DASHSCOPE_API_KEY (inherited from the shell)."
+    "DashScope tools need DASHSCOPE_API_KEY; minimax_tts needs MINIMAX_API_KEY.\n"
+    "Set provider keys via environment or ~/.qwen-mm-plugins/config."
 )

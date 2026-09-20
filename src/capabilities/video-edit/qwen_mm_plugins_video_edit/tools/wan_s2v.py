@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.api_dashscope import API_V1, poll_dashscope_task, retry_call, submit_dashscope_async
 from shared.content import text_error
@@ -14,69 +14,16 @@ from shared.env import get_env
 
 
 class WanS2vArgs(BaseModel):
-    action: Literal["detect", "generate"] = Field(
-        description=(
-            "Action to perform. "
-            "detect: check if image meets requirements (sync and billed per successful request; always run first). "
-            "generate: create lip-sync video from image + audio (async, billed, 5-10 min)."
-        )
-    )
-    image_url: str = Field(
-        description=(
-            "Public URL of the portrait image. "
-            "Requirements: single person, front-facing, clear, JPG/JPEG/PNG/BMP/WEBP, "
-            "resolution 400-7000px per side. "
-            "Supports: portrait, half-body, full-body, cartoon characters."
-        )
-    )
-    audio_url: Optional[str] = Field(
-        default=None,
-        description=(
-            "Public URL of the audio file. Required for 'generate' action only. "
-            "Requirements: WAV or MP3 format, < 15MB, < 20 seconds, "
-            "must contain clear human voice, remove background noise/music."
-        ),
-    )
-    resolution: Literal["480P", "720P"] = Field(
-        default="480P",
-        description=("Output video resolution. Options: '480P' (faster, cheaper) or '720P'. Default: '480P'."),
-    )
-    poll_interval: int = Field(
-        default=15,
-        description=("Polling interval in seconds for async generation task. Min 5, recommended 15. Default: 15."),
-    )
-    poll_timeout: int = Field(
-        default=700,
-        description=(
-            "Max time in seconds to wait for generation to complete. "
-            "Typical generation time: 5-10 minutes. Default: 700."
-        ),
-    )
-    output_dir: Optional[str] = Field(
-        default=None,
-        description=(
-            "Directory to save the generated video. "
-            "If provided, downloads video to this directory. "
-            "If omitted, returns the video URL only (valid 24h)."
-        ),
-    )
+    action: Literal["detect", "generate"]
+    image_url: str
+    audio_url: Optional[str] = None
+    resolution: Literal["480P", "720P"] = "480P"
+    poll_interval: int = 15
+    poll_timeout: int = 700
+    output_dir: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "wan_s2v",
-    "description": (
-        "Digital human lip-sync video generation using Wan2.2-S2V. "
-        "Takes a portrait image + audio and generates a talking-head video with lip sync. "
-        "Two actions: "
-        "(1) detect — check if an image is suitable for digital human generation "
-        "(sync and billed per successful request, regardless of detection result); "
-        "(2) generate — submit image + audio to create lip-sync video (async, billed). "
-        "Always run detect first before generate. "
-        "Supports real humans (portrait/half-body/full-body) and cartoon characters. "
-        "Audio max 20s, image must be single person, front-facing, clear."
-    ),
-    "args": WanS2vArgs,
-}
+TOOL = {"name": "wan_s2v", "args": WanS2vArgs}
 
 
 def _detect(image_url: str, api_key: str) -> list[dict[str, Any]]:
@@ -187,6 +134,32 @@ def _generate(arguments: dict[str, Any], api_key: str) -> list[dict[str, Any]]:
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Digital human lip-sync video generation using Wan2.2-S2V. Takes a portrait image + audio and
+    generates a talking-head video with lip sync. Two actions: (1) detect — check if an image is
+    suitable for digital human generation (sync and billed per successful request, regardless of
+    detection result); (2) generate — submit image + audio to create lip-sync video (async, billed).
+    Always run detect first before generate. Supports real humans (portrait/half-body/full-body) and
+    cartoon characters. Audio max 20s, image must be single person, front-facing, clear.
+
+    Args:
+        action: Action to perform. detect: check if image meets requirements (sync and billed per
+            successful request; always run first). generate: create lip-sync video from image +
+            audio (async, billed, 5-10 min).
+        image_url: Public URL of the portrait image. Requirements: single person, front-facing,
+            clear, JPG/JPEG/PNG/BMP/WEBP, resolution 400-7000px per side. Supports: portrait, half-
+            body, full-body, cartoon characters.
+        audio_url: Public URL of the audio file. Required for 'generate' action only. Requirements:
+            WAV or MP3 format, < 15MB, < 20 seconds, must contain clear human voice, remove
+            background noise/music.
+        resolution: Output video resolution. Options: '480P' (faster, cheaper) or '720P'. Default:
+            '480P'.
+        poll_interval: Polling interval in seconds for async generation task. Min 5, recommended 15.
+            Default: 15.
+        poll_timeout: Max time in seconds to wait for generation to complete. Typical generation
+            time: 5-10 minutes. Default: 700.
+        output_dir: Directory to save the generated video. If provided, downloads video to this
+            directory. If omitted, returns the video URL only (valid 24h).
+    """
     action = arguments.get("action")
     image_url = arguments.get("image_url")
 

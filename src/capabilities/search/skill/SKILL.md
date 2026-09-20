@@ -1,11 +1,11 @@
 ---
 name: qwen-mm-plugins-search
-description: Web search and page extraction MCP tools (Serper, Exa, or Tavily) plus Serper Lens reverse-image search for confirming facts — web_search (find facts), web_extractor (read a page in depth), image_search (reverse-search a frame to identify an entity). Use to verify anything you cannot confirm from the media alone.
+description: Web search and page extraction MCP tools (Serper, Exa, Tavily, or Serply) plus Serper Lens reverse-image search for confirming facts — web_search (find facts), web_extractor (read a page in depth), image_search (reverse-search a frame to identify an entity). Use to verify anything you cannot confirm from the media alone.
 ---
 
-# Qwen-MM-Plugins Search
+# Web Search and Verification
 
-You have `qwen-mm-plugins-search` MCP tools available. With `QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, `web_search` and `web_extractor` choose the first configured key in this order: `SERPER_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`. Set the selector to `serper`, `tavily`, or `exa` to pin a backend; explicit selection does not fall back when its key is missing. Independently of that selection, `image_search` always uses Serper Lens and reads `SERPER_API_KEY`.
+You have `qwen-mm-plugins-search` MCP tools available. With `QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, `web_search` and `web_extractor` choose the first configured key in this order: `SERPER_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPLY_API_KEY`. Set the selector to `serper`, `tavily`, `exa`, or `serply` to pin a backend; explicit selection does not fall back when its key is missing. Independently of that selection, `image_search` always uses Serper Lens and reads `SERPER_API_KEY`.
 
 Check the `qwen-mm-plugins-search` tools in your tool list for full schemas and parameters.
 
@@ -13,7 +13,7 @@ Check the `qwen-mm-plugins-search` tools in your tool list for full schemas and 
 
 - **Search the web** for facts → `web_search`
 - **Read a web page** in depth → `web_extractor`
-- **Reverse image search** to identify an entity from a frame/photo → `image_search`
+- **Reverse image search** to identify an entity from a frame/photo → `image_search`. Its optional `bbox` uses 0–1000 coordinates after EXIF orientation, matching core `read_image`/`crop` and API `grounding`.
 
 ## Confirm Before You Commit
 

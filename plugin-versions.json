@@ -1,16 +1,20 @@
 {
-  "distribution_version": "1.0.9",
+  "distribution_version": "1.1.9",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
   "plugins": {
-    "api": "1.0.5",
-    "blender": "1.0.2",
-    "core": "1.0.5",
-    "edu-agent": "1.0.2",
-    "freecad": "1.0.2",
-    "omni-memory": "1.0.0",
-    "search": "1.0.4",
-    "video-edit": "1.0.2",
-    "video-memory": "1.0.3",
+    "api": "1.1.2",
+    "blender": "1.1.0",
+    "core": "1.1.0",
+    "edu-agent": "1.1.0",
+    "freecad": "1.1.0",
+    "mhs": "1.1.0",
+    "omni-chatcut": "1.0.2",
+    "omni-memory": "1.1.3",
+    "omni-skill-creator": "1.0.1",
+    "omni-video2note": "1.0.3",
+    "search": "1.1.0",
+    "video-edit": "1.1.0",
+    "video-memory": "1.1.0",
     "video-spatio": "1.0.0"
   }
 }

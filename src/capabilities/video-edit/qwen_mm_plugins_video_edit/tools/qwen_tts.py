@@ -6,65 +6,40 @@ import hashlib
 from pathlib import Path
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from shared.content import text_error
 from shared.env import get_env
 
 
 class QwenTtsArgs(BaseModel):
-    text: str = Field(
-        description=(
-            "Text to synthesize into speech. Max ~512 tokens per call. "
-            "For longer text, split at sentence/punctuation boundaries and call multiple times."
-        )
-    )
-    voice: str = Field(
-        default="Cherry",
-        description=(
-            "Voice name. System voices include: "
-            "Cherry (young female, energetic), "
-            "Serena (female, professional), "
-            "Ethan (male, standard), "
-            "Chelsie (female, warm), "
-            "and 40+ others. "
-            "See DashScope docs for full list."
-        ),
-    )
-    language_type: str = Field(
-        default="Auto",
-        description=(
-            "Language for synthesis. Options: "
-            "Chinese, English, Japanese, Korean, French, "
-            "German, Spanish, Russian, Portuguese, Auto. "
-            "Specifying language significantly improves quality. "
-            "Default: Auto."
-        ),
-    )
-    output_dir: Optional[str] = Field(
-        default=None,
-        description=(
-            "Directory to save the audio file. "
-            "If provided, downloads the audio to this directory. "
-            "If omitted, returns the audio URL only (valid 24h)."
-        ),
-    )
+    text: str
+    voice: str = "Cherry"
+    language_type: str = "Auto"
+    output_dir: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "qwen_tts",
-    "description": (
-        "Text-to-speech (TTS) using Qwen3-TTS-Flash via the DashScope SDK "
-        "(dashscope.MultiModalConversation). "
-        "Supports 10 languages and 44 system voices. "
-        "Input: text + voice + language. Output: audio file URL (WAV, 24h validity). "
-        "Max 512 tokens per call — split long text at sentence boundaries."
-    ),
-    "args": QwenTtsArgs,
-}
+TOOL = {"name": "qwen_tts", "args": QwenTtsArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Text-to-speech (TTS) using Qwen3-TTS-Flash via the DashScope SDK
+    (dashscope.MultiModalConversation). Supports 10 languages and 44 system voices. Input: text +
+    voice + language. Output: audio file URL (WAV, 24h validity). Max 512 tokens per call — split
+    long text at sentence boundaries.
+
+    Args:
+        text: Text to synthesize into speech. Max ~512 tokens per call. For longer text, split at
+            sentence/punctuation boundaries and call multiple times.
+        voice: Voice name. System voices include: Cherry (young female, energetic), Serena (female,
+            professional), Ethan (male, standard), Chelsie (female, warm), and 40+ others. See
+            DashScope docs for full list.
+        language_type: Language for synthesis. Options: Chinese, English, Japanese, Korean, French,
+            German, Spanish, Russian, Portuguese, Auto. Specifying language significantly improves
+            quality. Default: Auto.
+        output_dir: Directory to save the audio file. If provided, downloads the audio to this
+            directory. If omitted, returns the audio URL only (valid 24h).
+    """
     text = arguments["text"]
     voice = arguments.get("voice", "Cherry")
     language_type = arguments.get("language_type", "Auto")

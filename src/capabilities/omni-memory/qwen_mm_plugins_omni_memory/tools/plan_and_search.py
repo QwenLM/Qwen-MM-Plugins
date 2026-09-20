@@ -11,48 +11,16 @@ from . import MemoryRef
 
 
 class PlanAndSearchArgs(MemoryRef):
-    question: str = Field(default="", description="The question you are trying to answer.")
-    people: list[str] | None = Field(
-        default=None,
-        description="person_ids whose dossier and moments are relevant, e.g. ['P001']. Take them from "
-        "get_memory_overview. A person whose name is still null may carry `also_heard_as` — that is "
-        "how a name someone says maps onto an anonymous id.",
-    )
-    fact_keys: list[str] | None = Field(
-        default=None,
-        description="Semantic keys to pull, e.g. ['Matthew/role']. EXACT lookup — pick them from "
-        "get_memory_overview's semantic_key_directory. Name none and no facts come back; to find "
-        "facts by content rather than by key, use search_facts.",
-    )
-    queries: list[str] | None = Field(
-        default=None,
-        description="Descriptive statements (not questions) to search moments with — 'someone offers to "
-        "bring an umbrella', not 'who brought an umbrella?'. Several angles beat one long query. These "
-        "also decide which clips come back in suggested_replay_idxs, so describe what to look for.",
-    )
-    time_ranges: list[list[float]] | None = Field(
-        default=None, description="Optional [[start_sec, end_sec], ...] if the question concerns a time span."
-    )
-    include_scene: bool = Field(
-        default=False,
-        description="Also recall environment/layout items. Turn it on for 'where is X / what is in the "
-        "room' questions — it is off by default because recalling scene for every question measured "
-        "net-negative, so it is a deliberate pick rather than a freebie.",
-    )
+    question: str = ""
+    people: list[str] | None = None
+    fact_keys: list[str] | None = None
+    queries: list[str] | None = None
+    time_ranges: list[list[float]] | None = None
+    include_scene: bool = False
     top_k: int = Field(default=5, ge=1, le=20)
 
 
-TOOL: dict[str, Any] = {
-    "name": "plan_and_search",
-    "description": "Run ONE retrieval from a plan you decide, fusing the memory containers: people, "
-    "stable facts, moments and (on request) environment, plus a ready-to-read evidence text and the "
-    "clips worth re-watching. **This does not answer the question — it returns evidence for you to "
-    "reason over.** Call get_memory_overview first: naming the right person_ids, fact keys and query "
-    "angles is what makes the recall precise, and the keys are an exact lookup. Use this for "
-    "open-ended questions; for a targeted one go straight to the matching tool (search_dialogue, "
-    "search_facts, get_person_dialogue, get_timeline, …).",
-    "args": PlanAndSearchArgs,
-}
+TOOL = {"name": "plan_and_search", "args": PlanAndSearchArgs}
 
 
 def plan_and_search(
@@ -117,4 +85,33 @@ def plan_and_search(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Run ONE retrieval from a plan you decide, fusing the memory containers: people, stable facts,
+    moments and (on request) environment, plus a ready-to-read evidence text and the clips worth re-
+    watching. **This does not answer the question — it returns evidence for you to reason over.**
+    Call get_memory_overview first: naming the right person_ids, fact keys and query angles is what
+    makes the recall precise, and the keys are an exact lookup. Use this for open-ended questions;
+    for a targeted one go straight to the matching tool (search_dialogue, search_facts,
+    get_person_dialogue, get_timeline, …).
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        question: The question you are trying to answer.
+        people: person_ids whose dossier and moments are relevant, e.g. ['P001']. Take them from
+            get_memory_overview. A person whose name is still null may carry `also_heard_as` — that
+            is how a name someone says maps onto an anonymous id.
+        fact_keys: Semantic keys to pull, e.g. ['Matthew/role']. EXACT lookup — pick them from
+            get_memory_overview's semantic_key_directory. Name none and no facts come back; to find
+            facts by content rather than by key, use search_facts.
+        queries: Descriptive statements (not questions) to search moments with — 'someone offers to
+            bring an umbrella', not 'who brought an umbrella?'. Several angles beat one long query.
+            These also decide which clips come back in suggested_replay_idxs, so describe what to
+            look for.
+        time_ranges: Optional [[start_sec, end_sec], ...] if the question concerns a time span.
+        include_scene: Also recall environment/layout items. Turn it on for 'where is X / what is in
+            the room' questions — it is off by default because recalling scene for every question
+            measured net-negative, so it is a deliberate pick rather than a freebie.
+        top_k: Maximum number of matching results to return.
+    """
     return [json_text(plan_and_search(**arguments))]

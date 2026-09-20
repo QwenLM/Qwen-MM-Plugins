@@ -19,16 +19,12 @@ def text(msg: str) -> dict[str, str]:
 
 
 def json_text(value: Any) -> dict[str, str]:
-    """A text block holding ``value`` as compact JSON, non-ASCII kept.
+    """A text block holding ``value`` as indented JSON, non-ASCII kept.
 
     The sibling of ``text``, for a tool whose answer is a record rather than a sentence. Returns the
     one block, not a list, so composing several blocks reads the same either way.
-
-    Compact rather than indented: the reader is a model, and indentation is ~30% more characters on a
-    nested record for no gain. ``default=str`` so a numpy scalar or a datetime degrades to its repr
-    instead of failing the whole tool call.
     """
-    return {"type": "text", "text": json.dumps(value, ensure_ascii=False, default=str)}
+    return {"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2)}
 
 
 def image(data: bytes | str, mime: str = "image/jpeg") -> dict[str, str]:

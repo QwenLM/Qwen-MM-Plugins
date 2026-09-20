@@ -17,9 +17,9 @@ Object format the outer model must produce per frame (mirrors the old _ESTIMATE_
 from __future__ import annotations
 
 import math
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from shared.content import json_text, require_dep, text, text_error
 
@@ -28,82 +28,103 @@ _OBJ_DEPTH_CONF = 1.0
 SCENE_SCHEMA = "video-spatio/scene@1"
 
 
+class SceneObject(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    label: str = Field(min_length=1)
+    bbox: list[float] = Field(min_length=4, max_length=4)
+    depth_m: float = Field(gt=0)
+
+
+class CameraMotion(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    yaw_deg: float = 0.0
+    forward_m: float = 0.0
+    right_m: float = 0.0
+    pitch_deg: float = 0.0
+
+
 class BuildSceneArgs(BaseModel):
-    objects_by_frame: list[list[dict]] = Field(
-        description=(
-            "Per-frame object lists (outer-model perception). One inner list per frame, aligned to "
-            "`frames`. Each object: {label:str, bbox:[x1,y1,x2,y2] (x-first, top-left origin; 0-1 / "
-            "0-1000 / pixels auto-detected), depth_m:float (meters, from the camera)}."
-        )
-    )
-    frames: list[str] = Field(
-        description="Absolute paths to the RGB frame images, aligned 1:1 with objects_by_frame (used for image size + carried for render tools)."
-    )
-    frame_indices: Optional[list[int]] = Field(
-        default=None, description="Original video frame indices per frame (default: 0..N-1)."
-    )
-    is_video: bool = Field(default=True, description="Whether frames come from a video (vs still images).")
-    camera_motions: Optional[list[dict]] = Field(
-        default=None,
-        description=(
-            "Per adjacent-frame camera motion (frame i→i+1), YOUR estimate. One entry per gap = "
-            "len(frames)-1. Each: {yaw_deg:+right/-left horizontal turn, forward_m:+forward/-back "
-            "planar meters, right_m:+right/-left planar meters, pitch_deg?:+up/-down tilt (recorded, "
-            "NOT used in c2w — BEV is ground-plane 3-DoF)}. Omit → identity cameras (single-view / static)."
-        ),
-    )
+    objects_by_frame: list[list[SceneObject]]
+    frames: list[str]
+    frame_indices: Optional[list[int]] = None
+    is_video: bool = True
+    camera_motions: Optional[list[CameraMotion]] = None
+    bbox_format: Literal["normalized_1000", "normalized", "pixels"] = "normalized_1000"
 
 
-TOOL: dict[str, Any] = {
-    "name": "build_scene",
-    "description": (
-        "Assemble an instance-level 3D scene from objects YOU (the model) grounded + depth-estimated "
-        "in each frame — NO perception model runs here, it is pure geometry. Returns a `scene` JSON "
-        "(instances + camera poses + intrinsics + frame paths) that visualize_bev / triangulate / "
-        "object_world_motion / calibrate_scale / render_scene_views take back as their `scene` argument. "
-        "Geometry is a COARSE scaffold (depth_m is your estimate), not metric-accurate."
-    ),
-    "args": BuildSceneArgs,
-}
+TOOL: dict[str, Any] = {"name": "build_scene", "args": BuildSceneArgs}
 
 
-def _norm_bbox(bbox: list[float], iw: int, ih: int) -> list[float]:
-    """Normalize a [x1,y1,x2,y2] bbox to the 0..1000 (TL-BR) convention (mirrors Reconstruct)."""
+def _norm_bbox(bbox: list[float], iw: int, ih: int, bbox_format: str) -> list[float]:
+    """Convert explicitly declared coordinates; image resolution never selects the units."""
     x1, y1, x2, y2 = bbox
-    mx = max(x1, y1, x2, y2)
-    if mx <= 1.0:  # 0..1 normalized
-        x1, y1, x2, y2 = x1 * 1000.0, y1 * 1000.0, x2 * 1000.0, y2 * 1000.0
-    elif mx <= 1000.0 and (iw < 1000 or ih < 1000):  # already 0..1000
-        pass
-    else:  # raw pixels → 0..1000
-        x1, y1 = x1 * 1000.0 / iw, y1 * 1000.0 / ih
-        x2, y2 = x2 * 1000.0 / iw, y2 * 1000.0 / ih
-    x1, x2 = min(x1, x2), max(x1, x2)
-    y1, y2 = min(y1, y2), max(y1, y2)
-    clamp = lambda v: max(0.0, min(1000.0, float(v)))  # noqa: E731
-    return [clamp(x1), clamp(y1), clamp(x2), clamp(y2)]
+    if bbox_format == "normalized":
+        x1, y1, x2, y2 = [v * 1000.0 for v in bbox]
+    elif bbox_format == "pixels":
+        x1, y1, x2, y2 = x1 * 1000.0 / iw, y1 * 1000.0 / ih, x2 * 1000.0 / iw, y2 * 1000.0 / ih
+    if not (0 <= x1 < x2 <= 1000 and 0 <= y1 < y2 <= 1000):
+        raise ValueError("bbox must be ordered top-left to bottom-right and within the image")
+    return [x1, y1, x2, y2]
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Assemble an instance-level 3D scene from objects YOU (the model) grounded + depth-estimated in each
+    frame — NO perception model runs here, it is pure geometry. Returns a `scene` JSON (instances +
+    camera poses + intrinsics + frame paths) that visualize_bev / triangulate / object_world_motion /
+    calibrate_scale / render_scene_views take back as their `scene` argument. Geometry is a COARSE
+    scaffold (depth_m is your estimate), not metric-accurate.
+
+    Args:
+        objects_by_frame: Per-frame object lists (outer-model perception). One inner list per frame,
+            aligned to `frames`. Each object: {label:str, bbox:[x1,y1,x2,y2] (x-first, top-left origin;
+            units selected by bbox_format), depth_m:float (positive distance in meters from the camera)}.
+        bbox_format: Coordinate units for every box: normalized_1000 (default), normalized (0..1),
+            or pixels. Units are explicit, independent of image resolution.
+        frames: Absolute paths to the RGB frame images, aligned 1:1 with objects_by_frame (used for
+            image size + carried for render tools).
+        frame_indices: Original video frame indices per frame (default: 0..N-1).
+        is_video: Whether frames come from a video (vs still images).
+        camera_motions: Per adjacent-frame camera motion (frame i→i+1), YOUR estimate. One entry per gap
+            = len(frames)-1. Each: {yaw_deg:+right/-left horizontal turn, forward_m:+forward/-back
+            planar meters, right_m:+right/-left planar meters, pitch_deg?:+up/-down tilt (recorded, NOT
+            used in c2w — BEV is ground-plane 3-DoF)}. Omit → identity cameras (single-view / static).
+    """
     if err := require_dep("PIL", "pillow"):
         return err
     from PIL import Image
 
-    objects_by_frame = arguments.get("objects_by_frame") or []
+    try:
+        arguments = BuildSceneArgs.model_validate(arguments).model_dump()
+    except ValidationError as exc:
+        return text_error(str(exc))
+
+    objects_by_frame = arguments["objects_by_frame"]
     frames = arguments.get("frames") or []
     if not frames:
         return text_error("`frames` is required (paths to the RGB frames).")
     if len(objects_by_frame) != len(frames):
         return text_error(f"objects_by_frame ({len(objects_by_frame)}) must align 1:1 with frames ({len(frames)}).")
 
-    frame_indices = arguments.get("frame_indices") or list(range(len(frames)))
-    frame_indices = [int(x) for x in frame_indices[: len(frames)]]
+    frame_indices = arguments["frame_indices"]
+    if frame_indices is None:
+        frame_indices = list(range(len(frames)))
+    if len(frame_indices) != len(frames) or len(set(frame_indices)) != len(frames):
+        return text_error("frame_indices must align 1:1 with frames and contain unique indices.")
+    motions = arguments["camera_motions"]
+    if motions is not None and len(motions) != len(frames) - 1:
+        return text_error("camera_motions must contain exactly len(frames)-1 entries.")
     is_video = bool(arguments.get("is_video", True))
 
-    # Image size from the first frame (assumed uniform, as in Reconstruct).
+    # A scene uses one intrinsic matrix, so all frames must share the same size.
     try:
         with Image.open(frames[0]) as im0:
             W, H = im0.size
+        for path in frames[1:]:
+            with Image.open(path) as im:
+                if im.size != (W, H):
+                    return text_error("All frames must have the same image size.")
     except Exception as e:  # noqa: BLE001
         return text_error(f"cannot open frame '{frames[0]}': {e}")
 
@@ -118,10 +139,10 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         fi = frame_indices[i]
         insts_i: list[dict] = []
         for k, o in enumerate(objs or []):
-            bbox = o.get("bbox")
-            if not bbox or len(bbox) != 4:
-                continue
-            bbox_1000 = _norm_bbox([float(v) for v in bbox], W, H)
+            try:
+                bbox_1000 = _norm_bbox(o["bbox"], W, H, arguments["bbox_format"])
+            except ValueError as exc:
+                return text_error(f"frame {fi}, object {k}: {exc}")
             x1_k, y1_k, x2_k, y2_k = bbox_1000
             bbox_pixel = [
                 round(x1_k * W / 1000.0),
@@ -144,58 +165,23 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             )
         instances[str(fi)] = insts_i
 
-    # --- cameras: real 3-DoF poses when camera_motions is provided (yaw + planar translation),
-    #     else identity (single-view / static). pitch_deg is recorded in meta.pitch_deg per frame
-    #     BUT NOT baked into c2w — BEV geometry uses only ground-plane 3-DoF (like the old flow).
-    N = len(frame_indices)
-    pitches = [0.0] * N
-    cam_source = "identity"
-    poses = [(0.0, 0.0, 0.0)] * N  # (pos_x_m, pos_z_m, yaw_deg) per frame
-    motions_in = arguments.get("camera_motions") or None
-    if motions_in and N > 1:
-        try:
-            need = N - 1
-            got = list(motions_in)[:need]
-            if len(got) < need:  # pad with zero-motion
-                got = got + [{"yaw_deg": 0.0, "forward_m": 0.0, "right_m": 0.0}] * (need - len(got))
-            import numpy as np
-
-            from qwen_mm_plugins_video_spatio.camera_poses import _pose_from_motion
-
-            rels = [
-                _pose_from_motion(
-                    float(m.get("yaw_deg") or 0.0), float(m.get("forward_m") or 0.0), float(m.get("right_m") or 0.0)
-                )
-                for m in got
-            ]
-            # accumulate raw 3-DoF rel transforms (cam_i in cam-0 local coords). World convention is
-            # +X right, -Z forward (see _pose_from_motion: t=[right,0,-forward]); +yaw = turned RIGHT.
-            # This is what the scene's pos_bev + yaw_deg use directly (validated vs synthetic GT).
-            cum = [np.eye(4)]
-            for r in rels:
-                cum.append(cum[-1] @ r)
-            for i in range(N):
-                M = cum[i]
-                # world coords: pos_bev = (x, z) in the cam-0 local frame; +X right, -Z forward
-                pos_x = float(M[0, 3])
-                pos_z = float(M[2, 3])
-                fwd = M[:3, :3] @ np.array([0.0, 0.0, 1.0])  # cam-space forward
-                # _pose_from_motion negates yaw in the rotation, so undo it here so scene.yaw_deg
-                # keeps the SKILL convention: +yaw = camera turned RIGHT (about +Y up).
-                yaw = -math.degrees(math.atan2(float(fwd[0]), float(fwd[2])))
-                poses[i] = (pos_x, pos_z, yaw)
-                pitches[i] = float((got[i - 1].get("pitch_deg") if i > 0 else 0.0) or 0.0) if i > 0 else 0.0
-            # cumulative pitch (informational — not in c2w)
-            cum_pitch = 0.0
-            for i in range(N):
-                if i > 0:
-                    cum_pitch += float((got[i - 1].get("pitch_deg") or 0.0))
-                pitches[i] = cum_pitch
-            cam_source = "camera_motions"
-        except Exception as e:  # noqa: BLE001
-            cam_source = f"identity (motions parse failed: {type(e).__name__})"
-            poses = [(0.0, 0.0, 0.0)] * N
-            pitches = [0.0] * N
+    # Accumulate planar motion in the preceding camera's frame (+X right, -Z forward).
+    # Pitch is recorded separately; this scene has no full 6-DoF reconstruction.
+    pitches = [0.0]
+    poses = [(0.0, 0.0, 0.0)]
+    cam_source = "camera_motions" if motions is not None else "identity"
+    for motion in motions or [{} for _ in frames[1:]]:
+        px, pz, yaw = poses[-1]
+        angle = math.radians(yaw)
+        forward, right = motion.get("forward_m", 0.0), motion.get("right_m", 0.0)
+        poses.append(
+            (
+                px + forward * math.sin(angle) + right * math.cos(angle),
+                pz - forward * math.cos(angle) + right * math.sin(angle),
+                (yaw + motion.get("yaw_deg", 0.0) + 180.0) % 360.0 - 180.0,
+            )
+        )
+        pitches.append(pitches[-1] + motion.get("pitch_deg", 0.0))
 
     cameras: dict[str, dict] = {}
     prev_pos = None

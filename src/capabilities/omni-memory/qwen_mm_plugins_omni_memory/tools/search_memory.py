@@ -11,18 +11,11 @@ from . import MemoryRef
 
 
 class SearchMemoryArgs(MemoryRef):
-    query: str = Field(description="Descriptive statement of what you are looking for, not a question.")
+    query: str
     top_k: int = Field(default=5, ge=1, le=20)
 
 
-TOOL: dict[str, Any] = {
-    "name": "search_memory",
-    "description": "Hybrid search (dense embeddings + keyword, RRF-fused) across all three "
-    "containers at once: people, semantic facts, and moments. Start here for an open "
-    "question; narrow down with search_dialogue / search_facts / get_timeline when you "
-    "know which kind of evidence you need.",
-    "args": SearchMemoryArgs,
-}
+TOOL = {"name": "search_memory", "args": SearchMemoryArgs}
 
 
 def search_memory(
@@ -46,4 +39,15 @@ def search_memory(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Hybrid search (dense embeddings + keyword, RRF-fused) across all three containers at once:
+    people, semantic facts, and moments. Start here for an open question; narrow down with
+    search_dialogue / search_facts / get_timeline when you know which kind of evidence you need.
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        query: Descriptive statement of what you are looking for, not a question.
+        top_k: Maximum number of matching results to return.
+    """
     return [json_text(search_memory(**arguments))]

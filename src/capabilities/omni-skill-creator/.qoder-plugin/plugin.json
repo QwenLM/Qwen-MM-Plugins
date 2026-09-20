@@ -1,0 +1,8 @@
+{
+  "name": "qwen-mm-plugins-omni-skill-creator",
+  "displayName": "Qwen MM Plugins Omni Skill Creator",
+  "version": "1.0.1",
+  "description": "Turns a demonstration video into a reusable Agent Skill. Needs a DashScope key and ffmpeg.",
+  "skills": "./skill",
+  "mcp": ".mcp.json"
+}

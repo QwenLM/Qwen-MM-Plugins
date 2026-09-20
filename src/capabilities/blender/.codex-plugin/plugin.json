@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-blender",
-  "version": "1.0.2",
-  "description": "Blender 3D modeling: drive a running Blender (execute Python, viewport screenshots, PolyHaven/Sketchfab/Hyper3D/Hunyuan3D assets) as MCP tools + a build→refine→verify skill.",
+  "version": "1.1.0",
+  "description": "Create, refine, and render 3D scenes and assets in Blender.",
   "skills": "./skill",
   "mcpServers": "./.mcp.json"
 }

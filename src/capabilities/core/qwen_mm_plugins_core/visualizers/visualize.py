@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_core.renderers import (
     DEFAULT_MAX_PAGES,
@@ -20,37 +20,29 @@ _SORTED_EXTS = sorted(SUPPORTED_EXTENSIONS)
 
 
 class VisualizeArgs(BaseModel):
-    file_path: str = Field(description="Absolute path to the file to visualize.")
-    pages: Optional[str] = Field(
-        default=None,
-        description=(
-            "Page range for multi-page documents (e.g. '1-5', '3', '1,3,5-8'). 1-based. Default: first 20 pages."
-        ),
-    )
-    budget: Literal["small", "normal", "large"] = Field(
-        default="large",
-        description=("Resolution preset per page/image: small (~512x512), normal (~1024x1024), large (~1448x1448)."),
-    )
-    max_pages: int = Field(
-        default=20,
-        description="Maximum number of pages to render (default 20).",
-    )
+    file_path: str
+    pages: Optional[str] = None
+    budget: Literal["small", "normal", "large"] = "large"
+    max_pages: int = 20
 
 
-TOOL: dict[str, Any] = {
-    "name": "visualize",
-    "description": (
-        "Visualize any supported file for model consumption. "
-        "Renders documents (PDF, DOCX, PPTX, XLSX, CSV), "
-        "code files (syntax-highlighted), SVG, DrawIO diagrams, "
-        "subtitles (SRT/VTT), NIfTI medical volumes, images, and videos as visual output. "
-        "Automatically detects file type and applies the appropriate renderer."
-    ),
-    "args": VisualizeArgs,
-}
+TOOL = {"name": "visualize", "args": VisualizeArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Visualize any supported file for model consumption. Renders documents (PDF, DOCX, PPTX, XLSX,
+    CSV), code files (syntax-highlighted), SVG, DrawIO diagrams, subtitles (SRT/VTT), NIfTI medical
+    volumes, images, and videos as visual output. Automatically detects file type and applies the
+    appropriate renderer.
+
+    Args:
+        file_path: Absolute path to the file to visualize.
+        pages: Page range for multi-page documents (e.g. '1-5', '3', '1,3,5-8'). 1-based. Default:
+            first 20 pages.
+        budget: Resolution preset per page/image: small (~512x512), normal (~1024x1024), large
+            (~1448x1448).
+        max_pages: Maximum number of pages to render (default 20).
+    """
     file_path = arguments.get("file_path", "")
 
     # URLs go to the web renderer.

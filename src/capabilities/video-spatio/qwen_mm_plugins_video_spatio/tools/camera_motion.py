@@ -4,32 +4,20 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_video_spatio.tools import _scene
 from shared.content import json_text, text_error
 
 
 class CameraMotionArgs(BaseModel):
-    scene: Optional[Any] = Field(
-        default=None, description="The `scene` object from build_scene (JSON object or JSON string)."
-    )
-    scene_file: Optional[str] = Field(
-        default=None, description="Path to a JSON file holding the scene (alternative to `scene`)."
-    )
-    frame_i: int = Field(description="First frame index.")
-    frame_j: int = Field(description="Second frame index.")
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    frame_i: int
+    frame_j: int
 
 
-TOOL: dict[str, Any] = {
-    "name": "camera_motion",
-    "description": (
-        "How the CAMERA moved between two frames, from the scene's camera poses (pure geometry): "
-        "translation (meters), rotation (yaw/pitch/roll deg), total rotation, and dominant direction "
-        "(e.g. yaw-left, moved-forward). Answers 'which way did the camera move/turn?'. Needs a `scene`."
-    ),
-    "args": CameraMotionArgs,
-}
+TOOL: dict[str, Any] = {"name": "camera_motion", "args": CameraMotionArgs}
 
 
 def _wrap180(a: float) -> float:
@@ -41,6 +29,16 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     # Model-free path: scene_to_recon leaves extrinsics=None, so we do NOT go through CameraExpert
     # (which indexes recon.extrinsics and would crash). Same world convention as build_scene /
     # visualize_bev: +X = right, -Z = forward, +yaw = turned RIGHT. Validated against synthetic GT.
+    """How the CAMERA moved between two frames, from the scene's camera poses (pure geometry): translation
+    (meters), rotation (yaw/pitch/roll deg), total rotation, and dominant direction (e.g. yaw-left,
+    moved-forward). Answers 'which way did the camera move/turn?'. Needs a `scene`.
+
+    Args:
+        scene: The `scene` object from build_scene (JSON object or JSON string).
+        scene_file: Path to a JSON file holding the scene (alternative to `scene`).
+        frame_i: First frame index.
+        frame_j: Second frame index.
+    """
     import math
 
     try:

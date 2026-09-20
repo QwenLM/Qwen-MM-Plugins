@@ -12,27 +12,13 @@ from . import MemoryRef
 
 
 class SearchFactsArgs(MemoryRef):
-    query: str | None = Field(default=None, description="Semantic search over fact statements.")
-    key_prefix: str | None = Field(
-        default=None,
-        description="List facts whose key starts with this. Keys are built from the canonical NAME, "
-        "e.g. 'Matthew/' for everything known about Matthew, or 'event:' for all events; "
-        "a person_id like 'P001/' also works and is mapped to that person's name. "
-        "See get_memory_overview for the full key directory.",
-    )
-    subject_id: str | None = Field(default=None, description="All facts whose subject is this person_id.")
+    query: str | None = None
+    key_prefix: str | None = None
+    subject_id: str | None = None
     top_k: int = Field(default=10, ge=1, le=20)
 
 
-TOOL: dict[str, Any] = {
-    "name": "search_facts",
-    "description": "Stable semantic facts, induced across clips and kept de-duplicated (keys look "
-    "like 'P001/identity/name' or 'event:room_tidying/plan'). Three ways in: query "
-    "for semantic search, key_prefix to enumerate a branch, subject_id for one "
-    "person. Prefer this over re-reading moments when the question is about a "
-    "durable attribute, preference, role or relationship.",
-    "args": SearchFactsArgs,
-}
+TOOL = {"name": "search_facts", "args": SearchFactsArgs}
 
 
 def _facts_by_prefix(store, key_prefix: str) -> tuple[list, str]:
@@ -106,4 +92,21 @@ def search_facts(
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
+    """Stable semantic facts, induced across clips and kept de-duplicated (keys look like
+    'P001/identity/name' or 'event:room_tidying/plan'). Three ways in: query for semantic search,
+    key_prefix to enumerate a branch, subject_id for one person. Prefer this over re-reading moments
+    when the question is about a durable attribute, preference, role or relationship.
+
+    Args:
+        video_path: Absolute path to the source video; memory is read from <video_path>.memory/.
+        namespace: Memory name. Pass video_path too when MEM_LOCAL_DIR is unset; otherwise the
+            memory is read from the configured shared root.
+        query: Semantic search over fact statements.
+        key_prefix: List facts whose key starts with this. Keys are built from the canonical NAME,
+            e.g. 'Matthew/' for everything known about Matthew, or 'event:' for all events; a
+            person_id like 'P001/' also works and is mapped to that person's name. See
+            get_memory_overview for the full key directory.
+        subject_id: All facts whose subject is this person_id.
+        top_k: Maximum number of matching results to return.
+    """
     return [json_text(search_facts(**arguments))]

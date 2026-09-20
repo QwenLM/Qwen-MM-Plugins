@@ -4,38 +4,38 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_video_spatio.tools import _scene
 from shared.content import json_text, text_error
 
 
 class CountObjectsArgs(BaseModel):
-    scene: Optional[Any] = Field(
-        default=None, description="The `scene` object from build_scene (JSON object or JSON string)."
-    )
-    scene_file: Optional[str] = Field(default=None, description="Path to a JSON file holding the scene.")
-    label: Optional[str] = Field(default=None, description="Only count objects of this label (default: all).")
-    frame: Optional[int] = Field(
-        default=None,
-        description="Count in this single frame. If omitted, counts unique objects across ALL frames (BEV-deduplicated).",
-    )
-    dup_threshold: float = Field(default=0.5, description="BEV dedup distance (meters) for across-frames counting.")
-    model: Optional[str] = Field(default=None, description="Override the VLM model (default: from env).")
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    label: Optional[str] = None
+    frame: Optional[int] = None
+    dup_threshold: float = 0.5
+    model: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "count_objects",
-    "description": (
-        "Count objects from the scene's grounded instances (not a bare VLM guess). With `frame` → count "
-        "in that frame; without → count UNIQUE physical objects across all frames with BEV dedup (avoids "
-        "double-counting the same object seen in multiple frames). Optionally filter by `label`."
-    ),
-    "args": CountObjectsArgs,
-}
+TOOL: dict[str, Any] = {"name": "count_objects", "args": CountObjectsArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Count objects from the scene's grounded instances (not a bare VLM guess). With `frame` → count in
+    that frame; without → count UNIQUE physical objects across all frames with BEV dedup (avoids double-
+    counting the same object seen in multiple frames). Optionally filter by `label`.
+
+    Args:
+        scene: The `scene` object from build_scene (JSON object or JSON string).
+        scene_file: Path to a JSON file holding the scene.
+        label: Only count objects of this label (default: all).
+        frame: Count in this single frame. If omitted, counts unique objects across ALL frames (BEV-
+            deduplicated).
+        dup_threshold: BEV dedup distance (meters) for across-frames counting.
+        model: Override the VLM model (default: from env).
+    """
     try:
         from qwen_mm_plugins_video_spatio.experts.counting_expert import CountingExpert
         from qwen_mm_plugins_video_spatio.tools._vlm import VLMShim

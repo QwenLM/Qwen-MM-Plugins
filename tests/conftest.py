@@ -7,6 +7,7 @@ tests/assets/; those cases skip when an asset or optional dependency is missing.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -47,6 +48,43 @@ _SERVER_DIRS = _discover_servers()
 CORE_SERVER_DIR = _SERVER_DIRS.get("qwen_mm_plugins_core")
 
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
+
+
+def _has_ass_filter() -> bool:
+    """Whether ffmpeg exposes the libass-backed ``ass`` filter (Homebrew's build does not).
+
+    Look the name up in ``-filters``. ``-h filter=ass`` cannot be used: it exits 0 whether or not the
+    filter exists. ``-filters`` prints to stderr, so both streams have to be searched.
+    """
+    if not HAS_FFMPEG:
+        return False
+    try:
+        probe = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True)
+    except OSError:
+        return False
+    listing = (probe.stdout or "") + (probe.stderr or "")
+    return re.search(r"(?m)^\s*\S+\s+ass\s", listing) is not None
+
+
+HAS_ASS_FILTER = _has_ass_filter()
+
+
+def pytest_exception_interact(node, call, report):
+    """Attach a failed child process's captured output to the report.
+
+    ``CalledProcessError``'s message carries only the command, so a test that runs a helper script
+    with ``capture_output=True`` reports the exit status and throws the actual error away — which
+    makes a CI-only failure impossible to diagnose from the log.
+    """
+    exc = call.excinfo.value if call.excinfo is not None else None
+    if not isinstance(exc, subprocess.CalledProcessError):
+        return
+    for stream in ("stdout", "stderr"):
+        data = getattr(exc, stream, None)
+        if not data:
+            continue
+        text = data.decode("utf-8", "replace") if isinstance(data, bytes) else str(data)
+        report.sections.append((f"child process {stream}", text))
 
 
 def mcp_call(server_dir, action, env=None):
@@ -93,6 +131,38 @@ def sample_image(tmp_path_factory) -> str:
             img.putpixel((x, y), (0, 0, 255))
     img.save(path)
     return str(path)
+
+
+@pytest.fixture(scope="session")
+def rotated_image(tmp_path_factory) -> str:
+    """A 320x120 JPEG with a 40x40 white square at the stored top-left, tagged EXIF Orientation 6
+    - the shape a portrait phone photo has on disk: sideways stored pixels plus an orientation
+    flag. Every viewer shows a 120x320 portrait frame with the square at the top-right."""
+    from PIL import Image
+
+    path = tmp_path_factory.mktemp("media") / "rotated.jpg"
+    image = Image.new("RGB", (320, 120), (0, 0, 0))
+    for x in range(8, 48):
+        for y in range(8, 48):
+            image.putpixel((x, y), (255, 255, 255))
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    image.save(path, format="JPEG", exif=exif.tobytes(), quality=95)
+    return str(path)
+
+
+@pytest.fixture
+def requires_ass_filter() -> None:
+    """Guard a test that burns subtitles: the ass filter needs an ffmpeg built with libass."""
+    if not HAS_ASS_FILTER:
+        pytest.skip("ffmpeg was built without libass (no 'ass' filter)")
+
+
+@pytest.fixture
+def requires_ffmpeg() -> None:
+    """Guard a test that shells out to ffmpeg itself rather than taking a media fixture."""
+    if not HAS_FFMPEG:
+        pytest.skip("ffmpeg not available")
 
 
 @pytest.fixture(scope="session")

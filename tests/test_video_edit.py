@@ -1,16 +1,20 @@
-"""Smoke test for the video-edit capability's generation MCP server.
-
-conftest auto-discovers qwen_mm_plugins_video_edit (it scans src/capabilities/*/ for the server
-package), so it imports like any other server. Handlers hit remote DashScope APIs, so we only
-exercise discovery + the advertised schema/handler surface here (no live calls).
-"""
+"""Offline tests for video-edit tool discovery and provider request/result handling."""
 
 import sys
 import types
 
+import pytest
+
 import qwen_mm_plugins_video_edit as ve
 
-GENERATION_TOOLS = {"qwen_image", "qwen_tts", "wan_s2v", "wan_t2v", "happyhorse"}
+GENERATION_TOOLS = {
+    "qwen_image",
+    "qwen_tts",
+    "minimax_tts",
+    "wan_s2v",
+    "wan_t2v",
+    "happyhorse",
+}
 
 
 def test_lists_the_generation_tools():
@@ -92,3 +96,37 @@ def test_wan_t2v_schema_keeps_size_parameter():
     assert "size" in schema["properties"]
     assert "resolution" not in schema["properties"]
     assert "ratio" not in schema["properties"]
+
+
+@pytest.mark.parametrize("output_format", ["url", "hex"])
+def test_minimax_saves_audio_and_returns_subtitles(monkeypatch, tmp_path, output_format):
+    import requests
+
+    from qwen_mm_plugins_video_edit.tools import minimax_tts
+
+    audio = b"test-audio"
+    response = {
+        "base_resp": {"status_code": 0},
+        "data": {
+            "status": 2,
+            "audio": audio.hex() if output_format == "hex" else "https://example.com/audio.mp3",
+            "subtitle_file": "https://example.com/subtitles.json",
+        },
+    }
+    monkeypatch.setattr(minimax_tts, "get_env", lambda name: "test-key")
+    monkeypatch.setattr(minimax_tts, "_request", lambda *args: response)
+    monkeypatch.setattr(
+        requests, "get", lambda *args, **kwargs: types.SimpleNamespace(content=audio, raise_for_status=lambda: None)
+    )
+    output = minimax_tts.handle(
+        {
+            "text": "Hello",
+            "voice": "narrator",
+            "output_dir": str(tmp_path / "audio"),
+            "output_format": output_format,
+            "subtitle_enable": True,
+        }
+    )[0]["text"]
+    assert "**Saved to**:" in output and "**Subtitle URL**: https://example.com/subtitles.json" in output
+    files = list((tmp_path / "audio").glob("*.mp3"))
+    assert len(files) == 1 and files[0].read_bytes() == audio

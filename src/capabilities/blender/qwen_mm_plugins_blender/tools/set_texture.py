@@ -4,24 +4,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class SetTextureArgs(BaseModel):
-    object_name: str = Field(description="Name of the object to apply the texture to.")
-    texture_id: str = Field(description="ID of the Polyhaven texture to apply (must be downloaded first).")
+    object_name: str
+    texture_id: str
 
 
-TOOL: dict[str, Any] = {
-    "name": "set_texture",
-    "description": (
-        "Apply a previously downloaded Polyhaven texture to an object. Returns a message indicating success or failure."
-    ),
-    "args": SetTextureArgs,
-}
+TOOL = {"name": "set_texture", "args": SetTextureArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Apply a previously downloaded Polyhaven texture to an object. Returns a message indicating
+    success or failure.
+
+    Args:
+        object_name: Name of the object to apply the texture to.
+        texture_id: ID of the Polyhaven texture to apply (must be downloaded first).
+    """
     from qwen_mm_plugins_blender.loader import get_connection
 
     object_name = arguments.get("object_name", "")

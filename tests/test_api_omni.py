@@ -10,7 +10,11 @@ test hits the real Omni endpoint only when DASHSCOPE_API_KEY is set.
 import base64
 import json
 import os
+import subprocess
 import tempfile
+import wave
+from array import array
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -20,7 +24,7 @@ pytest.importorskip("mcp")  # importing the server pulls in the mcp SDK
 import qwen_mm_plugins_api as oav
 from qwen_mm_plugins_api.omni import _common
 from shared import api_omni
-from shared.env import get_env
+from shared.env import DEFAULT_DASHSCOPE_BASE_URL, get_env
 
 _EXPECTED = {
     "omni_asr",
@@ -83,6 +87,11 @@ def test_omni_model_precedence(monkeypatch):
     assert explicit_preview["model"] == "explicit-omni"
 
 
+def test_oss_url_is_accepted_as_remote_media():
+    prev = _preview(oav.get_handler("omni_av_caption")({"file_path": "oss://temporary/clip.mp4", "dry_run": True}))
+    assert prev["messages"][0]["content"][0]["type"] == "video_url"
+
+
 def test_call_omni_resolves_env_default(monkeypatch):
     import openai
 
@@ -101,6 +110,7 @@ def test_call_omni_resolves_env_default(monkeypatch):
     text, _ = api_omni.call_omni(base_url="http://local/v1", api_key="key", messages=[])
     assert text == "ok"
     assert captured["model"] == "env-omni"
+    assert captured["max_tokens"] == 65536
 
 
 def test_call_omni_json_resolves_env_default(monkeypatch):
@@ -114,6 +124,7 @@ def test_call_omni_json_resolves_env_default(monkeypatch):
     monkeypatch.setattr(api_omni, "call_omni", fake_call)
     assert api_omni.call_omni_json(base_url="http://local/v1", api_key="key", messages=[]) == {"ok": True}
     assert captured["model"] == "env-omni"
+    assert captured["max_tokens"] == 65536
 
 
 def test_caption_dry_run_sends_video_with_sampling_knobs():
@@ -421,8 +432,9 @@ def test_data_url_refuses_a_file_over_the_cap(monkeypatch, tmp_path):
         api_omni.omni_video_part(str(big))
 
 
-def test_call_omni_gates_the_total_inline_payload(monkeypatch):
-    # the per-item check cannot see a frames+audio pair adding up, so call_omni sums them all
+def test_call_omni_allows_aggregate_inline_payload_over_cap_when_each_item_fits(monkeypatch):
+    import openai
+
     monkeypatch.setattr(api_omni, "OMNI_MAX_B64_BYTES", 100)
     messages = [
         {
@@ -434,8 +446,43 @@ def test_call_omni_gates_the_total_inline_payload(monkeypatch):
         }
     ]
     assert api_omni.inline_b64_bytes(messages) == 120
-    with pytest.raises(api_omni.PayloadTooLargeError, match="inline base64"):
+    assert api_omni.inline_b64_item_bytes(messages) == [60, 60]
+
+    def create(**_kwargs):
+        choice = SimpleNamespace(delta=SimpleNamespace(content="ok"))
+        return [SimpleNamespace(usage=None, choices=[choice])]
+
+    def make_client(**_kwargs):
+        return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    monkeypatch.setattr(openai, "OpenAI", make_client)
+    text, _ = api_omni.call_omni(base_url="http://x/v1", api_key="k", messages=messages)
+    assert text == "ok"
+
+
+def test_call_omni_rejects_one_inline_item_over_cap(monkeypatch):
+    monkeypatch.setattr(api_omni, "OMNI_MAX_B64_BYTES", 100)
+    messages = [
+        {
+            "role": "user",
+            "content": [api_omni.omni_frames_part([api_omni.jpeg_data_url("A" * 101), api_omni.jpeg_data_url("B")])],
+        }
+    ]
+    with pytest.raises(api_omni.PayloadTooLargeError, match="inline media item"):
         api_omni.call_omni(base_url="http://x/v1", api_key="k", messages=messages)
+
+
+def test_inline_item_sizes_include_raw_base64_audio_but_not_oss_urls():
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_audio", "input_audio": {"data": "A" * 123, "format": "wav"}},
+                {"type": "input_audio", "input_audio": {"data": "oss://temporary/audio.wav", "format": "wav"}},
+            ],
+        }
+    ]
+    assert api_omni.inline_b64_item_bytes(messages) == [123]
 
 
 def test_audio_data_url_omits_the_mime_prefix(tmp_path):
@@ -494,11 +541,269 @@ def test_audio_falls_back_to_fitted_mp3_when_wav_would_not_fit(sample_media_av):
     assert 0 < size <= 30_000
 
 
+def test_audio_extraction_preserves_delayed_stream_timeline(tmp_path, requires_ffmpeg):
+    from shared.video import probe_media
+
+    source = tmp_path / "delayed-audio.mp4"
+    wav = tmp_path / "delayed-audio.wav"
+    mp3 = tmp_path / "delayed-audio.mp3"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=4:size=160x120:rate=10",
+            "-itsoffset",
+            "1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=3",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            str(source),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    source_audio = next(stream for stream in probe_media(str(source))["streams"] if stream["codec_type"] == "audio")
+    assert float(source_audio["start_time"]) > 0.9
+
+    _common.omni_media.extract_audio(str(source), str(wav), duration=4.0)
+    _common.omni_media.encode_audio(str(source), str(mp3), kbps=64, duration=4.0)
+
+    wav_duration = float(probe_media(str(wav))["format"]["duration"])
+    mp3_duration = float(probe_media(str(mp3))["format"]["duration"])
+    assert wav_duration == pytest.approx(4.0, abs=0.05)
+    assert mp3_duration == pytest.approx(4.0, abs=0.15)
+
+    with wave.open(str(wav), "rb") as handle:
+        sample_rate = handle.getframerate()
+        leading = array("h", handle.readframes(sample_rate // 2))
+        handle.setpos(int(sample_rate * 1.5))
+        audible = array("h", handle.readframes(sample_rate // 2))
+    assert max(abs(sample) for sample in leading) == 0
+    assert max(abs(sample) for sample in audible) > 0
+
+
 def test_fit_audio_rejects_a_track_too_long_for_the_floor_bitrate(sample_media_av, tmp_path):
     # 3s cannot fit 500 bytes even at 16 kbps: raise the actionable error, don't ship a doomed request
     out = str(tmp_path / "nope.mp3")
     with pytest.raises(_common._InlineBudgetExceeded, match="too long"):
         _common._fit_audio(sample_media_av, out, budget=500, duration=3.0)
+
+
+def test_fit_audio_can_use_the_full_per_item_budget(monkeypatch, tmp_path):
+    out = str(tmp_path / "one-hour.mp3")
+    seen = []
+
+    def fake_encode(_source, output, *, kbps, start_time=0.0, duration=None):
+        seen.append((kbps, start_time, duration))
+        with open(output, "wb") as handle:
+            handle.truncate(7_200_000)
+
+    monkeypatch.setattr(_common, "_encode_audio", fake_encode)
+    _common._fit_audio("source.mp4", out, budget=api_omni.OMNI_MAX_UPLOAD_BYTES, duration=3600)
+    assert seen == [(16, 0.0, 3600)]
+
+
+def test_frames_fallback_audio_keeps_requested_time_range(monkeypatch):
+    captured = {}
+    cleanup: list[str] = []
+
+    def fake_encode(source, output, *, kbps, start_time=0.0, duration=None):
+        captured.update(
+            source=source,
+            kbps=kbps,
+            start_time=start_time,
+            duration=duration,
+        )
+        Path(output).write_bytes(b"audio")
+
+    monkeypatch.setattr(_common, "_encode_audio", fake_encode)
+    monkeypatch.setattr(_common.omni_media, "has_audio_stream", lambda _path: True)
+    monkeypatch.setattr(
+        _common,
+        "_fit_frames",
+        lambda *_args, **_kwargs: (
+            ["data:image/jpeg;base64,eA==", "data:image/jpeg;base64,eA=="],
+            [0.0, 25.5],
+        ),
+    )
+
+    try:
+        _common._frames_and_audio_parts(
+            "source.mp4",
+            1.0,
+            200704,
+            cleanup,
+            start_time=120.0,
+            duration=25.5,
+        )
+    finally:
+        for path in cleanup:
+            if os.path.exists(path):
+                os.remove(path)
+
+    assert captured == {
+        "source": "source.mp4",
+        "kbps": 64,
+        "start_time": 120.0,
+        "duration": 25.5,
+    }
+
+
+def test_over_inline_limit_audio_uses_dashscope_temporary_oss(monkeypatch, tmp_path):
+    from shared import dashscope_upload
+
+    audio = tmp_path / "large.wav"
+    audio.write_bytes(b"large-audio")
+    monkeypatch.setattr(_common, "OMNI_MAX_B64_BYTES", 1)
+    monkeypatch.setattr(_common, "has_video_stream", lambda _: False)
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a: True)
+    monkeypatch.setattr(
+        dashscope_upload,
+        "upload_temporary_file",
+        lambda path, **kwargs: "oss://temporary/large.wav",
+    )
+
+    parts = _common._build_media_parts(
+        str(audio),
+        "audio",
+        1.0,
+        200704,
+        [],
+        3600,
+        "qwen3.8-omni-flash",
+        DEFAULT_DASHSCOPE_BASE_URL,
+        "key",
+    )
+
+    assert parts == [{"type": "input_audio", "input_audio": {"data": "oss://temporary/large.wav", "format": "wav"}}]
+
+
+def test_over_inline_limit_video_uses_dashscope_temporary_oss(monkeypatch, tmp_path):
+    from shared import dashscope_upload, video
+
+    media = tmp_path / "large.mp4"
+    media.write_bytes(b"large-video")
+    monkeypatch.setattr(_common, "OMNI_MAX_B64_BYTES", 1)
+    monkeypatch.setattr(_common, "has_video_stream", lambda _: True)
+    monkeypatch.setattr(video, "video_duration_exceeds", lambda *a: False)
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a: True)
+    monkeypatch.setattr(
+        dashscope_upload,
+        "upload_temporary_file",
+        lambda path, **kwargs: "oss://temporary/large.mp4",
+    )
+
+    parts = _common._build_media_parts(
+        str(media),
+        "auto",
+        2.0,
+        200704,
+        [],
+        3600,
+        "qwen3.8-omni-flash",
+        DEFAULT_DASHSCOPE_BASE_URL,
+        "key",
+    )
+
+    assert parts == [
+        {
+            "type": "video_url",
+            "video_url": {"url": "oss://temporary/large.mp4"},
+            "fps": 2.0,
+            "max_pixels": 200704,
+        }
+    ]
+
+
+def test_over_inline_limit_video_in_asr_mode_uploads_extracted_audio(monkeypatch, tmp_path):
+    from shared import dashscope_upload
+
+    media = tmp_path / "large.mp4"
+    media.write_bytes(b"large-video")
+    cleanup = []
+    uploaded = {}
+    monkeypatch.setattr(_common, "OMNI_MAX_B64_BYTES", 1)
+    monkeypatch.setattr(_common, "has_video_stream", lambda _: True)
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a: True)
+
+    def fake_encode(source, output, *, kbps, start_time=0.0, duration=None):
+        assert source == str(media)
+        assert kbps == 64
+        assert start_time == 0.0
+        assert duration is None
+        Path(output).write_bytes(b"audio")
+
+    def fake_upload(path, **kwargs):
+        uploaded["path"] = path
+        return "oss://temporary/audio.mp3"
+
+    monkeypatch.setattr(_common, "_encode_audio", fake_encode)
+    monkeypatch.setattr(dashscope_upload, "upload_temporary_file", fake_upload)
+
+    parts = _common._build_media_parts(
+        str(media),
+        "audio",
+        1.0,
+        200704,
+        cleanup,
+        3600,
+        "qwen3.8-omni-flash",
+        DEFAULT_DASHSCOPE_BASE_URL,
+        "key",
+    )
+
+    assert uploaded["path"].endswith(".mp3")
+    assert parts == [{"type": "input_audio", "input_audio": {"data": "oss://temporary/audio.mp3", "format": "mp3"}}]
+    for path in cleanup:
+        os.remove(path)
+
+
+def test_temporary_oss_failure_keeps_existing_audio_fallback(monkeypatch, tmp_path):
+    from shared import dashscope_upload
+
+    audio = tmp_path / "large.wav"
+    audio.write_bytes(b"large-audio")
+    fallback = {"type": "input_audio", "input_audio": {"data": "fallback", "format": "wav"}}
+    monkeypatch.setattr(_common, "OMNI_MAX_B64_BYTES", 1)
+    monkeypatch.setattr(_common, "has_video_stream", lambda _: False)
+    monkeypatch.setattr(dashscope_upload, "is_available", lambda *a: True)
+    monkeypatch.setattr(
+        dashscope_upload,
+        "upload_temporary_file",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("upload unavailable")),
+    )
+    monkeypatch.setattr(_common, "_local_audio_part", lambda *a, **k: fallback)
+
+    parts = _common._build_media_parts(
+        str(audio),
+        "audio",
+        1.0,
+        200704,
+        [],
+        3600,
+        "qwen3.8-omni-flash",
+        DEFAULT_DASHSCOPE_BASE_URL,
+        "key",
+    )
+
+    assert parts == [fallback]
 
 
 # ── Over-cap local video: OSS upload when configured, else frames + audio ────────────────────
@@ -533,7 +838,7 @@ def test_over_cap_video_is_split_into_frames_and_audio_without_oss(monkeypatch, 
     # the frame list has no time base of its own, so the note must supply the timestamps
     assert "#1=0s" in note["text"] and "timestamp" in note["text"]
     assert prompt["type"] == "text"
-    assert api_omni.inline_b64_bytes(sent["m"]) <= api_omni.OMNI_MAX_B64_BYTES
+    assert max(api_omni.inline_b64_item_bytes(sent["m"])) <= api_omni.OMNI_MAX_B64_BYTES
 
 
 def test_frames_fallback_is_used_when_the_oss_upload_fails(monkeypatch, sample_media_av):
@@ -547,9 +852,7 @@ def test_frames_fallback_is_used_when_the_oss_upload_fails(monkeypatch, sample_m
     assert sent["m"][0]["content"][0]["type"] == "video"  # degraded to frames, not an error
 
 
-def test_frames_are_thinned_until_they_fit(monkeypatch, sample_media_av):
-    # a budget too small for the estimated frame count: both parts come off the same total, and the
-    # frame list is thinned rather than overshooting it
+def test_frames_use_the_budget_per_image_not_for_the_aggregate(monkeypatch, sample_media_av):
     monkeypatch.setattr(_common, "_preprocess_video", _too_long)
     monkeypatch.setattr(_common.oss, "is_upload_configured", lambda: False)
     monkeypatch.setattr(_common, "_INLINE_B64_BUDGET", 60_000)
@@ -558,8 +861,9 @@ def test_frames_are_thinned_until_they_fit(monkeypatch, sample_media_av):
 
     oav.get_handler("omni_av_caption")({"file_path": sample_media_av, "fps": 10})
     frames = sent["m"][0]["content"][0]["video"]
-    assert len(frames) < 30  # 3s at 10 fps would be 30 frames; the budget forced fewer
-    assert api_omni.inline_b64_bytes(sent["m"]) <= 60_000
+    assert len(frames) >= 25  # extraction may miss a few end-of-file seeks, but no aggregate thinning
+    assert all(size <= 60_000 for size in api_omni.inline_b64_item_bytes(sent["m"]) if size > 1_000)
+    assert api_omni.inline_b64_bytes(sent["m"]) > 60_000
 
 
 def test_frames_are_capped_at_the_base64_image_limit(sample_media_av):
@@ -582,3 +886,60 @@ def test_omni_asr_reachable(sample_media_av):
     assert blocks and blocks[0]["type"] == "text"
     low = blocks[0]["text"].lower()
     assert not any(x in low for x in ("no api key", "no api-key", "invalid api", "connection error"))
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("https://bkt.oss-cn-hangzhou.aliyuncs.com/talk.wav?Expires=1757000000&Signature=abc%2Fdef", "wav"),
+        ("https://example.com/talk.MP3?download=other.wav#clip", "mp3"),
+        ("https://example.com/talk.wav#t=1", "wav"),
+        ("https://example.com/stream?file=talk.mp3", "wav"),
+        ("https://example.com?file=talk.mp3", "wav"),
+        ("https://example.com/#talk.mp3", "wav"),
+    ],
+)
+def test_omni_audio_part_uses_url_path(source, expected):
+    part = api_omni.omni_audio_part(source)
+    assert part["input_audio"] == {"data": source, "format": expected}
+
+
+def test_omni_audio_part_explicit_format_wins_over_url_suffix():
+    part = api_omni.omni_audio_part("https://example.com/a.wav?x=1#clip", audio_format="MP3")
+    assert part["input_audio"]["format"] == "mp3"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows filenames cannot contain ?")
+def test_omni_audio_part_preserves_local_filename_suffix(tmp_path):
+    source = tmp_path / "recording?part#1.mp3"
+    source.write_bytes(b"audio")
+    part = api_omni.omni_audio_part(str(source))
+    assert part["input_audio"]["format"] == "mp3"
+    assert base64.b64decode(part["input_audio"]["data"].split(",")[-1]) == b"audio"
+
+
+@pytest.mark.parametrize("tool", ["omni_asr", "omni_av_caption"])
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("https://example.com/clip.MP4?signature=abc#t=1", "video_url"),
+        ("https://example.com/clip.mp4#t=1", "video_url"),
+        ("https://example.com/audio.wav?filename=clip.mp4#t=1", "input_audio"),
+        ("https://media.mp4?signature=abc", "input_audio"),
+    ],
+)
+def test_remote_media_preview_matches_request(monkeypatch, tool, source, expected):
+    preview = _preview(oav.get_handler(tool)({"file_path": source, "dry_run": True}))
+    captured = {}
+
+    def fake_call(**kwargs):
+        captured.update(kwargs)
+        return {"text": "transcript"}
+
+    monkeypatch.setattr(_common, "call_omni_json", fake_call)
+    monkeypatch.setattr(_common, "call_omni", lambda **kwargs: (fake_call(**kwargs), None))
+    oav.get_handler(tool)({"file_path": source})
+    part = captured["messages"][0]["content"][0]
+    assert preview["messages"][0]["content"][0]["type"] == part["type"] == expected
+    returned_url = part["video_url"]["url"] if expected == "video_url" else part["input_audio"]["data"]
+    assert returned_url == source

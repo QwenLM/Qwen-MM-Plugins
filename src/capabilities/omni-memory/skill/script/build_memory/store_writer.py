@@ -82,8 +82,6 @@ class MemoryStore(StoreBase):
         snapshot serializable at all."""
         return {
             "version": 3,
-            "global_summary": self.global_summary,
-            "global_nodes": [dict(n) for n in self.global_nodes],
             "scene_env": list(self.scene_env),
             "entities": [dict(e) for e in self.entities],
             "episodic": [_emb_out(r) for r in self.episodic],

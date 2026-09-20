@@ -1,0 +1,192 @@
+"""Validated runtime configuration and deterministic quality profiles."""
+
+from __future__ import annotations
+
+import math
+import re
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+from shared.api_omni import resolve_omni_endpoint, resolve_omni_model
+from shared.env import get_env
+
+_LOCAL_VIDEO_SUFFIXES = frozenset(
+    {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".flv", ".ts", ".m2ts", ".mpg", ".mpeg"}
+)
+_URL_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+@dataclass(frozen=True)
+class QualityProfile:
+    """Sampling and review limits selected by a named quality profile."""
+
+    name: str
+    coarse_frames: int
+    candidate_limit: int
+    scene_threshold: float
+    step_padding: float
+    dense_step: float
+    fine_step: float
+    fine_radius: float
+    max_step_candidates: int
+    min_frame_score: float
+    min_relevance: float
+    chunk_seconds: float
+
+    def validate(self) -> None:
+        if not self.name:
+            raise ValueError("quality profile name is required")
+        for name in ("coarse_frames", "candidate_limit", "max_step_candidates"):
+            if getattr(self, name) < 1:
+                raise ValueError(f"quality profile {name} must be positive")
+        for name in ("step_padding", "dense_step", "fine_step", "fine_radius", "chunk_seconds"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"quality profile {name} must be finite and positive")
+        for name in ("scene_threshold", "min_frame_score", "min_relevance"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or not 0 <= value <= 1:
+                raise ValueError(f"quality profile {name} must be in [0, 1]")
+        if self.candidate_limit < self.coarse_frames:
+            raise ValueError("candidate_limit cannot be smaller than coarse_frames")
+
+
+QUALITY_PROFILES: dict[str, QualityProfile] = {
+    "fast": QualityProfile("fast", 8, 28, 0.32, 1.5, 1.5, 0.35, 0.7, 7, 0.32, 0.58, 120.0),
+    "balanced": QualityProfile("balanced", 12, 48, 0.25, 2.0, 1.0, 0.2, 0.8, 10, 0.35, 0.62, 90.0),
+    "high": QualityProfile("high", 18, 72, 0.2, 3.0, 0.6, 0.12, 1.0, 16, 0.38, 0.66, 60.0),
+}
+
+
+def resolve_quality_profile(name: str) -> QualityProfile:
+    normalized = name.strip().lower()
+    try:
+        profile = QUALITY_PROFILES[normalized]
+    except KeyError as exc:
+        choices = ", ".join(sorted(QUALITY_PROFILES))
+        raise ValueError(f"unknown quality profile {name!r}; choose one of: {choices}") from exc
+    profile.validate()
+    return profile
+
+
+def _optional_path(value: str | Path | None) -> Path | None:
+    return None if value in (None, "") else Path(value).expanduser().resolve()
+
+
+@dataclass
+class PipelineConfig:
+    """Resolved pipeline settings with safe local input/output paths."""
+
+    video_path: str | Path
+    output_path: str | Path
+    language: str = "auto"
+    title: str | None = None
+    overwrite: bool = False
+    quality_profile: str = "fast"
+    omni_model: str | None = None
+    vl_model: str | None = None
+    review_model: str | None = None
+    font: str | Path | None = None
+    bold_font: str | Path | None = None
+    no_asr: bool = False
+    require_asr: bool = False
+    dry_run: bool = False
+    time_budget_seconds: float = 150.0
+    profile: QualityProfile = field(init=False, repr=False)
+    deadline: float | None = field(default=None, init=False, repr=False)
+    api_calls: list[dict[str, Any]] = field(default_factory=list, init=False, repr=False)
+    warnings: list[str] = field(default_factory=list, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        raw_video = str(self.video_path)
+        if _URL_PATTERN.match(raw_video):
+            raise ValueError("URLs are not accepted; provide one local video file")
+        self.video_path = Path(raw_video).expanduser().resolve()
+        self.output_path = Path(self.output_path).expanduser().resolve()
+        self.font = _optional_path(self.font)
+        self.bold_font = _optional_path(self.bold_font)
+        self.profile = resolve_quality_profile(self.quality_profile)
+        self.quality_profile = self.profile.name
+        # Refresh the GUI-readable user config once per run; environment overrides still win.
+        api_key = get_env("DASHSCOPE_API_KEY", refresh_config=True)
+        configured_model = get_env("QWEN_MM_API_OMNI_MODEL", refresh_config=True)
+        self.omni_model = resolve_omni_model(self.omni_model or configured_model)
+        for name in ("vl_model", "review_model"):
+            if getattr(self, name) and getattr(self, name) != self.omni_model:
+                self.warnings.append(f"{name} is deprecated and ignored; all model stages use omni_model.")
+            setattr(self, name, self.omni_model)
+        # Pass the configured key explicitly: compatible endpoints may use an unlisted host.
+        self._base_url, self._api_key = resolve_omni_endpoint(
+            {"base_url": get_env("DASHSCOPE_BASE_URL", refresh_config=True), "api_key": api_key}
+        )
+        self.validate()
+
+    @property
+    def video(self) -> Path:
+        return self.video_path
+
+    @property
+    def output(self) -> Path:
+        return self.output_path
+
+    def validate(self) -> None:
+        assert isinstance(self.video_path, Path)
+        assert isinstance(self.output_path, Path)
+        if _URL_PATTERN.match(str(self.video_path)):
+            raise ValueError("URLs are not accepted; provide one local video file")
+        if not self.video_path.is_file():
+            raise ValueError("video_path must be an existing regular file")
+        if self.video_path.suffix.lower() not in _LOCAL_VIDEO_SUFFIXES:
+            raise ValueError(f"unsupported local video extension: {self.video_path.suffix or '<none>'}")
+        if self.output_path.suffix.lower() != ".pdf":
+            raise ValueError("output_path must end in .pdf")
+        if self.video_path == self.output_path:
+            raise ValueError("input video and output PDF must differ")
+        if self.output_path.exists() and not self.output_path.is_file():
+            raise ValueError("output_path must be a file path")
+        if self.output_path.exists() and not self.overwrite:
+            raise ValueError("output PDF already exists; use overwrite=true to replace it")
+        for name in ("overwrite", "no_asr", "require_asr", "dry_run"):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"{name} must be a boolean")
+        if (
+            isinstance(self.time_budget_seconds, bool)
+            or not isinstance(self.time_budget_seconds, (int, float))
+            or not math.isfinite(self.time_budget_seconds)
+            or not 1 <= self.time_budget_seconds <= 1800
+        ):
+            raise ValueError("time_budget_seconds must be a finite number between 1 and 1800")
+        self.time_budget_seconds = float(self.time_budget_seconds)
+        if self.no_asr and self.require_asr:
+            raise ValueError("no_asr and require_asr are mutually exclusive")
+        if not isinstance(self.language, str) or not self.language.strip():
+            raise ValueError("language is required")
+        if self.title is not None and (not isinstance(self.title, str) or not self.title.strip()):
+            raise ValueError("title must be non-empty text when supplied")
+        for name in ("font", "bold_font"):
+            value = getattr(self, name)
+            if value is not None and not value.is_file():
+                raise ValueError(f"{name} must be an existing font file")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "video_path": str(self.video_path),
+            "output_path": str(self.output_path),
+            "language": self.language,
+            "title": self.title,
+            "overwrite": self.overwrite,
+            "quality_profile": self.quality_profile,
+            "quality": asdict(self.profile),
+            "omni_model": self.omni_model,
+            "vl_model": self.vl_model,
+            "review_model": self.review_model,
+            "base_url": self._base_url,
+            "font": str(self.font) if self.font else None,
+            "bold_font": str(self.bold_font) if self.bold_font else None,
+            "no_asr": self.no_asr,
+            "require_asr": self.require_asr,
+            "dry_run": self.dry_run,
+            "time_budget_seconds": self.time_budget_seconds,
+            "warnings": list(self.warnings),
+        }

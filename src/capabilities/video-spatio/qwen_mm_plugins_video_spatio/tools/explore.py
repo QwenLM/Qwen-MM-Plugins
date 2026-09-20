@@ -22,7 +22,7 @@ import json
 import math
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_video_spatio.tools import _scene
 from shared.content import json_text, text_error
@@ -363,29 +363,28 @@ def _gateways_and_headings(scene: dict) -> list[dict]:
 
 
 class AssessCoverageArgs(BaseModel):
-    scene: Optional[Any] = Field(default=None, description="`scene` from build_scene.")
-    scene_file: Optional[str] = Field(default=None, description="Path to scene JSON file.")
-    target: Optional[str] = Field(
-        default=None,
-        description="Optional: object label we want to find. If given, the tool also reports whether the accumulated scene is enough (target present) or hints where it likely is (via room prior).",
-    )
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    target: Optional[str] = None
 
 
-TOOL_ASSESS: dict[str, Any] = {
-    "name": "assess_coverage",
-    "description": (
-        "Report how much of the world has been observed and whether that is sufficient to answer "
-        "the current question. Pure geometry + label heuristics — no VLM. Returns: coverage_deg "
-        "(total angular sweep), unobserved_sectors (world-heading gaps), candidate_gateways (door/"
-        "corridor/opening items with headings from the reference camera), known_rooms (guessed from "
-        "seen labels), target_hint (likely rooms for `target` from a small prior), and "
-        "sufficient_for_target (true if target is already in scene, else false)."
-    ),
-    "args": AssessCoverageArgs,
-}
+TOOL_ASSESS: dict[str, Any] = {"name": "assess_coverage", "args": AssessCoverageArgs}
 
 
 def handle_assess(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Report how much of the world has been observed and whether that is sufficient to answer the current
+    question. Pure geometry + label heuristics — no VLM. Returns: coverage_deg (total angular sweep),
+    unobserved_sectors (world-heading gaps), candidate_gateways (door/corridor/opening items with
+    headings from the reference camera), known_rooms (guessed from seen labels), target_hint (likely
+    rooms for `target` from a small prior), and sufficient_for_target (true if target is already in
+    scene, else false).
+
+    Args:
+        scene: `scene` from build_scene.
+        scene_file: Path to scene JSON file.
+        target: Optional: object label we want to find. If given, the tool also reports whether the
+            accumulated scene is enough (target present) or hints where it likely is (via room prior).
+    """
     try:
         scene = _scene.load_scene(arguments)
     except Exception as e:  # noqa: BLE001
@@ -471,32 +470,31 @@ def handle_assess(arguments: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 class PlanExplorationArgs(BaseModel):
-    scene: Optional[Any] = Field(default=None, description="`scene` from build_scene.")
-    scene_file: Optional[str] = Field(default=None, description="Path to scene JSON file.")
-    target: str = Field(description="Object label we want to find (e.g. 'bed', 'conference room 302').")
-    budget_moves: int = Field(default=3, description="Max steps in the returned skill_sequence.")
-    spin_coverage_deg: float = Field(
-        default=180.0, description="If current coverage_deg < this, prefer spin_scan first."
-    )
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    target: str
+    budget_moves: int = 3
+    spin_coverage_deg: float = 180.0
 
 
-TOOL_PLAN: dict[str, Any] = {
-    "name": "plan_exploration",
-    "description": (
-        "Given a target and the current scene, decide the next STRUCTURAL exploration move: "
-        "(a) `spin_scan` — turn ~360° in place to raise this room's coverage; "
-        "(b) `traverse_gateway` — head to a door/corridor pointing into an unobserved sector, "
-        "then re-observe; "
-        "(c) `go_forward` — no gateway, no target in view; advance to a new vantage; "
-        "(d) `found` — target already in scene, hand off to plan_navigation. "
-        "Pure geometry, no VLM. Complements `plan_active_search` (small local left/right) with "
-        "structural reasoning across rooms."
-    ),
-    "args": PlanExplorationArgs,
-}
+TOOL_PLAN: dict[str, Any] = {"name": "plan_exploration", "args": PlanExplorationArgs}
 
 
 def handle_plan(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Given a target and the current scene, decide the next STRUCTURAL exploration move: (a) `spin_scan` —
+    turn ~360° in place to raise this room's coverage; (b) `traverse_gateway` — head to a door/corridor
+    pointing into an unobserved sector, then re-observe; (c) `go_forward` — no gateway, no target in
+    view; advance to a new vantage; (d) `found` — target already in scene, hand off to plan_navigation.
+    Pure geometry, no VLM. Complements `plan_active_search` (small local left/right) with structural
+    reasoning across rooms.
+
+    Args:
+        scene: `scene` from build_scene.
+        scene_file: Path to scene JSON file.
+        target: Object label we want to find (e.g. 'bed', 'conference room 302').
+        budget_moves: Max steps in the returned skill_sequence.
+        spin_coverage_deg: If current coverage_deg < this, prefer spin_scan first.
+    """
     try:
         scene = _scene.load_scene(arguments)
     except Exception as e:  # noqa: BLE001
@@ -729,31 +727,13 @@ def handle_plan(arguments: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 class AssessReachableArgs(BaseModel):
-    scene: Optional[Any] = Field(default=None, description="`scene` from build_scene.")
-    scene_file: Optional[str] = Field(default=None, description="Path to scene JSON file.")
-    target: str = Field(description="Object to reach / operate on (e.g. 'cup', 'door handle', 'drawer').")
-    max_reach_m: float = Field(
-        default=1.0,
-        description="Operable reach in meters: target counts as 'operable' if some observed viewpoint is within this distance.",
-    )
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    target: str
+    max_reach_m: float = 1.0
 
 
-TOOL_REACH: dict[str, Any] = {
-    "name": "assess_reachable",
-    "description": (
-        "OFFLINE manipulation-prep judgment: given a target and the accumulated scene (past "
-        "trajectory / memory), decide whether the agent can reach a position from which it can "
-        "OPERATE the target — WITHOUT any env step. Pure geometry + label heuristics, no VLM. Three "
-        "outcomes: `reachable_now` (an observed viewpoint is already within max_reach_m), "
-        "`reachable_after_move` (target grounded but too far → single-leg turn+go_forward plan + "
-        "distance to close), or `target_not_grounded` (never observed → defer to assess_coverage / "
-        "plan_exploration to FIND it first). Scope: judges only whether an operable vantage is "
-        "reachable, NOT whether the manipulation succeeds. Returns offline_assessment "
-        "(evidence_sufficiency / recommended_action / specific_data_calls / fallback_answer_hint) in "
-        "the same shape as plan_exploration."
-    ),
-    "args": AssessReachableArgs,
-}
+TOOL_REACH: dict[str, Any] = {"name": "assess_reachable", "args": AssessReachableArgs}
 
 
 def _target_hits_world(scene: dict, target: str) -> list[dict]:
@@ -785,6 +765,23 @@ def _target_hits_world(scene: dict, target: str) -> list[dict]:
 
 
 def handle_reach(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """OFFLINE manipulation-prep judgment: given a target and the accumulated scene (past trajectory /
+    memory), decide whether the agent can reach a position from which it can OPERATE the target —
+    WITHOUT any env step. Pure geometry + label heuristics, no VLM. Three outcomes: `reachable_now` (an
+    observed viewpoint is already within max_reach_m), `reachable_after_move` (target grounded but too
+    far → single-leg turn+go_forward plan + distance to close), or `target_not_grounded` (never observed
+    → defer to assess_coverage / plan_exploration to FIND it first). Scope: judges only whether an
+    operable vantage is reachable, NOT whether the manipulation succeeds. Returns offline_assessment
+    (evidence_sufficiency / recommended_action / specific_data_calls / fallback_answer_hint) in the same
+    shape as plan_exploration.
+
+    Args:
+        scene: `scene` from build_scene.
+        scene_file: Path to scene JSON file.
+        target: Object to reach / operate on (e.g. 'cup', 'door handle', 'drawer').
+        max_reach_m: Operable reach in meters: target counts as 'operable' if some observed viewpoint is
+            within this distance.
+    """
     try:
         scene = _scene.load_scene(arguments)
     except Exception as e:  # noqa: BLE001

@@ -5,41 +5,47 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_video_spatio.tools import _scene
 from shared.content import json_text, text_error
 
 
 class SceneMapArgs(BaseModel):
-    scene: Optional[Any] = Field(default=None, description="The `scene` object from build_scene.")
-    scene_file: Optional[str] = Field(default=None, description="Path to a JSON file holding the scene.")
-    op: str = Field(
-        default="cognitive_map", description="cognitive_map | appearance_order | locate_event | diff_frames"
-    )
-    frame: Optional[int] = Field(default=None, description="Frame index (cognitive_map).")
-    grid_size: int = Field(default=10, description="Grid resolution for cognitive_map.")
-    labels: Optional[list[str]] = Field(default=None, description="Restrict cognitive_map to these labels.")
-    describe: bool = Field(default=False, description="cognitive_map: add a VLM description.")
-    description: Optional[str] = Field(default=None, description="Event/action to localize (locate_event).")
-    frame_a: Optional[int] = Field(default=None, description="First frame (diff_frames).")
-    frame_b: Optional[int] = Field(default=None, description="Second frame (diff_frames).")
-    model: Optional[str] = Field(default=None, description="Override the VLM model (default: from env).")
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    op: str = "cognitive_map"
+    frame: Optional[int] = None
+    grid_size: int = 10
+    labels: Optional[list[str]] = None
+    describe: bool = False
+    description: Optional[str] = None
+    frame_a: Optional[int] = None
+    frame_b: Optional[int] = None
+    model: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "scene_map",
-    "description": (
-        "Structured scene-level views: 'cognitive_map' (grid layout of objects), 'appearance_order' "
-        "(objects by first-appearance frame), 'locate_event' (frames where an event/action occurs — "
-        "temporal localization), 'diff_frames' (what appeared/disappeared/moved between two frames). "
-        "Needs a `scene`."
-    ),
-    "args": SceneMapArgs,
-}
+TOOL: dict[str, Any] = {"name": "scene_map", "args": SceneMapArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Structured scene-level views: 'cognitive_map' (grid layout of objects), 'appearance_order' (objects
+    by first-appearance frame), 'locate_event' (frames where an event/action occurs — temporal
+    localization), 'diff_frames' (what appeared/disappeared/moved between two frames). Needs a `scene`.
+
+    Args:
+        scene: The `scene` object from build_scene.
+        scene_file: Path to a JSON file holding the scene.
+        op: cognitive_map | appearance_order | locate_event | diff_frames
+        frame: Frame index (cognitive_map).
+        grid_size: Grid resolution for cognitive_map.
+        labels: Restrict cognitive_map to these labels.
+        describe: cognitive_map: add a VLM description.
+        description: Event/action to localize (locate_event).
+        frame_a: First frame (diff_frames).
+        frame_b: Second frame (diff_frames).
+        model: Override the VLM model (default: from env).
+    """
     try:
         from qwen_mm_plugins_video_spatio.experts.scene_expert import SceneExpert
         from qwen_mm_plugins_video_spatio.tools._vlm import VLMShim

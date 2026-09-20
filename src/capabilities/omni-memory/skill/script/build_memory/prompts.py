@@ -35,7 +35,7 @@ Rules: ① context_range = continuity only, do NOT re-commit. ② target_range =
 ================================================================
 ========== CONTINUITY PRIOR — previous_state (optional) =========
 ================================================================
-Carried over from previous clip(s). MAY contain: `scene_id`/`scene_summary`, `scene_env_known` (env elements already stored), `known_entities` (each `person_id`, **`name`**, `appearance`, `last_location`, `last_action`), `active_event_id`/`active_event_summary`, `last_processed_until`, and `global_context` (a rolling high-level summary of the whole video so far — use it ONLY as background to resolve references/continuity; do NOT re-commit it as new memory).
+Carried over from previous clip(s). MAY contain: `scene_id`/`scene_summary`, `scene_env_known` (env elements already stored), `known_entities` (each `person_id`, **`name`**, `appearance`, `last_location`, `last_action`), `active_event_id`/`active_event_summary`, and `last_processed_until`.
 
 【previous_state】
 {{PREVIOUS_STATE}}
@@ -287,19 +287,6 @@ STAGE2_PROMPT = r"""You are a rigorous **multimodal knowledge inducer** for an e
 ```
 
 Induce only stable knowledge & task aggregates, ground subjects to entity ids/names, support every triple with evidence, reconcile with existing memory. Output only the JSON object above.
-"""
-
-# Rolling global summary (segment/merge). Maintained but not consumed — see DEVIATIONS.md.
-GS_CONSOLIDATE_PROMPT = r"""You are maintaining a running GLOBAL SUMMARY (a compact "script") of a long video, consolidated hierarchically so recent detail and distant high-level context coexist within a bounded budget.
-
-Task = {{KIND}}
-- If "segment": the ITEMS are per-clip visual captions from ONE recent time window. Write ONE concise summary (1–3 sentences) of what happens in this window — the key people (keep concrete names/roles when present), their actions, notable events, and any setting change.
-- If "merge": the ITEMS are several existing summaries of consecutive EARLIER windows. Compress them into ONE shorter, higher-level summary (1–2 sentences) that preserves the main events and their chronological order while dropping fine detail.
-
-Rules: factual, third-person, no speculation; preserve temporal order; keep it SHORT (this is a bounded global context, not a transcript). Output ONLY the summary text — no JSON, no bullet points, no preamble.
-
-ITEMS:
-{{ITEMS}}
 """
 
 # Name alignment: work out who is who by reading the cumulative transcript.

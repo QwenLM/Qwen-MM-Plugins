@@ -1,10 +1,22 @@
-# Adding a New Capability/Plugin
+# Add a new plugin
 
 **English** · [中文](../zh/how_to_add_new_capability.md)
 
-Under `src/`, each plugin = one short folder that may contain `skill/` (an Agent Skill) and/or `<import_name>/` (an MCP server package) — both optional. **The fastest way: copy the runnable template [`src/capabilities/example/`](../../src/capabilities/example/) and edit it.**
+Adding a plugin involves two repositories:
 
-> For how to add tests after writing a plugin, see [Testing](testing.md) — conftest auto-discovers your server package, but a few steps such as the schema baseline must be added by hand.
+1. In **Qwen-MM-Plugins**, implement and register `src/capabilities/<cap>/`, including its Skill,
+   descriptions, manifests, tests, and optional MCP server.
+2. In **[QwenLM/qwen-mm-plugins-hub](https://github.com/QwenLM/qwen-mm-plugins-hub)**, add the
+   plugin's cookbook and public case files. The Hub generates the plugin page, tool reference,
+   Skill preview, and token estimates; do not maintain another tool catalog there.
+
+The Hub reads this repository's `main` branch. Its own content lives on Hub
+`main`; the [publishing steps](hub.md#publish-and-refresh) explain how to update both.
+
+Every published plugin includes `skill/SKILL.md`. An MCP server is optional: start from
+[`example`](../../src/capabilities/example/) for a server plugin or
+[`edu-agent`](../../src/capabilities/edu-agent/) for Skill-only packaging. Keep only the template
+files your plugin needs. `example` itself is not published.
 
 ## Structure
 
@@ -24,6 +36,10 @@ src/capabilities/example/
 
 ## Tool convention (auto-discovery)
 
+All tools use the [same docstring convention](hub.md#author-descriptions-once):
+`TOOL` declares only the name and Pydantic argument model. The handler's Google-style
+docstring supplies the tool description and every argument description.
+
 Create a new `.py` under `tools/` (or under the subpackage list defined by build_registry), exporting just two things:
 
 ```python
@@ -31,16 +47,21 @@ from pydantic import BaseModel, Field
 
 
 class EchoArgs(BaseModel):
-    message: str = Field(description="Text to echo back.")
-    repeat: int = Field(default=1, description="Repeat count (1-10).")
+    message: str
+    repeat: int = Field(default=1, ge=1, le=10)
 
 
-TOOL = {"name": "echo", "description": "...", "args": EchoArgs}
+TOOL = {"name": "echo", "args": EchoArgs}
 
 
 def handle(arguments: dict) -> list[dict]:
-    ...
-    return [{"type": "text", "text": ...}]  # or {"type": "image", "data": <base64>, "mimeType": ...}
+    """Echo a message.
+
+    Args:
+        message: Text to echo back.
+        repeat: Repeat count, from 1 to 10.
+    """
+    return [{"type": "text", "text": arguments["message"] * arguments.get("repeat", 1)}]
 ```
 
 - `args` is a Pydantic model that auto-generates the tool's `inputSchema` and validates every call; `handle` receives a plain dict and returns MCP content blocks (`text` / `image`).
@@ -48,21 +69,29 @@ def handle(arguments: dict) -> list[dict]:
 
 ## Run it / install it
 
+After installing your Python dependencies in a virtual environment, test the server directly:
+
 ```bash
-# run straight from source
 python3 src/capabilities/example/qwen_mm_plugins_example --version
 python3 src/capabilities/example/qwen_mm_plugins_example --check-system
-
-# install into a harness — `example` ships as a template only (it is NOT listed in the
-# marketplace); after you copy it to your own capability and add that to marketplace.json,
-# install YOURS:
-claude plugin marketplace add <local repo path or git URL>
-claude plugin install qwen-mm-plugins-<your-cap>@qwen-mm-plugins
 ```
+
+Replace the example path with your capability's path. For full Skill and MCP installation tests,
+finish the registration below, then use `bash install.sh local` in a dedicated clone. Restore
+tracked manifests with `bash install.sh local --restore` before committing. See
+[Local development](local_development.md). Normal marketplace installs resolve release tags, not
+your uncommitted work or the Hub's preview branch.
 
 ## What to change
 
-Copy `src/capabilities/example/` to `src/capabilities/<yourname>/`, rename `qwen_mm_plugins_example/` to your import name, then:
+Use one capability ID throughout: folder `<yourname>`, plugin and Skill name
+`qwen-mm-plugins-<yourname>`, extra `<yourname>`, and Python import
+`qwen_mm_plugins_<yourname_with_underscores>`. Write a concise, task-specific Skill description
+and H1; put prerequisites and workflow instructions in its body, with supporting files under
+`skill/`.
+
+For a server plugin, copy `src/capabilities/example/` to `src/capabilities/<yourname>/`, rename
+its Python package, and complete steps 1–4. Skill-only plugins skip these Python packaging steps.
 
 1. `pyproject.toml` `[project.scripts]` — add an entry:
    ```toml
@@ -81,14 +110,48 @@ Copy `src/capabilities/example/` to `src/capabilities/<yourname>/`, rename `qwen
    ```toml
    where = [..., "src/capabilities/<yourname>"]
    ```
+   Include the new server extra in the `all` profile. If it ships non-Python resources, add them
+   to `[tool.setuptools.package-data]`.
 5. Add the initial version to `plugin-versions.json` and a matching tag-pinned `git-subdir` entry to
    the canonical `.claude-plugin/marketplace.json`, which CodeBuddy and WorkBuddy also consume. Copy
-   the three harness manifests from an existing capability; server capabilities also carry
-   `.mcp.json`. Run `scripts/check_manifests.py`, then follow
-   [Plugin releases](releasing.md) for the first tag.
+   `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, and `.qoder-plugin/plugin.json` from
+   a capability of the same kind. Replace its name, version, and description everywhere; keep the
+   marketplace description and `install.sh`'s `CAP_DESC` consistent. Server plugins also carry
+   `.mcp.json`: use a unique `qwen-mm-plugins-<yourname>` server key and the matching extra,
+   entry point, and version tag. Keep the server's `__version__` aligned with the manifests.
+6. Register the capability in `install.sh`: add entries to `CAP_ITEMS`, `CAP_VERSIONS`, and
+   `CAP_DESC` in the same position. Add Skill-only capabilities to `CAP_SKILL_ONLY` too.
+7. Add handler/schema tests or Skill/manifest tests as appropriate; see [Testing](testing.md).
+   Update affected discovery and installer expectations. If you add configuration, register it
+   in `src/shared/env.py:CONFIG_FIELDS`, align `install.sh:CONFIG_SPEC`, and regenerate the
+   [configuration reference](configuration.md) with `scripts/gen_env_docs.py`.
 
 `__main__.py` is **copied verbatim** from `src/capabilities/example/` — it infers the import name from the directory name and contains no per-server literals.
 A skill-only capability omits `mcpServers` and `.mcp.json`, but keeps the three harness manifests.
+
+## Add the Hub cookbook
+
+In [QwenLM/qwen-mm-plugins-hub](https://github.com/QwenLM/qwen-mm-plugins-hub), create
+`content/cookbooks/<yourname>/usage.md` and put demo files under
+`public/cases/<yourname>/<case>/assert/`. An optional interactive case starts at `<case>/index.html`.
+The [Hub authoring guide](hub.md#cookbook-and-cases) provides the Markdown template, contributor
+metadata, and media-link conventions. A missing cookbook fails the content build.
+
+Add a short entry to this repository's English and Chinese READMEs, linking its cookbook to
+`https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/<yourname>/cookbook/`. Do not copy cookbook
+Markdown or case media back into this repository. General guides remain in `docs/en/` and are
+imported into the Hub automatically on its next build.
+
+## Check and publish
+
+Run the relevant [offline checks](testing.md#commands), then validate both repositories together
+using the [Hub build commands](hub.md#validate-locally). The Hub exports the real registry; it
+does not run handlers or contact model providers during the content build.
+
+Follow [Publish and refresh](hub.md#publish-and-refresh) to make the documentation available.
+Publishing a Hub preview does not make a new plugin installable through release-pinned
+marketplaces. Complete the separate [plugin release process](releasing.md) before advertising a
+stable installation.
 
 ## Reusing code from the shared library
 

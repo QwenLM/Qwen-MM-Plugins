@@ -1,0 +1,114 @@
+{
+  "image_providers": {
+    "qwen_image_3": {
+      "size": "2048*1152",
+      "character_size": "1536*1536",
+      "n": 1,
+      "prompt_extend": false,
+      "prompt_extend_mode": "direct",
+      "enable_thinking": false,
+      "negative_prompt": null,
+      "character_negative_prompt": "multiple people, extra person, group, couple, collage, triptych, contact sheet, split screen, multiple views",
+      "seed": null,
+      "watermark": false,
+      "workers": 2,
+      "max_attempts": 3
+    },
+    "seedream": {
+      "size": "2K",
+      "character_size": "2K",
+      "watermark": false,
+      "workers": 2,
+      "max_attempts": 3
+    }
+  },
+  "providers": {
+    "wan3": {
+      "prompt_extend": false,
+      "audio": false,
+      "watermark": false,
+      "seed": null,
+      "reference_audio_mode": "dashscope_oss",
+      "dashscope_cli": "dashscope",
+      "reference_audio_urls": {},
+      "reference_audio_url_template": null,
+      "scheduler": {
+        "submit_rpm": 5,
+        "submit_rpm_steps": [5, 3, 2, 1],
+        "query_rpm": 50,
+        "min_repoll_sec": 15
+      }
+    },
+    "seedance": {
+      "generate_audio": false,
+      "watermark": false,
+      "official_identity_assets": {},
+      "scheduler": {
+        "submit_rpm": 60,
+        "submit_rpm_steps": [60, 30, 15, 5],
+        "query_rpm": 60,
+        "min_repoll_sec": 15
+      }
+    }
+  },
+  "image": {
+    "provider": "qwen_image_3",
+    "size": "2048*1152",
+    "character_size": "1536*1536",
+    "character_negative_prompt": "multiple people, extra person, group, couple, collage, triptych, contact sheet, split screen, multiple views",
+    "base_workers": 2,
+    "max_attempts": 3
+  },
+  "video": {
+    "provider": "wan3",
+    "resolution": "720P",
+    "ratio": "adaptive",
+    "submit_rpm": 5,
+    "submit_rpm_steps": [5, 3, 2, 1],
+    "adaptive_submit_rpm": true,
+    "rate_error_window": 10,
+    "rate_error_ratio": 0.4,
+    "rate_error_burst": 3,
+    "query_rpm": 50,
+    "max_inflight": 30,
+    "submit_workers": 12,
+    "download_workers": 12,
+    "min_repoll_sec": 15,
+    "rate_safety_factor": 1.0,
+    "max_submit_attempts": 1,
+    "max_submit_requeues": 120,
+    "max_submit_error_requeues": 20,
+    "max_generation_requeues": 3
+  },
+  "quality_control": {
+    "enabled": false,
+    "strategy": "reject_major",
+    "max_rounds": 3,
+    "workers": 8,
+    "launch_interval_sec": 1.5,
+    "max_review_attempts": 5,
+    "temperature": 0.01,
+    "max_tokens": 8192,
+    "fps": 2.0,
+    "max_pixels": 200704,
+    "prompt_path": null,
+    "extra_requirements": ""
+  },
+  "subtitles": {
+    "enabled": true,
+    "source_srt": null,
+    "source_evidence": null,
+    "font": null,
+    "preset": "slow",
+    "crf": 18
+  },
+  "assembly": {
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "crf": 18,
+    "audio_bitrate": "256k",
+    "boundary_blend_frames": 4,
+    "output_name": "final_mv.mp4"
+  }
+}

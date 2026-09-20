@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_video_spatio.tools import _scene
 from shared.content import json_text, text_error
@@ -25,46 +25,42 @@ _OPS = {
 
 
 class MobileManipArgs(BaseModel):
-    scene: Optional[Any] = Field(default=None, description="The `scene` object from build_scene.")
-    scene_file: Optional[str] = Field(default=None, description="Path to a JSON file holding the scene.")
-    op: str = Field(
-        default="plan_navigation",
-        description=(
-            "Which routine to run. Observation/grounding: "
-            "`track_object_trajectory` | `check_object_in_view` | `suggest_approach` | "
-            "`search_object_across_frames` | `reachability`. "
-            "Action planning: `plan_navigation` (single-leg turn+forward), "
-            "`plan_movement` (nav only if not reachable), "
-            "`plan_active_search` (target NOT in scene → suggest next scan move)."
-        ),
-    )
-    target: str = Field(description="The object to reason about (label or instance id). Required for all ops.")
-    frame: Optional[int] = Field(default=None, description="Frame index for ops that accept one (default: first).")
-    max_reach_m: Optional[float] = Field(
-        default=None, description="Reachability threshold in meters (reachability / plan_movement)."
-    )
-    max_moves: Optional[int] = Field(default=None, description="Max steps to output (plan_active_search, default 3).")
-    model: Optional[str] = Field(
-        default=None, description="Override VLM model (default: from env). Only affects VLM-backed ops."
-    )
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    op: str = "plan_navigation"
+    target: str
+    frame: Optional[int] = None
+    max_reach_m: Optional[float] = None
+    max_moves: Optional[int] = None
+    model: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "mobile_manip",
-    "description": (
-        "Embodied / mobile-manipulation over the scene. Two families of ops:\n"
-        "  Observation: `track_object_trajectory` (cross-frame BEV path), `check_object_in_view`, "
-        "`suggest_approach` (staging), `search_object_across_frames`, `reachability`.\n"
-        "  Action-planning (pure geometry, no VLM): `plan_navigation` gives a single-leg turn+forward "
-        "sequence to a visible target; `plan_movement` gates that behind a reachability check; "
-        "`plan_active_search` handles the target-not-visible case — from the camera trajectory, decide "
-        "the next locomotion move (turn to an unobserved side, or advance). Needs a `scene` from build_scene."
-    ),
-    "args": MobileManipArgs,
-}
+TOOL: dict[str, Any] = {"name": "mobile_manip", "args": MobileManipArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Embodied / mobile-manipulation over the scene. Two families of ops:   Observation:
+    `track_object_trajectory` (cross-frame BEV path), `check_object_in_view`, `suggest_approach`
+    (staging), `search_object_across_frames`, `reachability`.   Action-planning (pure geometry, no VLM):
+    `plan_navigation` gives a single-leg turn+forward sequence to a visible target; `plan_movement`
+    gates that behind a reachability check; `plan_active_search` handles the target-not-visible case —
+    from the camera trajectory, decide the next locomotion move (turn to an unobserved side, or
+    advance). Needs a `scene` from build_scene.
+
+    Args:
+        scene: The `scene` object from build_scene.
+        scene_file: Path to a JSON file holding the scene.
+        op: Which routine to run. Observation/grounding: `track_object_trajectory` |
+            `check_object_in_view` | `suggest_approach` | `search_object_across_frames` |
+            `reachability`. Action planning: `plan_navigation` (single-leg turn+forward),
+            `plan_movement` (nav only if not reachable), `plan_active_search` (target NOT in scene →
+            suggest next scan move).
+        target: The object to reason about (label or instance id). Required for all ops.
+        frame: Frame index for ops that accept one (default: first).
+        max_reach_m: Reachability threshold in meters (reachability / plan_movement).
+        max_moves: Max steps to output (plan_active_search, default 3).
+        model: Override VLM model (default: from env). Only affects VLM-backed ops.
+    """
     op = arguments.get("op", "plan_navigation")
     if op not in _OPS:
         return text_error(f"unsupported op '{op}'. Supported: {sorted(_OPS)}")

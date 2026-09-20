@@ -4,37 +4,41 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from qwen_mm_plugins_video_spatio.tools import _scene
 from shared.content import json_text, text_error
 
 
 class SelectKeyframesArgs(BaseModel):
-    scene: Optional[Any] = Field(
-        default=None, description="The `scene` object from build_scene (needed for motion/coverage/covisibility)."
-    )
-    scene_file: Optional[str] = Field(default=None, description="Path to a JSON file holding the scene.")
-    strategy: str = Field(default="motion", description="uniform | motion | coverage | covisibility")
-    n: int = Field(default=8, description="How many frames to select.")
-    total_frames: Optional[int] = Field(default=None, description="Total frame count (required for 'uniform').")
-    label: Optional[str] = Field(default=None, description="Target label (coverage).")
-    labels: Optional[list[str]] = Field(default=None, description="Target labels (covisibility).")
-    model: Optional[str] = Field(default=None, description="Override the VLM model (default: from env).")
+    scene: Optional[Any] = None
+    scene_file: Optional[str] = None
+    strategy: str = "motion"
+    n: int = 8
+    total_frames: Optional[int] = None
+    label: Optional[str] = None
+    labels: Optional[list[str]] = None
+    model: Optional[str] = None
 
 
-TOOL: dict[str, Any] = {
-    "name": "select_keyframes",
-    "description": (
-        "Pick the most informative frame indices: 'uniform' (evenly spaced), 'motion' (most diverse "
-        "camera viewpoints), 'coverage' (frames where a target is best visible), 'covisibility' (frames "
-        "where multiple objects are co-visible). Needs a `scene` except for 'uniform'."
-    ),
-    "args": SelectKeyframesArgs,
-}
+TOOL: dict[str, Any] = {"name": "select_keyframes", "args": SelectKeyframesArgs}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pick the most informative frame indices: 'uniform' (evenly spaced), 'motion' (most diverse camera
+    viewpoints), 'coverage' (frames where a target is best visible), 'covisibility' (frames where
+    multiple objects are co-visible). Needs a `scene` except for 'uniform'.
+
+    Args:
+        scene: The `scene` object from build_scene (needed for motion/coverage/covisibility).
+        scene_file: Path to a JSON file holding the scene.
+        strategy: uniform | motion | coverage | covisibility
+        n: How many frames to select.
+        total_frames: Total frame count (required for 'uniform').
+        label: Target label (coverage).
+        labels: Target labels (covisibility).
+        model: Override the VLM model (default: from env).
+    """
     try:
         from qwen_mm_plugins_video_spatio.experts.keyframe_selector import KeyframeSelector
         from qwen_mm_plugins_video_spatio.tools._vlm import VLMShim

@@ -26,8 +26,7 @@ def load_scene(arguments: dict[str, Any]) -> dict:
     if not isinstance(scene, dict):
         raise ValueError("provide `scene` (the JSON object from build_scene) or `scene_file`")
     if scene.get("type") != SCENE_SCHEMA:
-        # tolerate missing/version-mismatched tag but keep going
-        pass
+        raise ValueError(f"expected scene type {SCENE_SCHEMA!r}")
     return scene
 
 

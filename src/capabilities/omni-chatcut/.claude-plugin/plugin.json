@@ -1,0 +1,20 @@
+{
+  "name": "qwen-mm-plugins-omni-chatcut",
+  "version": "1.0.2",
+  "description": "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation.",
+  "skills": [
+    "./skill/music-to-mv",
+    "./skill/movie-commentary",
+    "./skill/video-translation"
+  ],
+  "mcpServers": {
+    "qwen-mm-plugins-omni-chatcut": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "qwen-mm-plugins[omni-chatcut] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-omni-chatcut-v1.0.2",
+        "qwen-mm-plugins-omni-chatcut"
+      ]
+    }
+  }
+}

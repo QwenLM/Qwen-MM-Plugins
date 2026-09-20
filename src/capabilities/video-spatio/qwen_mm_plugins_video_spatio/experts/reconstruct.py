@@ -828,7 +828,7 @@ window.addEventListener('resize', function(){
         ex = depth * math.sin(bearing)  # right
         ez = depth * math.cos(bearing)  # forward
         if not cam:
-            return (ex, ez)
+            return (ex, -ez)
         yaw = math.radians(float(cam.get("yaw_deg", 0.0)))
         px, pz = cam.get("pos_bev", (0.0, 0.0))
         wx = float(px) + ez * math.sin(yaw) + ex * math.cos(yaw)
@@ -892,7 +892,7 @@ window.addEventListener('resize', function(){
         monocular ``depth_m`` in that case.
 
         Returns ``{"label", "world_xz":[x,z], "depth_from_a", "depth_from_b",
-        "baseline_m", "triangulation_angle_deg", "reliable"}`` (``reliable`` is angle>=8°).
+        "baseline_m", "triangulation_angle_deg", "reliable"}`` (``reliable`` also requires a baseline and a point in front of both cameras).
         """
         cam_a = recon.get_camera(frame_a) or {}
         cam_b = recon.get_camera(frame_b) or {}
@@ -944,7 +944,7 @@ window.addEventListener('resize', function(){
             "depth_from_b": round(float(s), 4),
             "baseline_m": round(float(baseline), 4),
             "triangulation_angle_deg": round(float(angle), 2),
-            "reliable": bool(angle >= 8.0),
+            "reliable": bool(baseline > 1e-6 and 8.0 <= angle <= 172.0 and t > 0.0 and s > 0.0),
         }
 
     # ------------------------------------------------------------------
@@ -997,8 +997,8 @@ window.addEventListener('resize', function(){
         wb = self._world_xz(inst_b, cam_b)
         dx, dz = wb[0] - wa[0], wb[1] - wa[1]
         dist = math.hypot(dx, dz)
-        # world move vector: +x=right, +z=forward → bearing 0=forward, +right.
-        direction = self._dir8(math.degrees(math.atan2(dx, dz)))
+        # World forward is -Z; +X is right.
+        direction = self._dir8(math.degrees(math.atan2(dx, -dz)))
         ca = [float(v) for v in (cam_a.get("pos_bev") or (0.0, 0.0))]
         cb = [float(v) for v in (cam_b.get("pos_bev") or (0.0, 0.0))]
         cam_moved = math.hypot(cb[0] - ca[0], cb[1] - ca[1])
