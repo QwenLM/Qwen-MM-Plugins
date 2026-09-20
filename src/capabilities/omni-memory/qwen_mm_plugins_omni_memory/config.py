@@ -18,7 +18,7 @@ from shared.env import get_env
 
 # Mirrors shared.env.DEFAULT_DASHSCOPE_BASE_URL, which the build's copy of this file cannot import.
 DEFAULT_DASHSCOPE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_OMNI_MODEL = "qwen3.5-omni-plus"
+DEFAULT_OMNI_MODEL = "qwen3.8-omni-flash"
 DEFAULT_EMBED_MODEL = "text-embedding-v4"
 
 

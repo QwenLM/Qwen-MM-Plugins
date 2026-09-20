@@ -90,16 +90,16 @@ Python packages (`numpy<3`, `openai`) are installed automatically. Run
 
 ```bash
 # one video → memory next to it, at <video>.memory/
-python3 script/build_memory/build_memory.py /path/to/video.mp4 --model qwen3.5-omni-plus
+python3 script/build_memory/build_memory.py /path/to/video.mp4 --model qwen3.8-omni-flash
 
 # many videos → independent per-video memories, in parallel
-python3 script/build_memory/build_memory.py --video-dir /path/to/dir -j 4 --model qwen3.5-omni-plus
+python3 script/build_memory/build_memory.py --video-dir /path/to/dir -j 4 --model qwen3.8-omni-flash
 
 python3 script/build_memory/build_memory.py /path/to/video.mp4 --mode rebuild  # discard and start over
 ```
 
 `--model` is the omni model all three build stages use — per-clip extraction, semantic induction and
-name alignment. It defaults to `qwen3.5-omni-plus` (or `$QWEN_MM_API_OMNI_MODEL` if set), so it can
+name alignment. It defaults to `qwen3.8-omni-flash` (or `$QWEN_MM_API_OMNI_MODEL` if set), so it can
 be omitted; name it explicitly when you want the record to say which model produced the memory. The
 endpoint comes from `DASHSCOPE_BASE_URL`, or DashScope's default host when it is unset.
 
@@ -239,7 +239,7 @@ replay_and_answer is not on this flow — see Usage Rules
 
 **replay_and_answer** — Re-watch clips **with their audio** and have the omni model report what it sees.
 - Params: `question`, `idxs`, `evidence` (optional text context), `model` (optional omni model;
-  defaults to `qwen3.5-omni-plus`, and need not match the model the memory was built with)
+  defaults to `qwen3.8-omni-flash`, and need not match the model the memory was built with)
 - Returns: `answer`, `watched_idxs`, `model`, `sent_mb`; `dropped_idxs` / `missing_idxs` when applicable
 - It answers instead of returning evidence, because what it reads is in the video itself
 - Watches at most 3 clips per call (~3.5 MB each, inline) — every other clip stays invisible to it.

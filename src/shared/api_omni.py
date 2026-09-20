@@ -1,6 +1,6 @@
 """Qwen-Omni client (shared): streaming compatible-mode chat + robust JSON + A/V content parts.
 
-The Omni model (default ``qwen3.5-omni-plus``) reads video frames AND the embedded audio track in a
+The Omni model (default ``qwen3.8-omni-flash``) reads video frames AND the embedded audio track in a
 single call, and — unlike the plain VL path in ``api_openai`` — it **must** be called with
 ``stream=True`` + ``modalities=["text"]`` (+ ``stream_options.include_usage``). This module is the
 one place that speaks that protocol, so every Omni tool (the api ``omni/`` subpackage) shares it.
@@ -35,7 +35,7 @@ from shared.env import get_env
 
 log = logging.getLogger(__name__)
 
-DEFAULT_OMNI_MODEL = "qwen3.5-omni-plus"
+DEFAULT_OMNI_MODEL = "qwen3.8-omni-flash"
 DEFAULT_MAX_RETRIES = 4
 DEFAULT_RETRY_BACKOFF = 1.0
 DEFAULT_OMNI_TIMEOUT = 1800  # streaming A/V completions can run long; overridable via QWEN_MM_CHAT_TIMEOUT
@@ -74,6 +74,7 @@ OMNI_MAX_B64_FRAMES = 250
 # Qwen3-Omni-Flash ≤ 20 min, Qwen-Omni-Turbo ≤ 3 min. Prefix-matched; unknown model → no cap. Only
 # relevant where the whole file is sampled server-side (a signed URL).
 _OMNI_VIDEO_MAX_SEC: dict[str, int] = {
+    "qwen3.8-omni": 3600,
     "qwen3.5-omni": 3600,
     "qwen3-omni-flash": 20 * 60,
     "qwen-omni-turbo": 3 * 60,

@@ -24,9 +24,16 @@ from typing import Any
 
 from . import config, mem_core, omni_core
 
-# Uncatalogued MEM_* knobs the environment set; logged by on_start because they change retrieval or
-# determinism without surfacing anywhere else.
-ENV_TUNING = {k: v for k, v in sorted(os.environ.items()) if k.startswith("MEM_")}
+
+def _environment_tuning_names(environment) -> tuple[str, ...]:
+    """Return configured MEM_* names without retaining values that may contain credentials."""
+    return tuple(sorted(k for k in environment if k.startswith("MEM_")))
+
+
+# Uncatalogued MEM_* knobs the environment set; on_start reports their names because they change
+# retrieval or determinism without surfacing anywhere else. Values are deliberately never retained
+# for logging: historical or third-party variables under this broad prefix may contain credentials.
+ENV_TUNING = _environment_tuning_names(os.environ)
 
 MEMORY_SUFFIX = ".memory"
 DEFAULT_OMNI_MODEL = omni_core.MODEL  # what an unspecified `model` resolves to, for tool descriptions

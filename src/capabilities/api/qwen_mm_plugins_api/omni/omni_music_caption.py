@@ -60,7 +60,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
 
     Args:
         file_path: Absolute path to a local music audio/video file, or an http(s)/OSS URL.
-        model: Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.5-omni-plus.
+        model: Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.8-omni-flash.
         api_key: API key override; otherwise selected by endpoint.
         base_url: OpenAI-compatible base URL override.
         dry_run: Return the request that would be sent, without calling the API.

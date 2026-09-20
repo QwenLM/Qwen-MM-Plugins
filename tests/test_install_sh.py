@@ -53,7 +53,7 @@ def test_config_spec_lists_api_model_defaults():
     rows = result.stdout.splitlines()
     assert any(row.startswith("MINIMAX_API_KEY|1|services||") for row in rows)
     assert any(row.startswith("QWEN_MM_API_VL_MODEL|0|services|qwen3.7-plus|") for row in rows)
-    assert any(row.startswith("QWEN_MM_API_OMNI_MODEL|0|services|qwen3.5-omni-plus|") for row in rows)
+    assert any(row.startswith("QWEN_MM_API_OMNI_MODEL|0|services|qwen3.8-omni-flash|") for row in rows)
     assert any(row.startswith("QWEN_MM_NATIVE_MODE|0|runtime|1|") for row in rows)
 
 

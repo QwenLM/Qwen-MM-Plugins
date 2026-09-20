@@ -687,7 +687,7 @@ def test_over_inline_limit_audio_uses_dashscope_temporary_oss(monkeypatch, tmp_p
         200704,
         [],
         3600,
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         DEFAULT_DASHSCOPE_BASE_URL,
         "key",
     )
@@ -717,7 +717,7 @@ def test_over_inline_limit_video_uses_dashscope_temporary_oss(monkeypatch, tmp_p
         200704,
         [],
         3600,
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         DEFAULT_DASHSCOPE_BASE_URL,
         "key",
     )
@@ -764,7 +764,7 @@ def test_over_inline_limit_video_in_asr_mode_uploads_extracted_audio(monkeypatch
         200704,
         cleanup,
         3600,
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         DEFAULT_DASHSCOPE_BASE_URL,
         "key",
     )
@@ -798,7 +798,7 @@ def test_temporary_oss_failure_keeps_existing_audio_fallback(monkeypatch, tmp_pa
         200704,
         [],
         3600,
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         DEFAULT_DASHSCOPE_BASE_URL,
         "key",
     )

@@ -175,7 +175,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, str]]:
     Args:
         video_path: Absolute path to the source video. No memory needs to exist.
         question: What to determine from watching the video.
-        model: Omni model for this call. Leave unset to use the configured default (qwen3.5-omni-
-            plus).
+        model: Omni model for this call. Leave unset to use the configured default
+            (qwen3.8-omni-flash).
     """
     return [json_text(watch_and_answer(**arguments))]

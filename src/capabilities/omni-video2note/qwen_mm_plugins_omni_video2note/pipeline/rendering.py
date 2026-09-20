@@ -16,8 +16,8 @@ from uuid import uuid4
 
 from shared.syscmd import find_tool
 
+from .artifacts import atomic_write_json
 from .schemas import DocumentDraft, SelectionResult, StepSelection
-from .state import atomic_write_json
 
 
 @dataclass(frozen=True)

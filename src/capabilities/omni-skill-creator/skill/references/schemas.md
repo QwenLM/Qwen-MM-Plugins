@@ -248,7 +248,7 @@ Output from `aggregate_benchmark.py`. Located at
   "metadata": {
     "skill_name": "pdf",
     "skill_path": "/path/to/pdf",
-    "executor_model": "qwen3.5-omni-plus",
+    "executor_model": "qwen3.8-omni-flash",
     "analyzer_model": "most-capable-model",
     "timestamp": "2026-01-15T10:30:00Z",
     "evals_run": [1, 2, 3],

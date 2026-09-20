@@ -31,7 +31,6 @@ def test_minimal_real_omni_understanding_path(tmp_path: Path):
         video_path=video,
         output_path=tmp_path / "unused.pdf",
         language="en",
-        max_iterations=1,
     )
     chunk = media.MediaChunk(
         path=video,

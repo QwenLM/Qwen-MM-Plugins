@@ -38,7 +38,7 @@ def server(monkeypatch):
 
 def invoke(**kwargs):
     return av._openai_call(
-        "qwen3.5-omni-plus",
+        "qwen3.8-omni-flash",
         "https://media.example/video.mp4",
         "same prompt",
         base="https://dashscope.example/v1",

@@ -17,7 +17,7 @@ import threading
 
 from mcp_framework import build_registry
 
-__version__ = "1.1.1"
+__version__ = "1.1.3"
 
 log = logging.getLogger("qwen-mm-plugins-omni-memory")
 
@@ -53,6 +53,6 @@ def on_start() -> None:
     log.info("  MEM_LOCAL_DIR=%s", service.memory_root() or "<input video directory>")
     if service.ENV_TUNING:
         # Uncatalogued MEM_* knobs change retrieval or determinism without surfacing anywhere else.
-        log.info("  from the environment: %s", " ".join(f"{k}={v}" for k, v in service.ENV_TUNING.items()))
+        log.info("  environment overrides (values redacted): %s", " ".join(service.ENV_TUNING))
     # Warm the store cache in the background when a fixed memory root is configured.
     threading.Thread(target=service.preload, daemon=True).start()

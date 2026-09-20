@@ -393,7 +393,7 @@ def test_vl_video_max_sec_resolves():
 def test_omni_video_max_sec_resolves():
     from shared import api_omni
 
-    assert api_omni.omni_video_max_sec("qwen3.5-omni-plus") == 3600
+    assert api_omni.omni_video_max_sec("qwen3.8-omni-flash") == 3600
     assert api_omni.omni_video_max_sec("qwen-omni-turbo") == 180
     assert api_omni.omni_video_max_sec("mystery") is None
 
@@ -435,7 +435,7 @@ def test_omni_over_limit_degrades_to_frames_and_audio(monkeypatch):
     monkeypatch.setattr(video, "video_duration_exceeds", lambda p, cap: True)
     for configured in (True, False):
         monkeypatch.setattr(oss, "is_upload_configured", lambda c=configured: c)
-        parts = _common._local_video_parts("/x/clip.mp4", 1.0, 200704, [], 3600, "qwen3.5-omni-plus")
+        parts = _common._local_video_parts("/x/clip.mp4", 1.0, 200704, [], 3600, "qwen3.8-omni-flash")
         assert parts == [{"type": "video", "video": ["f0", "f1"]}]
 
 

@@ -13,7 +13,7 @@ The tool surface does not grow when new hardware appears. A new device shows up 
 because someone started an adapter for it.
 
 Check the `qwen-mm-plugins-mhs` tools in your tool list for full schemas.
-For setup and a mock-device walkthrough, see [Quickstart](references/quickstart.md).
+For worked examples, see the [MHS cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/mhs/cookbook/).
 
 ## The loop
 

@@ -26,6 +26,7 @@ from shared.api_omni import (
     omni_video_max_sec,
     omni_video_part,
     resolve_omni_endpoint,
+    resolve_omni_model,
 )
 from shared.env import get_env
 
@@ -33,7 +34,7 @@ from ._media_utils import ffmpeg_path, ffprobe_path
 
 
 def _default_model() -> str:
-    return get_env("QWEN_MM_API_OMNI_MODEL") or "qwen3.5-omni-plus"
+    return resolve_omni_model()
 
 
 def _default_openai_base() -> str:
