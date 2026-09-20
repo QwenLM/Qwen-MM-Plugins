@@ -1,5 +1,5 @@
 {
-  "distribution_version": "1.1.8",
+  "distribution_version": "1.1.9",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
   "plugins": {
     "api": "1.1.2",
@@ -14,6 +14,7 @@
     "omni-video2note": "1.0.3",
     "search": "1.1.0",
     "video-edit": "1.1.0",
-    "video-memory": "1.1.0"
+    "video-memory": "1.1.0",
+    "video-spatio": "1.0.0"
   }
 }

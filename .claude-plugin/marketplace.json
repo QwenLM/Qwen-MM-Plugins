@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Qwen multimodal understanding plugins — Agent Skills + MCP servers",
-    "version": "1.1.8"
+    "version": "1.1.9"
   },
   "plugins": [
     {
@@ -88,6 +88,16 @@
         "ref": "qwen-mm-plugins-omni-chatcut-v1.0.2"
       },
       "description": "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation."
+    },
+    {
+      "name": "qwen-mm-plugins-video-spatio",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
+        "path": "src/capabilities/video-spatio",
+        "ref": "qwen-mm-plugins-video-spatio-v1.0.0"
+      },
+      "description": "Model-free 3D spatial reasoning (skill) + stateless geometry/BEV MCP tools."
     },
     {
       "name": "qwen-mm-plugins-edu-agent",

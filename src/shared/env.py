@@ -203,7 +203,7 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         False,
         "Media APIs & endpoints",
         "qwen3.7-plus",
-        "default VL model for vision_chat, OCR, grounding, and text-only image captions",
+        "default VL model for vision_chat, OCR, grounding, text-only image captions, and video-spatio VLM tools",
     ),
     (
         "QWEN_MM_API_OMNI_MODEL",

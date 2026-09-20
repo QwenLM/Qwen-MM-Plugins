@@ -64,6 +64,7 @@ viz = [
     "trimesh", "pyrender", "cascadio",        # 3D (.obj/.stl/.glb)
     "playwright",                             # HTML screenshot
 ]
+video-spatio = ["numpy<3", "scipy", "matplotlib", "opencv-python-headless"]
 video-memory = ["numpy<3", "requests"]        # long-video graph-memory server
 omni-memory = ["numpy<3"]                     # long-video audio-visual memory server (openai client is a base dep)
 omni-video2note = ["reportlab", "pydantic>=2.11", "pypdfium2"]  # local tutorial video to audited illustrated PDF
@@ -81,9 +82,10 @@ mhs = ["msgpack>=1.1,<2"]                      # Model Hardware Standard host (H
 # capabilities. `all` layers every server on top.
 core = ["qwen-mm-plugins[viz]"]
 memory = ["qwen-mm-plugins[core,video-memory,omni-memory]"]
-all = ["qwen-mm-plugins[core,api,search,video-memory,omni-memory,omni-video2note,video-edit,omni-chatcut,blender,freecad,omni-skill-creator,mhs]"]
+all = ["qwen-mm-plugins[core,api,search,video-memory,omni-memory,omni-video2note,video-edit,omni-chatcut,blender,freecad,omni-skill-creator,mhs,video-spatio]"]
 
 [project.scripts]
+qwen-mm-plugins-video-spatio = "qwen_mm_plugins_video_spatio.__main__:main"
 qwen-mm-plugins-core = "qwen_mm_plugins_core.__main__:main"
 qwen-mm-plugins-api = "qwen_mm_plugins_api.__main__:main"
 qwen-mm-plugins-search = "qwen_mm_plugins_search.__main__:main"
@@ -129,10 +131,11 @@ qwen_mm_plugins_blender = "src/capabilities/blender/qwen_mm_plugins_blender"
 qwen_mm_plugins_freecad = "src/capabilities/freecad/qwen_mm_plugins_freecad"
 qwen_mm_plugins_omni_skill_creator = "src/capabilities/omni-skill-creator/qwen_mm_plugins_omni_skill_creator"
 qwen_mm_plugins_mhs = "src/capabilities/mhs/qwen_mm_plugins_mhs"
+qwen_mm_plugins_video_spatio = "src/capabilities/video-spatio/qwen_mm_plugins_video_spatio"
 shared = "src/shared"
 
 [tool.setuptools.packages.find]
-where = ["src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/omni-video2note", "src/capabilities/video-edit", "src/capabilities/omni-chatcut", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src/capabilities/omni-skill-creator", "src/capabilities/mhs", "src"]
+where = ["src/capabilities/video-spatio", "src/capabilities/core", "src/capabilities/api", "src/capabilities/search", "src/capabilities/video-memory", "src/capabilities/omni-memory", "src/capabilities/omni-video2note", "src/capabilities/video-edit", "src/capabilities/omni-chatcut", "src/capabilities/example", "src/capabilities/blender", "src/capabilities/freecad", "src/capabilities/omni-skill-creator", "src/capabilities/mhs", "src"]
 include = ["qwen_mm_plugins*", "shared*"]
 
 # The vendored live-session addons ship as package DATA (not importable subpackages — no __init__ on

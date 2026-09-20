@@ -52,6 +52,9 @@ jobs:
           --with "pydantic>=2"
           --with "pillow<12"
           --with "numpy<3"
+          --with scipy
+          --with matplotlib
+          --with opencv-python-headless
           --with "nibabel>=5,<6"
           --with requests
           --with "msgpack>=1.1,<2"
