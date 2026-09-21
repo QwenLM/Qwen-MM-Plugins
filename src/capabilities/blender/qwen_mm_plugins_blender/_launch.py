@@ -17,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-from shared.env import get_env
+from shared.env import get_env, get_int_env
 
 
 def _vendor_dir() -> Path:
@@ -107,7 +107,7 @@ def launch_app(argv: list[str]) -> int:
     ap.add_argument(
         "--port",
         type=int,
-        default=int(get_env("BLENDER_PORT", "9876")),
+        default=get_int_env("BLENDER_PORT", 9876),
         help="TCP port for the addon server (default: $BLENDER_PORT or 9876)",
     )
     ap.add_argument(

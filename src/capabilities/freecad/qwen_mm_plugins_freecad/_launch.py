@@ -21,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from shared.env import get_env
+from shared.env import get_env, get_int_env
 
 
 def _vendor_addon() -> Path:
@@ -208,7 +208,7 @@ def launch_app(argv: list[str]) -> int:
     ap.add_argument(
         "--port",
         type=int,
-        default=int(get_env("FREECAD_RPC_PORT", "9875")),
+        default=get_int_env("FREECAD_RPC_PORT", 9875),
         help="XML-RPC port for the addon server (default: $FREECAD_RPC_PORT or 9875)",
     )
     ap.add_argument(

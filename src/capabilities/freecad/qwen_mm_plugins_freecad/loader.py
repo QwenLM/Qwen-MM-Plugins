@@ -11,7 +11,7 @@ import logging
 import threading
 import xmlrpc.client
 
-from shared.env import get_env
+from shared.env import get_env, get_int_env
 
 log = logging.getLogger("qwen-mm-plugins-freecad")
 
@@ -131,7 +131,7 @@ def get_connection() -> FreeCADConnection:
         if _connection is not None:
             return _connection
         host = get_env("FREECAD_RPC_HOST", "localhost")
-        port = int(get_env("FREECAD_RPC_PORT", "9875"))
+        port = get_int_env("FREECAD_RPC_PORT", 9875)
         conn = FreeCADConnection(host=host, port=port)
         try:
             ok = conn.ping()
@@ -166,5 +166,5 @@ def probe() -> None:
     from shared.applaunch import startup_probe
 
     host = get_env("FREECAD_RPC_HOST", "localhost")
-    port = int(get_env("FREECAD_RPC_PORT", "9875"))
+    port = get_int_env("FREECAD_RPC_PORT", 9875)
     startup_probe(host, port, app="FreeCAD", entry="qwen-mm-plugins-freecad")
