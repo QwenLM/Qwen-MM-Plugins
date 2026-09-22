@@ -4,18 +4,44 @@
 
 Native multimodal plugins for Qwen models. Make any agent harness multimodal-native.
 
-[Explore the Hub](https://qwenlm.github.io/qwen-mm-plugins-hub/) ·
-[Installation](https://qwenlm.github.io/qwen-mm-plugins-hub/docs/) ·
-[Add a plugin](https://qwenlm.github.io/qwen-mm-plugins-hub/docs/how-to-add-new-capability/)
+<p align="center">
+  <a href="https://qwenlm.github.io/qwen-mm-plugins-hub/"><img src="docs/assets/hub-badge.svg" alt="Explore the Qwen-MM-Plugins Hub"></a>
+  <a href="https://github.com/QwenLM/Qwen-MM-Plugins/issues/72"><img src="docs/assets/wechat-badge.svg" alt="Join the WeChat group"></a>
+  <a href="https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg"><img src="docs/assets/slack-badge.svg" alt="Join the Slack community"></a>
+</p>
 
-Browse plugins by capability, preview their Skills and tool definitions, and try the cookbook
-examples with embedded videos and interactive cases. The Hub also hosts the English documentation.
+## 📰 News
+
+- **2026-09-22**: 💬 Join our [**WeChat group**](https://github.com/QwenLM/Qwen-MM-Plugins/issues/72) or [**Slack community**](https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg) to discuss workflows, share projects, and suggest new features.
+- **2026-09-20**: 🚀 Added [**MHS**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/mhs/cookbook/) for operating physical hardware and [**video-spatio**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/video-spatio/cookbook/) for 3D spatial reasoning over images and video.
+- **2026-09-16**: 🛠️ Added [**omni-skill-creator**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-skill-creator/cookbook/) to turn demonstration videos into reusable Agent Skills.
+
+<details>
+<summary><b>Earlier updates</b></summary>
+
+- **2026-09-10**: 🎬 Added [**omni-chatcut**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-chatcut/cookbook/) for music videos, movie commentary, and video translation, plus [**omni-video2note**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-video2note/cookbook/) for turning tutorial videos into illustrated PDFs.
+- **2026-09-10**: 🌐 Added the [**Plugin Hub**](https://qwenlm.github.io/qwen-mm-plugins-hub/) to browse plugins, documentation, and cookbook examples with videos and interactive demos.
+- **2026-09-03**: 🧠 Added [**omni-memory**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-memory/cookbook/) to build and query audio-visual memory across long videos, including speakers, dialogue, sounds, and events.
+- **2026-08-11**: 🧩 Introduced standalone [**api**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/api/cookbook/) and [**search**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/search/cookbook/) plugins, separating Qwen VL/Omni model services and web search from local multimodal tools.
+- **2026-08-03**: 🎉 Initial release! [**core**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/core/cookbook/) brings native image, video, document, and 3D file reading; [**video-memory**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/video-memory/cookbook/) enables long-video QA; [**video-edit**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/video-edit/cookbook/) handles media generation and editing; [**Blender**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/blender/cookbook/) and [**FreeCAD**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/freecad/cookbook/) support 3D modeling and parametric CAD; and [**edu-agent**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/edu-agent/cookbook/) creates educational videos and interactive explainers.
+
+</details>
 
 ## Architecture
 
 ![Qwen-MM-Plugins architecture](docs/assets/architecture.svg)
 
 ## Install
+
+### For agents
+
+Ask your agent (replace `core` and `api` with the plugins you need):
+
+```text
+Install the core and api plugins following https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/docs/en/installation.md
+```
+
+### For users
 
 The guided installer supports Claude Code, CodeBuddy, Codex, Qoder, OpenClaw, Qwen Code, and Gemini
 CLI. Shared configuration lives in `~/.qwen-mm-plugins/config`.
@@ -115,8 +141,19 @@ See [Installation](docs/en/installation.md#dependencies) for prerequisites and t
 - [Contributing](CONTRIBUTING.md) · [Local development](docs/en/local_development.md)
 - [Add a new plugin](docs/en/how_to_add_new_capability.md) · [Hub authoring](docs/en/hub.md) · [Testing](docs/en/testing.md)
 
+## Citation
+
+If you find this project useful in your research or work, please consider citing it:
+
+```bibtex
+@misc{qwen_mm_plugins2026,
+  title  = {Qwen-MM-Plugins: Make any agent harness multimodal-native},
+  author = {{Qwen Team}},
+  year   = {2026},
+  url    = {https://github.com/QwenLM/Qwen-MM-Plugins}
+}
+```
+
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE). Third-party attribution for the Blender and FreeCAD integrations
-is recorded in their respective [Blender](src/capabilities/blender/NOTICE.md) and
-[FreeCAD](src/capabilities/freecad/NOTICE.md) notices.
+Apache-2.0 — see [LICENSE](LICENSE).

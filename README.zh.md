@@ -4,18 +4,47 @@
 
 面向 Qwen 模型的原生多模态理解插件，让任何 Agent Harness 都具备原生多模态能力。
 
-[浏览 Hub](https://qwenlm.github.io/qwen-mm-plugins-hub/) ·
-[安装指南（英文）](https://qwenlm.github.io/qwen-mm-plugins-hub/docs/) ·
-[添加插件（英文）](https://qwenlm.github.io/qwen-mm-plugins-hub/docs/how-to-add-new-capability/)
-
 按能力查找插件，预览 Skill 和工具定义，并在 Cookbook 中直接查看示例视频和交互案例。
 Hub 同时收录英文文档；中文文档继续在本仓库维护。
+
+<p align="center">
+  <a href="https://qwenlm.github.io/qwen-mm-plugins-hub/"><img src="docs/assets/hub-badge.svg" alt="浏览 Qwen-MM-Plugins Hub"></a>
+  <a href="https://github.com/QwenLM/Qwen-MM-Plugins/issues/72"><img src="docs/assets/wechat-badge.svg" alt="微信交流群"></a>
+  <a href="https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg"><img src="docs/assets/slack-badge.svg" alt="加入 Slack 社区"></a>
+</p>
+
+## 📰 最新动态
+
+- **2026-09-22**： 💬 新增[**微信交流群**](https://github.com/QwenLM/Qwen-MM-Plugins/issues/72)和 [**Slack 社区**](https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg)入口，欢迎交流使用体验、分享作品和讨论新功能。
+- **2026-09-20**： 🚀 新增 [**MHS**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/mhs/cookbook/) 和 [**video-spatio**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/video-spatio/cookbook/)，分别支持操作真实硬件，以及图片和视频的 3D 空间推理。
+- **2026-09-16**： 🛠️ 新增 [**omni-skill-creator**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-skill-creator/cookbook/)，将演示视频转化为可复用的 Agent Skill。
+
+<details>
+<summary><b>历史动态</b></summary>
+
+- **2026-09-10**： 🎬 新增 [**omni-chatcut**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-chatcut/cookbook/)，支持音乐生成 MV、电影解说和视频翻译；新增 [**omni-video2note**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-video2note/cookbook/)，将教程视频转化为图文 PDF。
+- **2026-09-10**： 🌐 新增 [**Plugin Hub**](https://qwenlm.github.io/qwen-mm-plugins-hub/)，集中浏览插件、文档，以及带视频和交互演示的 Cookbook 案例。
+- **2026-09-03**： 🧠 新增 [**omni-memory**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-memory/cookbook/)，为长视频构建和查询音视频记忆，涵盖说话人、对话、声音与事件。
+- **2026-08-11**： 🧩 推出独立的 [**api**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/api/cookbook/) 和 [**search**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/search/cookbook/) 插件，将 Qwen VL/Omni 模型服务与网页搜索从本地多模态工具中拆分出来。
+- **2026-08-03**： 🎉 首次发布！[**core**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/core/cookbook/) 支持原生读取图片、视频、文档和 3D 文件；[**video-memory**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/video-memory/cookbook/) 支持长视频问答；[**video-edit**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/video-edit/cookbook/) 支持媒体生成与剪辑；[**Blender**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/blender/cookbook/) 和 [**FreeCAD**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/freecad/cookbook/) 支持 3D 建模与参数化 CAD；[**edu-agent**](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/edu-agent/cookbook/) 支持教学视频与交互讲解。
+
+</details>
 
 ## 架构
 
 ![Qwen-MM-Plugins 架构](docs/assets/architecture.svg)
 
 ## 安装
+
+### 让 Agent 安装
+
+直接告诉 Agent（将 `core` 和 `api` 替换为你需要的插件）：
+
+```text
+请参考 https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/docs/zh/installation.md 安装 core 和 api 插件。
+```
+
+### 自己安装
 
 引导式安装器支持 Claude Code、CodeBuddy、Codex、Qoder、OpenClaw、Qwen Code 和 Gemini CLI。
 共享配置位于 `~/.qwen-mm-plugins/config`。
@@ -107,6 +136,24 @@ NIfTI 文件仅在本地以只读方式打开，不会上传；该可视化能�
 - [配置参考（英文）](docs/en/configuration.md)
 - [贡献指南](CONTRIBUTING.md) · [本地开发](docs/zh/local_development.md)
 - [添加新插件](docs/zh/how_to_add_new_capability.md) · [Hub 维护](docs/zh/hub.md) · [测试](docs/zh/testing.md)
+
+## 社区
+
+欢迎在 [Slack](https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg) 或[微信交流群](https://github.com/QwenLM/Qwen-MM-Plugins/issues/72)中交流使用经验、分享作品、讨论新功能。
+Bug 报告和功能请求请提交到 [GitHub Issues](https://github.com/QwenLM/Qwen-MM-Plugins/issues)，方便跟进。
+
+## 引用
+
+如果本项目对你的研究或工作有帮助，欢迎引用：
+
+```bibtex
+@misc{qwen_mm_plugins2026,
+  title  = {Qwen-MM-Plugins: Native Multimodal Plugins for Qwen Models},
+  author = {{Qwen Team}},
+  year   = {2026},
+  url    = {https://github.com/QwenLM/Qwen-MM-Plugins}
+}
+```
 
 ## 许可证
 
