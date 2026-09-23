@@ -61,28 +61,43 @@ QMP_REF=qwen-mm-plugins-search-v1.0.1 bash install.sh install
 
 ## Non-interactive installation and configuration
 
-For scripts or CI, pass both `--plugin` and `--harness` to `install` or `local`:
+Every action supports both a guided flow and explicit non-interactive arguments:
 
 ```bash
 bash install.sh local --plugin core --harness codex
 bash install.sh install --plugin core,search --harness claude
 bash install.sh local --plugin qwen-mm-plugins-core --plugin search --harness qwen-code --dry-run
-bash install.sh config-set DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" QWEN_MM_NATIVE_MODE=1
-bash install.sh config-set 'QWEN_MM_CACHE=/path/with spaces/cache'
-bash install.sh config-set QWEN_MM_CACHE=  # clear the override and restore the default
+bash install.sh update --plugin all --harness codex
+bash install.sh uninstall --plugin search --harness codex
+bash install.sh verify --plugin core,search
+bash install.sh verify --harness codex
+bash install.sh configure DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" QWEN_MM_NATIVE_MODE=1
+bash install.sh configure 'QWEN_MM_CACHE=/path/with spaces/cache'
+bash install.sh configure QWEN_MM_CACHE=  # clear the override and restore the default
 ```
 
 `--plugin` accepts short capability names, full plugin IDs, comma-separated names, repeated options,
 or `all`. `--harness` selects one of `claude`, `codebuddy`, `codex`, `qoder`, `openclaw`, `qwen-code`,
 or `gemini`. Run `bash install.sh --help` for the current plugin catalog.
 
-Explicit selections execute immediately without installer prompts or a terminal. Install the
-harness CLI and `uv`/`uvx` first (`uvx` is unnecessary for Skill-only plugins). Missing dependencies,
-invalid arguments, failed native commands, and failed MCP startup checks return a nonzero exit
-status. `--dry-run` prints the install commands without installing or rewriting manifests; it can
-query the harness's current marketplace. The actions without options still open the guided flow.
+`install`, `local`, `update`, and `uninstall` require both selectors for non-interactive use.
+For `update` and `uninstall`, `all` targets only plugins installed in the selected harness; an
+explicitly named plugin that is not installed causes an error before changes begin. Non-interactive
+uninstall preserves shared configuration and caches, and removes an empty Claude/CodeBuddy
+marketplace only after every selected plugin has been removed successfully.
 
-`config-set` accepts one or more `KEY=VALUE` arguments from the
+`verify --plugin <names>` checks the requested MCP packages without needing a harness.
+`verify --harness <name>` checks that harness's installed plugins; combine both options to check
+an installed subset. The older `--verify [caps]` form remains supported.
+
+Explicit selections execute immediately without installer prompts or a terminal. Install the
+harness CLI and `uv`/`uvx` first (`uvx` is unnecessary for uninstall, dry-runs, or Skill-only plugins).
+Missing dependencies, invalid arguments, failed native commands, and failed MCP startup checks
+return a nonzero exit status. Add `--dry-run` to install, local, update, uninstall, or verify to
+print commands without executing changes or system checks; inventory/marketplace queries may
+still run. Commands without arguments keep their guided flow.
+
+`configure` without arguments opens the configuration menu. Pass one or more `KEY=VALUE` arguments from the
 [configuration catalog](configuration.md#configure-catalog). It validates the entire batch before
 writing, preserves unrelated settings, and never prints values. Quote arguments containing spaces;
 values may contain `=` but must fit on one line. An empty value removes the setting. The shared
