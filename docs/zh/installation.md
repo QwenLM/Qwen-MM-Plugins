@@ -60,27 +60,41 @@ QMP_REF=qwen-mm-plugins-search-v1.0.1 bash install.sh install
 
 ## 非交互安装与配置
 
-在脚本或 CI 中，为 `install` 或 `local` 同时指定 `--plugin` 和 `--harness`：
+每个操作都支持交互引导，也支持通过显式参数非交互执行：
 
 ```bash
 bash install.sh local --plugin core --harness codex
 bash install.sh install --plugin core,search --harness claude
 bash install.sh local --plugin qwen-mm-plugins-core --plugin search --harness qwen-code --dry-run
-bash install.sh config-set DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" QWEN_MM_NATIVE_MODE=1
-bash install.sh config-set 'QWEN_MM_CACHE=/path/with spaces/cache'
-bash install.sh config-set QWEN_MM_CACHE=  # 清除覆盖值，恢复默认值
+bash install.sh update --plugin all --harness codex
+bash install.sh uninstall --plugin search --harness codex
+bash install.sh verify --plugin core,search
+bash install.sh verify --harness codex
+bash install.sh configure DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" QWEN_MM_NATIVE_MODE=1
+bash install.sh configure 'QWEN_MM_CACHE=/path/with spaces/cache'
+bash install.sh configure QWEN_MM_CACHE=  # 清除覆盖值，恢复默认值
 ```
 
 `--plugin` 支持能力简称、完整插件 ID、逗号分隔、重复传入，或用 `all` 选择全部。
 `--harness` 选择一个目标：`claude`、`codebuddy`、`codex`、`qoder`、`openclaw`、`qwen-code`
 或 `gemini`。运行 `bash install.sh --help` 可查看当前插件列表。
 
-显式指定后会直接执行，无需终端，也不会出现安装器询问。请提前安装 harness CLI 和 `uv`/`uvx`
-（纯 Skill 插件不需要 `uvx`）。缺少依赖、参数错误、原生命令失败或 MCP 启动检查失败时，
-返回非零退出码。`--dry-run` 仅打印安装命令，不执行安装或改写 manifest，但可能查询 harness
-当前的 marketplace。命令不带选项时仍使用原来的交互流程。
+`install`、`local`、`update`、`uninstall` 非交互执行时需要同时指定两个参数。
+对于 `update` 和 `uninstall`，`all` 仅选择目标 harness 中已安装的插件；显式指定未安装的插件
+会在开始修改前报错。非交互卸载会保留共享配置和缓存；仅当所有所选插件成功卸载且没有剩余
+插件时，才移除 Claude/CodeBuddy 的 marketplace。
 
-`config-set` 接受一项或多项 `KEY=VALUE`，字段来自[配置目录](../en/configuration.md#configure-catalog)。
+`verify --plugin <names>` 检查指定 MCP 包，无需 harness；`verify --harness <name>` 检查该
+harness 中已安装的插件，也可以组合两项参数检查其中一部分。旧的 `--verify [caps]` 用法仍保留。
+
+显式指定后会直接执行，无需终端，也不会出现安装器询问。请提前安装 harness CLI 和 `uv`/`uvx`
+（卸载、dry-run 和纯 Skill 插件不需要 `uvx`）。缺少依赖、参数错误、原生命令失败或 MCP 启动
+检查失败时，返回非零退出码。`install`、`local`、`update`、`uninstall`、`verify` 均可添加
+`--dry-run` 预览命令，不执行修改或系统检查，但可能查询已安装插件及 marketplace。
+命令不带参数时仍使用原来的交互流程。
+
+`configure` 不带参数时打开配置菜单；带一项或多项 `KEY=VALUE` 时直接设置，字段来自
+[配置目录](../en/configuration.md#configure-catalog)。
 写入前会校验所有参数，保留其他已有配置，且不输出配置值。包含空格的参数需加引号；值可以
 包含 `=`，但必须为单行。空值表示删除该项。共享配置文件权限保持 `600`，可通过
 `QWEN_MM_CONFIG` 或 `QWEN_MM_CONFIG_DIR` 指定位置；环境变量仍优先于文件中的值。
