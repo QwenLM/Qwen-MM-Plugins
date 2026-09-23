@@ -197,6 +197,37 @@ def test_asr_format_srt_and_text():
     assert asr._format_text(chunks) == "hello\nworld\nagain"
 
 
+# QWEN_MM_FFMPEG_TIMEOUT is documented (shared/env.py) as "ffmpeg/ffprobe timeout seconds".
+# A subprocess.run with no `timeout` ignores it entirely, so one stalled media file hangs
+# transcribe_audio forever — and no probe/extract call below the media helpers can be bounded
+# by config. Stub `asr.subprocess` rather than the real binary so this holds on hosts without ffmpeg.
+@pytest.mark.parametrize(
+    "knob,extract_timeout",
+    [
+        (42, 600),  # below the old hardcoded extract budget: keep 600, the knob only ever widens it
+        (900, 900),  # above it: the knob raises the extract budget too
+    ],
+)
+def test_asr_media_calls_honour_ffmpeg_timeout(monkeypatch, tmp_path, knob, extract_timeout):
+    runs = []
+
+    def fake_run(cmd, **kwargs):
+        runs.append((cmd[0], kwargs.get("timeout", "NO TIMEOUT")))
+        return types.SimpleNamespace(returncode=0, stdout='{"format": {"duration": "12.5"}}', stderr=b"")
+
+    monkeypatch.setattr(asr, "subprocess", types.SimpleNamespace(run=fake_run))
+    monkeypatch.setattr(asr, "find_tool", lambda name: name)
+    # raising=False: if the module stops honouring the knob altogether the assertion below
+    # reports the kwargs it actually passed, rather than the patch failing first.
+    monkeypatch.setattr(asr, "FFMPEG_TIMEOUT", knob, raising=False)
+
+    source = str(tmp_path / "a.wav")
+    assert asr._get_duration(source) == 12.5
+    asr._extract_audio(source, str(tmp_path / "b.wav"))
+
+    assert runs == [("ffprobe", knob), ("ffmpeg", extract_timeout)]
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Tier 2 — handler guards (early returns, no network)
 # ══════════════════════════════════════════════════════════════════════

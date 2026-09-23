@@ -20,7 +20,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel
 
 from shared.content import text_error
-from shared.env import get_env
+from shared.env import FFMPEG_TIMEOUT, get_env
 from shared.paths import path_to_file_uri
 from shared.syscmd import find_tool
 
@@ -50,6 +50,7 @@ def _get_duration(file_path: str) -> float:
         [find_tool("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "json", file_path],
         capture_output=True,
         text=True,
+        timeout=FFMPEG_TIMEOUT,
     )
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {result.stderr.strip()}")
@@ -65,7 +66,9 @@ def _extract_audio(file_path: str, out_path: str, start_time: float = 0, duratio
     if duration is not None:
         cmd += ["-t", str(duration)]
     cmd += ["-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", out_path]
-    proc = subprocess.run(cmd, capture_output=True, timeout=600)
+    # A chunk transcode legitimately outlives the 120s probe default, so the knob raises
+    # this budget without ever shortening the 600s it had before.
+    proc = subprocess.run(cmd, capture_output=True, timeout=max(FFMPEG_TIMEOUT, 600))
     if proc.returncode != 0:
         stderr = proc.stderr.decode().strip() if proc.stderr else "unknown error"
         raise RuntimeError(f"ffmpeg failed: {stderr}")
