@@ -43,6 +43,8 @@ complete install flow:
 
 ```bash
 bash install.sh local
+# Or select directly without prompts:
+bash install.sh local --plugin core --harness codex
 ```
 
 The installer points the selected capabilities at the current checkout and adds `uvx --refresh`.
