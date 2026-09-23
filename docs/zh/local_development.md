@@ -39,6 +39,8 @@ claude mcp add qwen-mm-plugins-core -- \
 
 ```bash
 bash install.sh local
+# 或直接指定，无需交互：
+bash install.sh local --plugin core --harness codex
 ```
 
 安装器会把所选能力指向当前 checkout，并加入 `uvx --refresh`。该操作会在受 Git 管理的 manifest

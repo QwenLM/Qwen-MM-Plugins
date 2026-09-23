@@ -58,6 +58,34 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 QMP_REF=qwen-mm-plugins-search-v1.0.1 bash install.sh install
 ```
 
+## 非交互安装与配置
+
+在脚本或 CI 中，为 `install` 或 `local` 同时指定 `--plugin` 和 `--harness`：
+
+```bash
+bash install.sh local --plugin core --harness codex
+bash install.sh install --plugin core,search --harness claude
+bash install.sh local --plugin qwen-mm-plugins-core --plugin search --harness qwen-code --dry-run
+bash install.sh config-set DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" QWEN_MM_NATIVE_MODE=1
+bash install.sh config-set 'QWEN_MM_CACHE=/path/with spaces/cache'
+bash install.sh config-set QWEN_MM_CACHE=  # 清除覆盖值，恢复默认值
+```
+
+`--plugin` 支持能力简称、完整插件 ID、逗号分隔、重复传入，或用 `all` 选择全部。
+`--harness` 选择一个目标：`claude`、`codebuddy`、`codex`、`qoder`、`openclaw`、`qwen-code`
+或 `gemini`。运行 `bash install.sh --help` 可查看当前插件列表。
+
+显式指定后会直接执行，无需终端，也不会出现安装器询问。请提前安装 harness CLI 和 `uv`/`uvx`
+（纯 Skill 插件不需要 `uvx`）。缺少依赖、参数错误、原生命令失败或 MCP 启动检查失败时，
+返回非零退出码。`--dry-run` 仅打印安装命令，不执行安装或改写 manifest，但可能查询 harness
+当前的 marketplace。命令不带选项时仍使用原来的交互流程。
+
+`config-set` 接受一项或多项 `KEY=VALUE`，字段来自[配置目录](../en/configuration.md#configure-catalog)。
+写入前会校验所有参数，保留其他已有配置，且不输出配置值。包含空格的参数需加引号；值可以
+包含 `=`，但必须为单行。空值表示删除该项。共享配置文件权限保持 `600`，可通过
+`QWEN_MM_CONFIG` 或 `QWEN_MM_CONFIG_DIR` 指定位置；环境变量仍优先于文件中的值。
+非交互安装会跳过配置菜单。
+
 ## 本地 checkout
 
 使用路径稳定的专用 clone：

@@ -8,6 +8,18 @@ Use `QWEN_MM_CONFIG=/path/to/file` to select another file, or `QWEN_MM_CONFIG_DI
 change the directory containing the default `config` file. These bootstrap variables must be set
 in the process environment because they determine which file is read.
 
+For non-interactive configuration, use `config-set` with one or more catalog fields:
+
+```bash
+bash install.sh config-set DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" QWEN_MM_NATIVE_MODE=1
+bash install.sh config-set 'QWEN_MM_CACHE=/path/with spaces/cache'
+bash install.sh config-set QWEN_MM_CACHE=  # remove the override and restore the default
+```
+
+All arguments are validated before writing. Values must be single-line strings; spaces and `=`
+are supported. The command preserves other settings, keeps permissions at `600`, and prints only
+key names, never values. Environment variables continue to take precedence.
+
 ## Model output mode
 
 `QWEN_MM_NATIVE_MODE=1` is the default. MCP tools return native image content blocks so a

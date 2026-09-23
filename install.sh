@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
-# Qwen-MM-Plugins — interactive installer & setup.
+# Qwen-MM-Plugins — guided and non-interactive installer & setup.
 #
 #   curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install.sh | bash   # guided menu
 #   bash install.sh [install|update|local|configure|verify|uninstall]  # single interactive action
+#   bash install.sh local --plugin core,search --harness codex  # non-interactive install
+#   bash install.sh config-set DASHSCOPE_API_KEY=... QWEN_MM_NATIVE_MODE=1
 #   bash install.sh local --restore  # restore release refs after local-checkout testing
 #   bash install.sh --verify [caps]   # non-interactive: check system deps of installed (or listed) caps
 #
@@ -141,14 +143,129 @@ if [ -d "$HOME/.nvm/versions/node" ]; then
 fi
 export PATH
 
-# Non-interactive forms (--verify / --help / local --restore) run headless and need no terminal;
-# every other invocation is an interactive TUI that reads keys from the tty (fd 3).
+usage() {
+  cat <<'EOF'
+Usage: install.sh [install|update|local|configure|verify|uninstall]
+       install.sh {install|local} --plugin <name[,name...]> --harness <name> [--dry-run]
+       install.sh local --restore
+       install.sh config-set KEY=VALUE [KEY=VALUE...]
+       install.sh --verify [caps]
+
+With no arguments, open the interactive menu. Actions without options are interactive.
+  install                  Install each plugin's latest immutable stable tag.
+  update                   Update installed plugins to current stable tags.
+  local                    Install from the checkout containing this script.
+  local --restore          Restore published refs after local testing.
+  config-set KEY=VALUE      Save shared settings without prompts; KEY= clears a setting.
+  --verify [caps]           Headless system check of installed (or listed) capabilities.
+  --plugin <names>          Capability names or full qwen-mm-plugins-<name> IDs.
+                           Repeat the option, separate names with commas, or use all.
+  --harness <name>          One target harness; required with --plugin.
+  --dry-run                Print install commands without changing files or installing.
+  -h, --help               Show this help.
+
+Explicit plugin and harness selections run without installer prompts. Install the harness
+and uv/uvx first; set service credentials through the environment or shared config file.
+Rollback: QMP_REF=qwen-mm-plugins-<cap>-v<version> (select that cap only).
+EOF
+  printf '\nPlugins: %s\nHarnesses: %s\n' "${CAP_ITEMS[*]}" "$ALL_HARNESSES"
+}
+
+cli_error() { printf 'install.sh: %s\nTry install.sh --help for usage.\n' "$*" >&2; return 2; }
+
+CLI_ACTION=''
+CLI_CAPS=''
+CLI_HARNESS=''
+
+add_cli_plugins() {
+  local value=$1 cap
+  local -a names=()
+  case "$value" in ''|,*|*,|*,,*) cli_error "--plugin requires non-empty names"; return 2 ;; esac
+  case "$value" in *[!a-z0-9,-]*) cli_error "invalid plugin name"; return 2 ;; esac
+  IFS=, read -r -a names <<< "$value"
+  for cap in "${names[@]}"; do
+    cap=${cap#qwen-mm-plugins-}
+    if [ "$cap" = all ]; then
+      add_cli_plugins "$(IFS=,; printf '%s' "${CAP_ITEMS[*]}")" || return
+      continue
+    fi
+    case " ${CAP_ITEMS[*]} " in
+      *" $cap "*) ;;
+      *) cli_error "unknown plugin: $cap"; return 2 ;;
+    esac
+    case " $CLI_CAPS " in
+      *" $cap "*) ;;
+      *) CLI_CAPS="${CLI_CAPS:+$CLI_CAPS }$cap" ;;
+    esac
+  done
+}
+
+# Parse and validate before opening /dev/tty or invoking any harness commands, including errors.
+parse_cli() {
+  local targeted=0 restore=0
+  CLI_ACTION=${1:-}
+  [ "$#" -gt 0 ] && shift
+  case "$CLI_ACTION" in
+    --verify) return 0 ;;  # Preserve the existing positional capability-list interface.
+    config-set)
+      if [ "$#" -eq 1 ]; then
+        case "$1" in -h|--help) CLI_ACTION=help ;; esac
+      fi
+      return 0 ;;
+    -h|--help) CLI_ACTION=help; return 0 ;;
+    ''|install|update|local|configure|verify|uninstall) ;;
+    *) cli_error "unknown action: $CLI_ACTION"; return 2 ;;
+  esac
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -h|--help) CLI_ACTION=help; return 0 ;;
+      --plugin|--harness)
+        [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != -* ]] || {
+          cli_error "$1 requires a value"; return 2;
+        }
+        if [ "$1" = --plugin ]; then
+          add_cli_plugins "$2" || return
+        else
+          [ -z "$CLI_HARNESS" ] || { cli_error "specify --harness only once"; return 2; }
+          case "$2" in *[!a-z0-9-]*) cli_error "invalid harness name"; return 2 ;; esac
+          case " $ALL_HARNESSES " in
+            *" $2 "*) CLI_HARNESS=$2 ;;
+            *) cli_error "unknown harness: $2"; return 2 ;;
+          esac
+        fi
+        targeted=1
+        shift 2 ;;
+      --dry-run) QMP_DRY=1; targeted=1; shift ;;
+      --restore) restore=1; shift ;;
+      *) cli_error "unknown option: $1"; return 2 ;;
+    esac
+  done
+  if [ "$restore" = 1 ]; then
+    [ "$CLI_ACTION" = local ] && [ "$targeted" = 0 ] || {
+      cli_error "--restore is only supported by 'local --restore', without install options"; return 2;
+    }
+    CLI_ACTION=local-restore
+  fi
+  if [ "$targeted" = 1 ]; then
+    case "$CLI_ACTION" in
+      install|local) ;;
+      *) cli_error "--plugin, --harness and --dry-run are supported by install and local"; return 2 ;;
+    esac
+    [ -n "$CLI_CAPS" ] && [ -n "$CLI_HARNESS" ] || {
+      cli_error "non-interactive installation requires both --plugin and --harness"; return 2;
+    }
+  fi
+}
+parse_cli "$@" || exit $?
+
 NONINTERACTIVE=0
-case "${1:-}:${2:-}" in
-  --verify:*|-h:*|--help:*|local:--restore) NONINTERACTIVE=1; QMP_NO_TUI=1 ;;
+case "$CLI_ACTION" in
+  --verify|config-set|help|local-restore) NONINTERACTIVE=1 ;;
 esac
+[ -n "$CLI_HARNESS" ] && NONINTERACTIVE=1
 # ── an interactive terminal, even under `curl | bash` (stdin is the pipe → read from /dev/tty) ──
 if [ "$NONINTERACTIVE" = 1 ]; then
+  QMP_NO_TUI=1
   exec 3</dev/null                                   # headless: no prompts, no terminal required
 elif ! { exec 3</dev/tty; } 2>/dev/null; then
   printf 'This installer is interactive — run it in a terminal (or use a documented headless command):\n' >&2
@@ -417,19 +534,34 @@ default_cache_dir() {
   esac
 }
 
-# Update-or-append one KEY=VALUE in the config file (bash 3.2 safe — no assoc arrays), 0600.
-set_kv() {  # set_kv KEY VALUE
-  local key=$1 val=$2 tmp
-  mkdir -p "$CONFIG_DIR"
-  if [ ! -f "$CONFIG_FILE" ]; then
-    printf '# qwen-mm-plugins config — KEY=VALUE per line, read when the var is not in the environment.\n\n' > "$CONFIG_FILE"
+# Write KEY VALUE, or delete KEY when VALUE is omitted. Both paths replace the file with a
+# same-directory, mode-0600 temporary file; a failed write leaves the original intact.
+write_kv() {
+  local key=$1 tmp rc
+  [ "$#" -eq 1 ] && [ ! -e "$CONFIG_FILE" ] && return 0
+  mkdir -p "$(dirname "$CONFIG_FILE")" || return 1
+  tmp=$(mktemp "$(dirname "$CONFIG_FILE")/.qmp-config.XXXXXX") || return 1
+  if [ -e "$CONFIG_FILE" ]; then
+    grep -v -E "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=" "$CONFIG_FILE" > "$tmp"
+    rc=$?
+    [ "$rc" -le 1 ] || { rm -f "$tmp"; return 1; }
+  else
+    printf '# qwen-mm-plugins config — KEY=VALUE per line, read when the var is not in the environment.\n\n' > "$tmp" || {
+      rm -f "$tmp"; return 1;
+    }
   fi
-  tmp=$(mktemp "${TMPDIR:-/tmp}/qmp.XXXXXX")
-  grep -v -E "^[[:space:]]*(export[[:space:]]+)?${key}=" "$CONFIG_FILE" > "$tmp" 2>/dev/null || true
-  printf '%s=%s\n' "$key" "$val" >> "$tmp"
-  mv "$tmp" "$CONFIG_FILE"
-  chmod 600 "$CONFIG_FILE"
+  if [ "$#" -eq 2 ]; then
+    # Outer quotes preserve whitespace and literal quotes under shared.env's minimal dotenv parser.
+    printf '%s="%s"\n' "$key" "$2" >> "$tmp" || { rm -f "$tmp"; return 1; }
+  fi
+  chmod 600 "$tmp" && mv "$tmp" "$CONFIG_FILE" || {
+    rm -f "$tmp"; return 1;
+  }
 }
+
+set_kv() { write_kv "$1" "$2"; }
+# Delete the line rather than writing KEY=, which would shadow the runtime default.
+del_kv() { write_kv "$1"; }
 
 has_key_in_file() { [ -n "$(get_kv DASHSCOPE_API_KEY)" ]; }
 
@@ -448,14 +580,35 @@ get_kv() {  # get_kv KEY
   printf '%s' "$val"
 }
 
-# del_kv KEY → remove any line setting KEY from the config file (preserves 0600). Clearing must
-# delete the line, not write KEY= — an empty value would shadow a real default (see shared.env).
-del_kv() {  # del_kv KEY
-  [ -f "$CONFIG_FILE" ] || return 0
-  local tmp; tmp=$(mktemp "${TMPDIR:-/tmp}/qmp.XXXXXX")
-  grep -v -E "^[[:space:]]*(export[[:space:]]+)?$1=" "$CONFIG_FILE" > "$tmp" 2>/dev/null || true
-  mv "$tmp" "$CONFIG_FILE"
-  chmod 600 "$CONFIG_FILE"
+# Validate the whole batch before writing, and never echo values (including malformed arguments).
+do_config_set() {
+  [ "$#" -gt 0 ] || { cli_error "config-set requires KEY=VALUE [KEY=VALUE...]"; return 2; }
+  local assignment key value spec found
+  for assignment in "$@"; do
+    case "$assignment" in
+      *=*) key=${assignment%%=*}; value=${assignment#*=} ;;
+      *) cli_error "config-set expects KEY=VALUE arguments"; return 2 ;;
+    esac
+    found=0
+    for spec in "${CONFIG_SPEC[@]}"; do
+      [ "${spec%%|*}" = "$key" ] && { found=1; break; }
+    done
+    [ "$found" = 1 ] || { cli_error "unknown config key; use a field from the Configure catalog"; return 2; }
+    case "$value" in
+      *$'\n'*|*$'\r'*) cli_error "config values must be a single line"; return 2 ;;
+    esac
+  done
+  for assignment in "$@"; do
+    key=${assignment%%=*}; value=${assignment#*=}
+    if [ -z "$value" ]; then
+      del_kv "$key" || { err "could not clear $key"; return 1; }
+      ok "cleared $key"
+    else
+      set_kv "$key" "$value" || { err "could not save $key"; return 1; }
+      ok "saved $key"
+    fi
+  done
+  ok "config: $CONFIG_FILE (environment variables take precedence)"
 }
 
 # cfg_raw KEY → the value that would win at runtime (environment first, then config file); empty if
@@ -503,6 +656,10 @@ status() {
 ensure_uv() {
   have uvx && return 0
   warn "uv / uvx not found — the MCP servers launch via 'uvx'."
+  if [ -n "$CLI_HARNESS" ]; then
+    err "install uv first: https://docs.astral.sh/uv/"
+    return 1
+  fi
   if confirm "Install uv now (astral.sh official installer)?" y; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
@@ -837,7 +994,9 @@ install_for() {  # install_for <harness> <plugin...>
       } ;;
   esac
   is_local_repo "$REPO_URL" && prompt="Install the selected plugins from this checkout into $h now?"
-  QMP_DRY=0; confirm "$prompt" y || QMP_DRY=1
+  if [ -z "$CLI_HARNESS" ]; then
+    QMP_DRY=0; confirm "$prompt" y || QMP_DRY=1
+  fi
   if is_local_repo "$REPO_URL" && [ "$QMP_DRY" = 0 ] && [ "$h" != gemini ]; then
     localize_plugin_sources "$@" || { err "could not prepare the local plugin manifests"; return 1; }
   fi
@@ -1381,35 +1540,50 @@ detect_installed() {
 
 do_install() {
   local harness
-  while :; do
-    if is_local_repo "$REPO_URL"; then
-      screen; hr "Install from local checkout"
-      menu_pick "Target harness" $ALL_HARNESSES
-    else
-      screen; hr "Install plugin"
-      menu_pick "Target harness" $ALL_HARNESSES "other (manual / another harness)"
+  if [ -n "$CLI_HARNESS" ]; then
+    harness=$CLI_HARNESS
+    SELECTED_PLUGINS=''
+    local selected_cap needs_uv=0
+    for selected_cap in $CLI_CAPS; do
+      SELECTED_PLUGINS="$SELECTED_PLUGINS qwen-mm-plugins-$selected_cap"
+      is_skill_only "$selected_cap" || needs_uv=1
+    done
+    if [ "$QMP_DRY" = 0 ]; then
+      require_harness "$harness" || return 1
+      if [ "$needs_uv" = 1 ]; then ensure_uv || return 1; fi
     fi
-    [ "$PICK_I" -lt 0 ] && return 0                 # esc/q at top level → back to menu
-    case "$PICK" in "other"*) show_manual install; return 0 ;; esac
-    harness=$PICK
-    require_harness "$harness" || continue
-    ensure_uv || { pause; return 0; }
-    screen; hr "Install → $harness"
-    if is_local_repo "$REPO_URL"; then
-      choose_caps_local "$harness"
-    else
-      choose_caps "$harness"
-    fi
-    case "$MP_STATUS" in
-      back)   continue ;;                           # esc → back to harness pick
-      cancel) return 0 ;;                           # q → back to menu
-    esac
-    [ -n "$SELECTED_PLUGINS" ] && break
-    warn "nothing selected."
-    pause
-    return 0
-  done
-  screen; hr "Install → $harness"
+  else
+    while :; do
+      if is_local_repo "$REPO_URL"; then
+        screen; hr "Install from local checkout"
+        menu_pick "Target harness" $ALL_HARNESSES
+      else
+        screen; hr "Install plugin"
+        menu_pick "Target harness" $ALL_HARNESSES "other (manual / another harness)"
+      fi
+      [ "$PICK_I" -lt 0 ] && return 0                 # esc/q at top level → back to menu
+      case "$PICK" in "other"*) show_manual install; return 0 ;; esac
+      harness=$PICK
+      require_harness "$harness" || continue
+      ensure_uv || { pause; return 0; }
+      screen; hr "Install → $harness"
+      if is_local_repo "$REPO_URL"; then
+        choose_caps_local "$harness"
+      else
+        choose_caps "$harness"
+      fi
+      case "$MP_STATUS" in
+        back)   continue ;;                           # esc → back to harness pick
+        cancel) return 0 ;;                           # q → back to menu
+      esac
+      [ -n "$SELECTED_PLUGINS" ] && break
+      warn "nothing selected."
+      pause
+      return 0
+    done
+  fi
+  [ -n "$CLI_HARNESS" ] || screen
+  hr "Install → $harness"
   if ! install_for "$harness" $SELECTED_PLUGINS; then
     err "installation incomplete — one or more commands failed"
     pause
@@ -1437,6 +1611,7 @@ do_install() {
     box_close
   fi
   printf '\n'
+  [ -n "$CLI_HARNESS" ] && return 0
   if ! has_key_in_file && [ -z "${DASHSCOPE_API_KEY:-}" ]; then
     if confirm "No API key yet — configure it now?" y; then do_configure nested; fi
   fi
@@ -1875,25 +2050,21 @@ menu() {
   done
 }
 
-case "${1:-}" in
-  install)   do_install ;;
-  update)    do_update ;;
-  local)
-    shift
-    case "${1:-}" in
-      '') do_local_install ;;
-      --restore)
-        shift
-        [ "$#" -eq 0 ] || { err "usage: install.sh local [--restore]"; exit 2; }
-        do_local_restore
-        ;;
-      *) err "usage: install.sh local [--restore]"; exit 2 ;;
-    esac
-    ;;
-  configure) do_configure ;;
-  verify)    do_verify ;;
-  uninstall) do_uninstall ;;
-  --verify)  shift; run_caps_noninteractive "$@" ;;
-  -h|--help) banner; printf '\n  Usage: install.sh [install|update|local|configure|verify|uninstall]   (no arg = interactive menu)\n         install.sh update            # update installed plugins to current stable tags\n         install.sh local             # install plugins from this checkout\n         install.sh local --restore   # restore published refs after local testing\n         install.sh --verify [caps]   # non-interactive: check installed (or listed) caps\n\n  Default: each plugin uses its latest immutable stable tag.\n  Rollback: QMP_REF=qwen-mm-plugins-<cap>-v<version> (select that cap only).\n\n' ;;
-  *)         menu ;;
-esac
+main() {
+  case "$CLI_ACTION" in
+    install)   do_install ;;
+    update)    do_update ;;
+    local)     do_local_install ;;
+    local-restore) do_local_restore ;;
+    configure) do_configure ;;
+    config-set) shift; do_config_set "$@" ;;
+    verify)    do_verify ;;
+    uninstall) do_uninstall ;;
+    --verify)  shift; run_caps_noninteractive "$@" ;;
+    help) banner; usage ;;
+    *)         menu ;;
+  esac
+}
+
+# Native CLIs must not consume a piped install script or wait for stdin in headless mode.
+if [ "$NONINTERACTIVE" = 1 ]; then main "$@" </dev/null; else main "$@"; fi

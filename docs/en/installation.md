@@ -59,6 +59,36 @@ For guided harnesses that accept a remote tag, select only the capability named 
 QMP_REF=qwen-mm-plugins-search-v1.0.1 bash install.sh install
 ```
 
+## Non-interactive installation and configuration
+
+For scripts or CI, pass both `--plugin` and `--harness` to `install` or `local`:
+
+```bash
+bash install.sh local --plugin core --harness codex
+bash install.sh install --plugin core,search --harness claude
+bash install.sh local --plugin qwen-mm-plugins-core --plugin search --harness qwen-code --dry-run
+bash install.sh config-set DASHSCOPE_API_KEY="$DASHSCOPE_API_KEY" QWEN_MM_NATIVE_MODE=1
+bash install.sh config-set 'QWEN_MM_CACHE=/path/with spaces/cache'
+bash install.sh config-set QWEN_MM_CACHE=  # clear the override and restore the default
+```
+
+`--plugin` accepts short capability names, full plugin IDs, comma-separated names, repeated options,
+or `all`. `--harness` selects one of `claude`, `codebuddy`, `codex`, `qoder`, `openclaw`, `qwen-code`,
+or `gemini`. Run `bash install.sh --help` for the current plugin catalog.
+
+Explicit selections execute immediately without installer prompts or a terminal. Install the
+harness CLI and `uv`/`uvx` first (`uvx` is unnecessary for Skill-only plugins). Missing dependencies,
+invalid arguments, failed native commands, and failed MCP startup checks return a nonzero exit
+status. `--dry-run` prints the install commands without installing or rewriting manifests; it can
+query the harness's current marketplace. The actions without options still open the guided flow.
+
+`config-set` accepts one or more `KEY=VALUE` arguments from the
+[configuration catalog](configuration.md#configure-catalog). It validates the entire batch before
+writing, preserves unrelated settings, and never prints values. Quote arguments containing spaces;
+values may contain `=` but must fit on one line. An empty value removes the setting. The shared
+file keeps mode `600`; `QWEN_MM_CONFIG` and `QWEN_MM_CONFIG_DIR` select its location, and environment
+variables still override saved settings. Non-interactive installation skips the configuration menu.
+
 ## Local checkout
 
 Use a dedicated clone whose path will remain stable:
