@@ -30,6 +30,8 @@ at the same position by a generated caption, while existing text blocks (file me
 layers, video timestamps, and similar context) are preserved. The caption path uses
 `DASHSCOPE_BASE_URL` and `QWEN_MM_API_VL_MODEL`. Credentials are selected by endpoint: DashScope uses
 `DASHSCOPE_API_KEY`, OrcaRouter uses `ORCAROUTER_API_KEY`, and OpenRouter uses `OPENROUTER_API_KEY`.
+Any other OpenAI-compatible endpoint set as `DASHSCOPE_BASE_URL` uses `DASHSCOPE_API_KEY`, which is
+sent only to that URL's origin (scheme, host, port).
 Authentication-free local endpoints need no key configuration. A failed caption call produces an explicit
 `Visual content unavailable` text block instead of exposing base64 or silently dropping the image.
 

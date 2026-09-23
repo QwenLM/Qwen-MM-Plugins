@@ -53,8 +53,8 @@ def connection(monkeypatch):
         ("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "dash-key"),
         ("https://openrouter.ai/api/v1", "router-key"),
         ("https://api.orcarouter.ai/v1", "orca-key"),
-        ("https://custom.example/v1", "EMPTY"),
-        ("https://dashscope.aliyuncs.com.example/v1", "EMPTY"),
+        ("https://custom.example/v1", "dash-key"),
+        ("https://dashscope.aliyuncs.com.example/v1", "dash-key"),
     ],
 )
 def test_handle_sends_only_the_effective_providers_key(connection, monkeypatch, base, expected_key):
@@ -91,11 +91,11 @@ def test_explicit_base_reselects_provider_key(connection, monkeypatch):
     assert connection.requests[0].headers["Authorization"] == "Bearer router-key"
 
 
-def test_missing_provider_key_does_not_fall_back_to_dashscope(connection, monkeypatch):
+def test_missing_provider_key_falls_back_to_the_configured_dashscope_key(connection, monkeypatch):
     monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://openrouter.ai/api/v1")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "dash-key")
     av.handle({"video_path": "https://media.example/video.mp4"})
-    assert connection.requests[0].headers["Authorization"] == "Bearer EMPTY"
+    assert connection.requests[0].headers["Authorization"] == "Bearer dash-key"
 
 
 def test_upload_and_model_use_the_same_connection(connection, monkeypatch, tmp_path):

@@ -88,17 +88,29 @@ _API_KEY_ENV_BY_HOST: dict[str, str] = {
 }
 
 
+def _origin(url: str) -> tuple[str, str, int | None] | None:
+    """(scheme, host, port) of a URL, or None when it has no host or a malformed port."""
+    try:
+        parts = urlsplit(url)
+        return (parts.scheme, parts.hostname, parts.port) if parts.hostname else None
+    except ValueError:
+        return None
+
+
 def resolve_openai_endpoint(arguments: dict[str, Any]) -> tuple[str, str]:
     """Resolve (base_url, api_key) for an OpenAI-compatible call.
 
     URL precedence: explicit argument → DASHSCOPE_BASE_URL → default. An explicit
-    api_key wins; otherwise use the host's API key environment variable. Unlisted hosts
-    and missing keys fall back to "EMPTY" for local servers.
+    api_key wins; otherwise use the host's API key environment variable, then
+    DASHSCOPE_API_KEY if the URL has the same origin as DASHSCOPE_BASE_URL, then "EMPTY".
     """
-    base_url = arguments.get("base_url") or get_env("DASHSCOPE_BASE_URL") or DEFAULT_DASHSCOPE_BASE_URL
+    configured = get_env("DASHSCOPE_BASE_URL") or DEFAULT_DASHSCOPE_BASE_URL
+    base_url = arguments.get("base_url") or configured
     key_env = _API_KEY_ENV_BY_HOST.get(urlsplit(base_url).hostname or "")
-    api_key = arguments.get("api_key") or (get_env(key_env) if key_env else None) or "EMPTY"
-    return base_url, api_key
+    api_key = arguments.get("api_key") or (get_env(key_env) if key_env else None)
+    if not api_key and (origin := _origin(base_url)) and origin == _origin(configured):
+        api_key = get_env("DASHSCOPE_API_KEY")
+    return base_url, api_key or "EMPTY"
 
 
 def expand_video_frames(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

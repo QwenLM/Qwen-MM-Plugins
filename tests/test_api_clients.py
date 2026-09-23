@@ -160,6 +160,25 @@ def test_endpoint_selects_key_by_host(monkeypatch, base_url, missing_key, explic
     assert omni.resolve_omni_endpoint(arguments) == expected
 
 
+@pytest.mark.parametrize(
+    "configured,base_url,expected_key",
+    [
+        ("https://proxy.example/v1", None, "dashscope"),
+        ("https://proxy.example/v1", "https://PROXY.example/other/v1", "dashscope"),
+        ("https://proxy.example/v1", "http://proxy.example/v1", "EMPTY"),
+        ("https://proxy.example/v1", "https://proxy.example:8443/v1", "EMPTY"),
+        ("https://proxy.example/v1", "https://proxy.example.evil/v1", "EMPTY"),
+        ("https://proxy.example/v1", "https://proxy.example@evil.example/v1", "EMPTY"),
+        ("https://proxy.example/v1", "https://proxy.example:99999/v1", "EMPTY"),
+        ("https://openrouter.ai/api/v1", None, "dashscope"),
+    ],
+)
+def test_dashscope_key_follows_the_configured_origin(monkeypatch, configured, base_url, expected_key):
+    values = {"DASHSCOPE_BASE_URL": configured, "DASHSCOPE_API_KEY": "dashscope"}
+    monkeypatch.setattr(oa, "get_env", values.get)
+    assert oa.resolve_openai_endpoint({"base_url": base_url}) == (base_url or configured, expected_key)
+
+
 def test_openrouter_endpoint_from_config(monkeypatch, tmp_path):
     import shared.env as env
 
