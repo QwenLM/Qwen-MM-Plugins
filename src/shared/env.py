@@ -47,6 +47,24 @@ def get_bool_env(name: str, default: bool = False) -> bool:
     return default
 
 
+def get_int_env(name: str, default: int) -> int:
+    """Parse an integer config var at call time, returning ``default`` when unset, blank, or invalid.
+
+    Same out-of-box rule as ``_int_env`` for the QWEN_MM_* knobs, for the plain integers (ports,
+    TTLs) a user hand-writes into the config file: a value the loader cannot parse must not raise
+    out of a path that runs before the MCP handshake. Blank counts as unset because a trailing
+    ``KEY=`` line is what `--set KEY=` writes, and it otherwise shadows the documented default.
+    """
+    raw = get_env(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logging.getLogger(__name__).warning("invalid %s=%r; using default %d", name, raw, default)
+        return default
+
+
 # ── User config file (~/.qwen-mm-plugins/config): KEY=VALUE lines, read when a var isn't in the
 # environment. Location is fixed (not per-OS like cache_dir): "where is the config" can't live in
 # the config, and pointing at it via env var would reintroduce the inheritance problem it solves. ──

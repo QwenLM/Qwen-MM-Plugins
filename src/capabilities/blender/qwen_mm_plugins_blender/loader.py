@@ -13,7 +13,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.env import get_env
+from shared.env import get_env, get_int_env
 
 log = logging.getLogger("qwen-mm-plugins-blender")
 
@@ -147,7 +147,7 @@ def get_connection() -> BlenderConnection:
         if _connection is not None:
             return _connection
         host = get_env("BLENDER_HOST", "localhost")
-        port = int(get_env("BLENDER_PORT", "9876"))
+        port = get_int_env("BLENDER_PORT", 9876)
         conn = BlenderConnection(host=host, port=port)
         if not conn.connect():
             if _maybe_autolaunch(host, port):
@@ -189,5 +189,5 @@ def probe() -> None:
     from shared.applaunch import startup_probe
 
     host = get_env("BLENDER_HOST", "localhost")
-    port = int(get_env("BLENDER_PORT", "9876"))
+    port = get_int_env("BLENDER_PORT", 9876)
     startup_probe(host, port, app="Blender", entry="qwen-mm-plugins-blender")

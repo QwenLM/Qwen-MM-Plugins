@@ -12,10 +12,11 @@ import pytest
 from scripts.gen_env_docs import check, load_config_fields
 
 from shared import env as env_config
-from shared.env import _int_env, get_bool_env
+from shared.env import _int_env, get_bool_env, get_int_env
 
 _VAR = "QMP_TEST_INT_ENV"
 _BOOL_VAR = "QMP_TEST_BOOL_ENV"
+_PORT_VAR = "QMP_TEST_PORT_ENV"
 _ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -75,6 +76,44 @@ def test_bool_env_unset_or_invalid_uses_default(monkeypatch, caplog):
     monkeypatch.setenv(_BOOL_VAR, "maybe")
     assert get_bool_env(_BOOL_VAR, default=True) is True
     assert f"invalid {_BOOL_VAR}" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [(None, 9876), ("", 9876), ("   ", 9876), ("9876", 9876), ("  5000  ", 5000), ("0", 0), ("not-a-port", 9876)],
+)
+def test_int_env_falls_back_instead_of_raising(monkeypatch, caplog, value, expected):
+    if value is None:
+        monkeypatch.delenv(_PORT_VAR, raising=False)
+    else:
+        monkeypatch.setenv(_PORT_VAR, value)
+    assert get_int_env(_PORT_VAR, 9876) == expected
+    if value == "not-a-port":
+        assert f"invalid {_PORT_VAR}" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "loader_mod,port_var",
+    [("qwen_mm_plugins_blender.loader", "BLENDER_PORT"), ("qwen_mm_plugins_freecad.loader", "FREECAD_RPC_PORT")],
+)
+def test_blank_port_in_config_does_not_abort_startup(tmp_path, monkeypatch, loader_mod, port_var):
+    """A port the loader cannot parse must fall back, not kill the server before the handshake.
+
+    `--set PORT=` writes the empty line (see shared.env.set_config, which filters None but not ""),
+    and both loaders read the port inside on_start() -> probe(), which runs once the transport is
+    open and before MCP initialization.
+    """
+    import importlib
+
+    config = tmp_path / "config"
+    config.write_text(f"{port_var}=\n", encoding="utf-8")
+    monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
+    monkeypatch.delenv(port_var, raising=False)
+    monkeypatch.setattr(env_config, "_config_cache", None)
+
+    loader = importlib.import_module(loader_mod)
+    loader.probe()  # used to raise ValueError out of on_start()
+    assert env_config.get_env(port_var) == ""  # the blank value really is what the file holds
 
 
 def test_get_env_can_refresh_config_changed_by_another_process(tmp_path, monkeypatch):
