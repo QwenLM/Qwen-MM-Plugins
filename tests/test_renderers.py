@@ -228,6 +228,31 @@ def test_web_isolated_entry_validates_arguments():
         render_isolated({"path": "sample.html", "options": []})
 
 
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [("1-5", [0, 1, 2, 3, 4]), ("3", [2]), ("1,3,5-8", [0, 2, 4, 5, 6, 7]), ("9-99", [8, 9])],
+)
+def test_parse_pages_keeps_selections_that_match_a_page(spec, expected):
+    from qwen_mm_plugins_core.renderers import parse_pages
+
+    assert parse_pages(spec, 10) == expected
+
+
+@pytest.mark.parametrize("spec", ["99", "0", "3-1", "11-20"])
+def test_parse_pages_rejects_a_selection_that_matches_no_page(spec):
+    from qwen_mm_plugins_core.renderers import parse_pages
+
+    with pytest.raises(ValueError, match="no pages selected"):
+        parse_pages(spec, 10)
+
+
+def test_parse_pages_without_a_selection_returns_the_default_window():
+    from qwen_mm_plugins_core.renderers import DEFAULT_MAX_PAGES, parse_pages
+
+    assert parse_pages("", 3) == [0, 1, 2]
+    assert parse_pages("  ", 50) == list(range(DEFAULT_MAX_PAGES))
+
+
 def _has_dep(key: str) -> bool:
     checks = {
         "pypdfium2": lambda: __import__("pypdfium2"),

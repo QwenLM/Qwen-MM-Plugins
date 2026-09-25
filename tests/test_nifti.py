@@ -147,6 +147,19 @@ def test_visualize_nifti_4d_defaults_and_selects_pages_lazily(tmp_path, monkeypa
     assert all(_is_lazy_plane_selection(selection, ndim=4) for selection in selections)
 
 
+@pytest.mark.parametrize("pages", ["9", "0", "3-1"])
+def test_visualize_nifti_4d_reports_a_page_selection_that_matches_no_volume(tmp_path, pages):
+    shape = (4, 5, 6)
+    x, y, z = np.indices(shape, dtype=np.float32)
+    data = np.stack([x + 10 * y + 100 * z] * 3, axis=-1)
+    path = _save_nifti(tmp_path, "synthetic-4d.nii", data)
+
+    content = visualize.handle({"file_path": path, "pages": pages, "budget": "small"})
+
+    assert _images(content) == []
+    assert f"no pages selected from {pages!r} (document has 3 page(s))" in _text(content)
+
+
 def test_visualize_nifti_noncanonical_orientation_matches_ras_lazily(tmp_path, monkeypatch):
     # Even dimensions make a flipped center index differ by one in source space,
     # catching the common ``size // 2`` off-by-one error after reorientation.
