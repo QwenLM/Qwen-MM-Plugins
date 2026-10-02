@@ -65,6 +65,22 @@ def get_int_env(name: str, default: int) -> int:
         return default
 
 
+def get_float_env(name: str, default: float | None = None) -> float | None:
+    """Read a plain float, falling back for unset, blank, or invalid values.
+
+    The float sibling of ``get_int_env`` — for a knob whose default is "unset" (``None``) rather
+    than a number, so a mistyped value warns and degrades instead of raising.
+    """
+    raw = get_env(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logging.getLogger(__name__).warning("invalid %s=%r; using default %r", name, raw, default)
+        return default
+
+
 # ── User config file (~/.qwen-mm-plugins/config): KEY=VALUE lines, read when a var isn't in the
 # environment. Location is fixed (not per-OS like cache_dir): "where is the config" can't live in
 # the config, and pointing at it via env var would reintroduce the inheritance problem it solves. ──

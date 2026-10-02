@@ -12,11 +12,12 @@ import pytest
 from scripts.gen_env_docs import check, load_config_fields
 
 from shared import env as env_config
-from shared.env import _int_env, get_bool_env, get_int_env
+from shared.env import _int_env, get_bool_env, get_float_env, get_int_env
 
 _VAR = "QMP_TEST_INT_ENV"
 _BOOL_VAR = "QMP_TEST_BOOL_ENV"
 _PORT_VAR = "QMP_TEST_PORT_ENV"
+_FLOAT_VAR = "QMP_TEST_FLOAT_ENV"
 _ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -90,6 +91,39 @@ def test_int_env_falls_back_instead_of_raising(monkeypatch, caplog, value, expec
     assert get_int_env(_PORT_VAR, 9876) == expected
     if value == "not-a-port":
         assert f"invalid {_PORT_VAR}" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("90", 90.0),
+        ("  90.5  ", 90.5),
+        ("0", 0.0),
+        ("1e3", 1000.0),
+    ],
+)
+def test_float_env_accepts_numeric_spellings(monkeypatch, value, expected):
+    monkeypatch.setenv(_FLOAT_VAR, value)
+    assert get_float_env(_FLOAT_VAR, 1.5) == expected
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [(None, 1.5), ("", 1.5), ("   ", 1.5), ("1:30", 1.5), ("90s", 1.5), ("not-a-number", 1.5)],
+)
+def test_float_env_falls_back_instead_of_raising(monkeypatch, caplog, value, expected):
+    if value is None:
+        monkeypatch.delenv(_FLOAT_VAR, raising=False)
+    else:
+        monkeypatch.setenv(_FLOAT_VAR, value)
+    assert get_float_env(_FLOAT_VAR, 1.5) == expected
+    if value in ("1:30", "90s", "not-a-number"):
+        assert f"invalid {_FLOAT_VAR}" in caplog.text
+
+
+def test_float_env_returns_none_when_unset_without_default(monkeypatch):
+    monkeypatch.delenv(_FLOAT_VAR, raising=False)
+    assert get_float_env(_FLOAT_VAR) is None
 
 
 @pytest.mark.parametrize(
