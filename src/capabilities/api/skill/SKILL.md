@@ -55,6 +55,12 @@ are sent as ordered images; direct video URLs require video support from the mod
 
 **Cheaper Inference**: configure `CHEAPER_INFERENCE_API_KEY`, then pass `base_url="https://api.cheaperinference.com/v1"` and a Cheaper Inference `model` ID, such as `gpt-5.4-mini`. The server selects that key automatically; an explicit `api_key` overrides it.
 
+**[API Route](https://www.api-route.com)**: configure `API_ROUTE_API_KEY`, then pass
+`base_url="https://global.api-route.com/v1"` and a model ID available to your key.
+The server selects that key automatically; an explicit `api_key` overrides it.
+For vision tools, choose a model that supports image inputs. Audio and video tools
+require a model and endpoint that support their specific payloads.
+
 **Grounding**: returns normalized boxes (0–1000). Set `return_img=true` to get the annotated image back, or draw them yourself with core's `draw_bbox`.
 
 **ASR** (`transcribe_audio`): accepts audio or video, auto-chunks long files. Formats: `srt` (default), `text`, `json`. Uses DashScope with `DASHSCOPE_API_KEY`; configured `ASR_SERVER_URLS` provide a self-hosted fallback when the key is absent or DashScope fails. Needs `ffmpeg` for audio extraction and chunking.
