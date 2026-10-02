@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-video-memory",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Build searchable, hierarchical memory of long videos to summarize content and locate events, text, and dialogue.",
   "skills": [
     "./skill"
@@ -10,7 +10,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "qwen-mm-plugins[video-memory] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-memory-v1.1.0",
+        "qwen-mm-plugins[video-memory] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-memory-v1.1.1",
         "qwen-mm-plugins-video-memory"
       ]
     }
