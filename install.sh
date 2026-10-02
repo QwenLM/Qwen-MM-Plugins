@@ -77,6 +77,7 @@ CONFIG_SPEC=(
   "ORCAROUTER_API_KEY|1|services||OpenAI-compatible calls to api.orcarouter.ai"
   "OPENROUTER_API_KEY|1|services||OpenAI-compatible calls to openrouter.ai"
   "CHEAPER_INFERENCE_API_KEY|1|services||OpenAI-compatible calls to api.cheaperinference.com"
+  "API_ROUTE_API_KEY|1|services||OpenAI-compatible calls to global.api-route.com"
   "MINIMAX_API_KEY|1|services||MiniMax text-to-speech generation"
   "DASHSCOPE_BASE_URL|0|services|DashScope compat URL|override the DashScope OpenAI-compatible base URL"
   "DASHSCOPE_UPLOAD_POLICY_URL|0|services|inferred for official DashScope hosts|override the model-bound temporary OSS policy endpoint used for oversized Omni and VL media"
