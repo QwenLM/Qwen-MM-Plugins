@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from .embeddings import EmbeddingIndex
 from .schema import HierarchicalGraphMemory
+from .time_system import DefaultTimeSystem, EgoLifeTimeSystem, TimeSystem
+
+log = logging.getLogger("qwen-mm-plugins-video-memory")
 
 DAY_OFFSET = 100000
 
@@ -31,15 +35,6 @@ def egolife_sec_to_time_str(sec: float) -> str:
     m = int((remainder % 3600) // 60)
     s = int(remainder % 60)
     return f"DAY{day_idx + 1} {h:02d}:{m:02d}:{s:02d}"
-
-
-def parse_egolife_time_str(time_str: str) -> float | None:
-    m = re.match(r"DAY(\d+)\s+(\d{1,2}):(\d{2}):(\d{2})", time_str.strip())
-    if not m:
-        return None
-    day = int(m.group(1))
-    h, mi, s = int(m.group(2)), int(m.group(3)), int(m.group(4))
-    return (day - 1) * DAY_OFFSET + h * 3600 + mi * 60 + s
 
 
 def time_val_to_sec(val) -> float:
@@ -82,6 +77,11 @@ class MemoryToolkit:
 
     def set_cutoff(self, cutoff_sec: float | None):
         self._cutoff_sec = cutoff_sec
+
+    def _time_system(self) -> TimeSystem:
+        """The adapter matching this memory's timestamps — the same one the loader auto-detected and
+        used to rebase them, so a caller can pass back exactly the strings the tools print."""
+        return EgoLifeTimeSystem() if self._egolife_mode else DefaultTimeSystem()
 
     def _is_macro_visible(self, me) -> bool:
         if self._cutoff_sec is None:
@@ -574,15 +574,18 @@ class MemoryToolkit:
     def search_by_time(
         self, start_sec: float = 0, end_sec: float = 600, start_time: str | None = None, end_time: str | None = None
     ) -> str:
-        if self._egolife_mode:
-            if start_time:
-                parsed = parse_egolife_time_str(start_time)
-                if parsed is not None:
-                    start_sec = parsed
-            if end_time:
-                parsed = parse_egolife_time_str(end_time)
-                if parsed is not None:
-                    end_sec = parsed
+        ts = self._time_system()
+        for name, raw, fallback in (("start_time", start_time, start_sec), ("end_time", end_time, end_sec)):
+            if not raw:
+                continue
+            parsed = ts.str_to_sec(raw)
+            if parsed is None:
+                log.warning("search_by_time: unparsable %s=%r; falling back to %s", name, raw, fallback)
+                continue
+            if name == "start_time":
+                start_sec = parsed
+            else:
+                end_sec = parsed
         results = []
         for me in self.memory.macro_events:
             if not self._is_macro_visible(me):

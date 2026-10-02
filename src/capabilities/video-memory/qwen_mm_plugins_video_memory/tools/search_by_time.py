@@ -23,17 +23,18 @@ TOOL = {"name": "search_by_time", "args": SearchByTimeArgs}
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     """Find macro events covering a time range. Returns MacroEvent list with time ranges, parent
     SuperEvent labels, and key entities. When to use: Question references a specific time or time
-    range in the video. For EgoLife: use start_time/end_time in 'DAY{N} HH:MM:SS' format (e.g. 'DAY1
-    11:09:42', 'DAY3 15:30:00'). For other datasets: use start_sec/end_sec in seconds. Note: returns
-    macro event summaries, not subgraph details. Always follow up with get_subgraph if you need
-    entity/event details.
+    range in the video. Either give seconds (start_sec/end_sec) or the matching timestamp strings
+    (start_time/end_time): 'HH:MM:SS' for a normal video, 'DAY{N} HH:MM:SS' for EgoLife (e.g. 'DAY1
+    11:09:42', 'DAY3 15:30:00'). Note: returns macro event summaries, not subgraph details. Always
+    follow up with get_subgraph if you need entity/event details.
 
     Args:
         video_path: Path to the video file. Memory auto-loaded from <video_path>.memory/
         start_sec: Start of time window in seconds from video start.
         end_sec: End of time window in seconds from video start.
-        start_time: Start time in 'DAY{N} HH:MM:SS' format (e.g. 'DAY1 11:09:42'). Use for EgoLife.
-        end_time: End time in 'DAY{N} HH:MM:SS' format (e.g. 'DAY1 12:00:00'). Use for EgoLife.
+        start_time: Window start as a timestamp in the memory's own format — 'HH:MM:SS', or 'DAY{N}
+            HH:MM:SS' for EgoLife. Overrides start_sec when it parses.
+        end_time: Window end in the same format. Overrides end_sec when it parses.
     """
     from qwen_mm_plugins_video_memory.loader import get_toolkit
 
