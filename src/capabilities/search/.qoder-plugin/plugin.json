@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-search",
   "displayName": "Qwen MM Plugins Search",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Search the web, read pages, and identify objects or places with reverse-image search.",
   "skills": "./skill",
   "mcp": ".mcp.json"

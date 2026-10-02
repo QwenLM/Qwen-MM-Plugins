@@ -1,7 +1,7 @@
 {
   "name": "qwen-mm-plugins-video-spatio",
   "displayName": "Qwen MM Plugins Video Spatio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Model-free 3D spatial reasoning — distance, size, orientation, relative position and camera motion via stateless geometry MCP tools.",
   "skills": "./skill",
   "mcp": ".mcp.json"

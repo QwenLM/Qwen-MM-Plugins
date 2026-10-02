@@ -1,6 +1,6 @@
 {
   "name": "qwen-mm-plugins-edu-agent",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Create narrated Mandarin math and science tutorial videos or interactive explainers from problem statements and images.",
   "skills": [
     "./skill"
