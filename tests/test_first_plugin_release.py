@@ -180,7 +180,9 @@ def test_initial_notes_include_development_prs_but_no_unrelated_shared_history(u
 @pytest.mark.parametrize("tamper", ["code", "installer", "new-code", "remove-published"])
 def test_first_candidate_rejects_changes_beyond_generated_registration(unpublished_repo, tamper):
     repo, source, remote = unpublished_repo
-    bot.prepare(repo, {"new-skill": "1.0.0"}, "1.1.10", remote)
+    index = json.loads(bot.at(repo, source, "plugin-versions.json"))
+    distribution = bot.next_version(index["distribution_version"], "patch")
+    bot.prepare(repo, {"new-skill": "1.0.0"}, distribution, remote)
     if tamper == "code":
         (repo / "src/capabilities/new-skill/skill/SKILL.md").write_text("injected code")
     elif tamper == "installer":
@@ -220,13 +222,15 @@ def test_existing_plugin_missing_tag_is_not_treated_as_initial(unpublished_repo)
 
 def test_installer_treats_manifest_description_as_literal_data(unpublished_repo):
     repo, source, remote = unpublished_repo
+    index = json.loads(bot.at(repo, source, "plugin-versions.json"))
+    distribution = bot.next_version(index["distribution_version"], "patch")
     marker = repo / "must-not-exist"
     description = f"""中文 quotes " ' slash \\1 $HOME $(touch {marker}) `touch {marker}`"""
     path = repo / "src/capabilities/new-skill/.claude-plugin/plugin.json"
     data = json.loads(path.read_text())
     data["description"] = description
     path.write_text(json.dumps(data))
-    bot.prepare(repo, {"new-skill": "1.0.0"}, "1.1.10", remote)
+    bot.prepare(repo, {"new-skill": "1.0.0"}, distribution, remote)
     assert installer_catalog(repo)["new-skill"][2] == description
     assert not marker.exists()
 

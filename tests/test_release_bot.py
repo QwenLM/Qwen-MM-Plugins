@@ -429,13 +429,15 @@ def test_notes_scope_deduplication_direct_commits_and_frozen_source(notes_repo):
 
 def test_notes_use_each_catalog_baseline_including_upstream_refs(notes_repo):
     repo, baseline, remote = notes_repo
+    index = json.loads(bot.at(repo, baseline, "plugin-versions.json"))
+    version = bot.next_version(index["plugins"]["mhs"], "patch")
     first = change(repo, "src/shared/fix.txt", "first", "older shared change")
     # Only mhs already shipped the first shared change. Its previous tag is a side-branch
     # release commit, preserved by the merge commit used by /publish.
     bot.git(repo, "switch", "-c", "previous-mhs-release")
     (repo / "release-marker.txt").write_text("metadata")
     previous_release = bot.commit(repo, first, "previous release")
-    previous_tag = "qwen-mm-plugins-mhs-v1.1.1"
+    previous_tag = index["tag_format"].format(cap="mhs", version=version)
     bot.git(repo, "tag", previous_tag, previous_release)
     bot.git(repo, "push", remote, f"refs/tags/{previous_tag}")
     bot.git(repo, "switch", "main")
