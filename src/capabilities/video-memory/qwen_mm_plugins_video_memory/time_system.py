@@ -76,8 +76,8 @@ class EgoLifeTimeSystem(TimeSystem):
         if not isinstance(val, str):
             return None
         s = val.strip()
-        # "DAY1 11:09:42" or "day1_11:09:42"
-        m = re.match(r"day(\d+)[_ ](\d{1,2}):(\d{2}):(\d{2})$", s, re.IGNORECASE)
+        # "DAY1 11:09:42", "day1_11:09:42", and any run of whitespace between day and clock time.
+        m = re.match(r"day(\d+)[_\s]+(\d{1,2}):(\d{2}):(\d{2})$", s, re.IGNORECASE)
         if m:
             day = int(m.group(1))
             return (day - 1) * DAY_OFFSET + int(m.group(2)) * 3600 + int(m.group(3)) * 60 + int(m.group(4))

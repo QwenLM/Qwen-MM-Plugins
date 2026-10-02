@@ -50,6 +50,10 @@ def test_egolife_strings_pick_the_matching_day(tmp_path):
     assert _ids(toolkit.search_by_time(start_time="DAY1 11:09:00", end_time="DAY1 11:11:00")) == ["DAY1_A1_JAKE_110942"]
     # The same instant spelled the way time_val_to_sec() and EgoLifeTimeSystem accept it.
     assert _ids(toolkit.search_by_time(start_time="day1_11:09:00", end_time="day1_11:11:00")) == ["DAY1_A1_JAKE_110942"]
+    # A wider run of spaces is a spelling the tool-facing parser used to accept, so it must keep working.
+    assert _ids(toolkit.search_by_time(start_time="DAY1  11:09:00", end_time="DAY1  11:11:00")) == [
+        "DAY1_A1_JAKE_110942"
+    ]
 
 
 def test_unparsable_time_string_warns(tmp_path, caplog):

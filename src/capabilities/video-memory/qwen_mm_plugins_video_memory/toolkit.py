@@ -79,8 +79,8 @@ class MemoryToolkit:
         self._cutoff_sec = cutoff_sec
 
     def _time_system(self) -> TimeSystem:
-        """The adapter matching this memory's timestamps — the same one the loader auto-detected
-        and used for rebasing, and the only parser that knows every spelling of a time."""
+        """The adapter matching this memory's timestamps — the same one the loader auto-detected and
+        used to rebase them, so a caller can pass back exactly the strings the tools print."""
         return EgoLifeTimeSystem() if self._egolife_mode else DefaultTimeSystem()
 
     def _is_macro_visible(self, me) -> bool:
