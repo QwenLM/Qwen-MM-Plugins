@@ -41,6 +41,9 @@ def parse_time(value: float | int | str | None) -> float | None:
 
 
 def format_timestamp(seconds: float, max_seconds: float) -> str:
+    # Round to the one decimal shown before splitting into fields, so 59.96 carries into the
+    # minute ("1:00.0") instead of printing a 60th second ("0:60.0").
+    seconds = round(seconds, 1)
     if max_seconds >= 3600:
         h = int(seconds // 3600)
         m = int((seconds % 3600) // 60)
