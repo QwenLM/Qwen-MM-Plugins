@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
@@ -182,9 +183,10 @@ def compute_dynamic_fps(
 ) -> tuple[float, int]:
     nframes = int(duration * default_fps)
     nframes = max(min_frames, min(max_frames, nframes))
+    if duration > 0 and native_fps > 0:
+        nframes = min(nframes, max(1, math.ceil(duration * native_fps)))
 
     fps = nframes / duration if duration > 0 else default_fps
-    fps = min(fps, native_fps)
     return fps, nframes
 
 
