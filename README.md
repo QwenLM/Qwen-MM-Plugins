@@ -4,11 +4,13 @@
 
 Native multimodal plugins for Qwen models. Make any agent harness multimodal-native.
 
-<p align="center">
-  <a href="https://qwenlm.github.io/qwen-mm-plugins-hub/"><img src="docs/assets/hub-badge.svg" alt="Explore the Qwen-MM-Plugins Hub"></a>
-  <a href="https://github.com/QwenLM/Qwen-MM-Plugins/issues/72"><img src="docs/assets/wechat-badge.svg" alt="Join the WeChat group"></a>
-  <a href="https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg"><img src="docs/assets/slack-badge.svg" alt="Join the Slack community"></a>
-</p>
+<div align="center">
+
+[![Explore the Qwen-MM-Plugins Hub](docs/assets/hub-badge.svg)](https://qwenlm.github.io/qwen-mm-plugins-hub/)
+[![Join the WeChat group](docs/assets/wechat-badge.svg)](https://github.com/QwenLM/Qwen-MM-Plugins/issues/72)
+[![Join the Slack community](docs/assets/slack-badge.svg)](https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg)
+
+</div>
 
 ## 📰 News
 

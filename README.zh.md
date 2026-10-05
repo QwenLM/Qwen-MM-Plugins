@@ -7,11 +7,13 @@
 按能力查找插件，预览 Skill 和工具定义，并在 Cookbook 中直接查看示例视频和交互案例。
 Hub 同时收录英文文档；中文文档继续在本仓库维护。
 
-<p align="center">
-  <a href="https://qwenlm.github.io/qwen-mm-plugins-hub/"><img src="docs/assets/hub-badge.svg" alt="浏览 Qwen-MM-Plugins Hub"></a>
-  <a href="https://github.com/QwenLM/Qwen-MM-Plugins/issues/72"><img src="docs/assets/wechat-badge.svg" alt="微信交流群"></a>
-  <a href="https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg"><img src="docs/assets/slack-badge.svg" alt="加入 Slack 社区"></a>
-</p>
+<div align="center">
+
+[![浏览 Qwen-MM-Plugins Hub](docs/assets/hub-badge.svg)](https://qwenlm.github.io/qwen-mm-plugins-hub/)
+[![微信交流群](docs/assets/wechat-badge.svg)](https://github.com/QwenLM/Qwen-MM-Plugins/issues/72)
+[![加入 Slack 社区](docs/assets/slack-badge.svg)](https://join.slack.com/t/qwen-mm-plugins/shared_invite/zt-475c57729-K2rpYeb6EJKNJUd5Zun5Cg)
+
+</div>
 
 ## 📰 最新动态
 
