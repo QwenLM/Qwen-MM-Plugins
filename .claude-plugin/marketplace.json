@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Qwen multimodal understanding plugins — Agent Skills + MCP servers",
-    "version": "1.1.10"
+    "version": "1.1.11"
   },
   "plugins": [
     {
@@ -25,7 +25,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/api",
-        "ref": "qwen-mm-plugins-api-v1.2.0"
+        "ref": "qwen-mm-plugins-api-v1.3.0"
       },
       "description": "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription."
     },
