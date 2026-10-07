@@ -19,6 +19,7 @@ import os
 import subprocess
 import tempfile
 from collections.abc import Callable
+from functools import partial
 
 from shared import oss
 from shared.api_omni import (
@@ -274,12 +275,27 @@ def encode_video(
     video_kbps: float | None,
     start_time: float = 0.0,
     duration: float | None = None,
+    preserve_timestamps: bool = False,
 ) -> None:
-    """Transcode a whole video or time range for Omni sampling."""
+    """Transcode media, optionally preserving frame PTS and audio offsets.
+
+    In preservation mode, ``fps`` is only a downstream API sampling hint; local encoding keeps
+    the source frame cadence. Selected ranges share one rebased audio/video timeline.
+    """
     cmd = [find_tool("ffmpeg"), "-v", "error", "-y"]
     if start_time > 0:
-        cmd += ["-ss", f"{start_time:.3f}"]
-    cmd += ["-i", file_path, *_range_args(0.0, duration)]
+        cmd += ["-ss", f"{start_time:.6f}" if preserve_timestamps else f"{start_time:.3f}"]
+    cmd += ["-i", file_path]
+    if preserve_timestamps:
+        # Input seeking rebases the common media timeline while retaining stream offsets.
+        # Limit the whole-file path too: audio codec padding must not extend the source.
+        if duration is None:
+            remaining = media_duration(file_path) - start_time
+            duration = remaining if remaining > 0 else None
+        if duration is not None:
+            cmd += ["-t", f"{duration:.6f}"]
+    else:
+        cmd += _range_args(0.0, duration)
     cmd += [
         "-map",
         "0:v:0",
@@ -296,7 +312,14 @@ def encode_video(
         "-crf",
         str(VIDEO_CRF),
     ]
-    if fps:
+    if preserve_timestamps:
+        # Output -r duplicates/drops frames and rounds the tail to the output frame period.
+        # Keep decoded PTS (including VFR); the API's content-part fps handles sampling.
+        cmd += ["-fps_mode:v", "passthrough", "-enc_time_base:v", "-1", "-bf", "0"]
+        # Retain leading silence rather than moving delayed audio to zero. Do not use
+        # infinite apad here: together with sparse VFR video it can stall ffmpeg.
+        cmd += ["-af", _audio_timeline_filter(None)]
+    elif fps:
         cmd += ["-r", f"{fps:g}"]
     if video_kbps:
         kbps = max(1, int(video_kbps))
@@ -329,8 +352,9 @@ def preprocess_video(
     max_bytes: int = OMNI_MAX_UPLOAD_BYTES,
     start_time: float = 0.0,
     duration: float | None = None,
+    preserve_timestamps: bool = False,
 ) -> None:
-    """Fit a whole video or bounded time range into the inline upload budget."""
+    """Fit a video into the inline budget; the API opts into preserving source timestamps."""
     from shared.env import TOKEN_SIZE
     from shared.image import smart_resize
     from shared.video import get_video_info
@@ -354,6 +378,7 @@ def preprocess_video(
             video_kbps=video_kbps,
             start_time=start_time,
             duration=duration,
+            preserve_timestamps=preserve_timestamps,
         )
         size = os.path.getsize(out_path)
         if size <= max_bytes:
@@ -389,6 +414,7 @@ def transcode_and_upload(
     *,
     start_time: float = 0.0,
     duration: float | None = None,
+    preserve_timestamps: bool = False,
 ) -> str:
     """Transcode a whole video or time range without a byte cap, then upload it to OSS."""
     from shared.env import TOKEN_SIZE
@@ -407,6 +433,7 @@ def transcode_and_upload(
         video_kbps=None,
         start_time=start_time,
         duration=duration,
+        preserve_timestamps=preserve_timestamps,
     )
     return oss.upload_and_sign(out_path, key_prefix=get_env("OSS_VIDEO_CLIP_PREFIX", "tmp/video_clips"))
 
@@ -703,6 +730,7 @@ def build_media_parts(
     start_time: float = 0.0,
     duration: float | None = None,
     max_upload_bytes: int = OMNI_MAX_UPLOAD_BYTES,
+    preserve_timestamps: bool = False,
 ) -> list[dict]:
     """Build Omni content parts using the shared local-file delivery policy."""
     if is_omni_url(file_path):
@@ -738,6 +766,14 @@ def build_media_parts(
                 duration=duration,
             )
         ]
+    delivery_hooks = (
+        {
+            "preprocess_video_fn": partial(preprocess_video, preserve_timestamps=True),
+            "transcode_and_upload_fn": partial(transcode_and_upload, preserve_timestamps=True),
+        }
+        if preserve_timestamps
+        else {}
+    )
     return local_video_parts(
         file_path,
         fps,
@@ -748,4 +784,5 @@ def build_media_parts(
         start_time=start_time,
         duration=duration,
         max_upload_bytes=max_upload_bytes,
+        **delivery_hooks,
     )

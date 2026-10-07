@@ -283,14 +283,16 @@ def call_omni(
     api_key: str,
     model: str | None = None,
     messages: list[dict[str, Any]],
-    max_tokens: int = 65536,
-    temperature: float = 0.7,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
     extra_body: dict[str, Any] | None = None,
 ) -> tuple[str, Any]:
     """Call the Omni model (streaming) and return ``(text, usage)``.
 
     An omitted ``model`` resolves from QWEN_MM_API_OMNI_MODEL, then DEFAULT_OMNI_MODEL.
+    Omitted ``max_tokens`` and ``temperature`` are left out of the request so the provider uses
+    its defaults. Explicit values remain supported for callers that need them.
     Enforces the required ``stream=True`` + ``modalities=["text"]`` + ``stream_options`` protocol,
     accumulates the streamed text deltas, and retries transient failures (typed openai errors,
     retryable HTTP statuses, and an empty completion) via ``shared.retry.retry_call``.
@@ -335,13 +337,15 @@ def call_omni(
 
     def _once() -> tuple[str, Any]:
         request: dict[str, Any] = {}
+        if max_tokens is not None:
+            request["max_tokens"] = max_tokens
+        if temperature is not None:
+            request["temperature"] = temperature
         if contains_temporary_oss_url(messages):
             request["extra_headers"] = dict(OSS_RESOLVE_HEADER)
         stream = client.chat.completions.create(
             model=model,
             messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
             stream=True,
             stream_options={"include_usage": True},
             extra_body=body,
@@ -417,20 +421,24 @@ def call_omni_json(
     api_key: str,
     model: str | None = None,
     messages: list[dict[str, Any]],
-    max_tokens: int = 65536,
-    temperature: float = 0.3,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
     max_retries: int = DEFAULT_MAX_RETRIES,
 ) -> Any:
-    """``call_omni`` + robust JSON parse, sharing its model resolution across any repair call."""
+    """``call_omni`` + JSON parse, using provider defaults for unspecified generation settings."""
     model = resolve_omni_model(model)
+    generation: dict[str, Any] = {}
+    if max_tokens is not None:
+        generation["max_tokens"] = max_tokens
+    if temperature is not None:
+        generation["temperature"] = temperature
     text, _ = call_omni(
         base_url=base_url,
         api_key=api_key,
         model=model,
         messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
         max_retries=max_retries,
+        **generation,
     )
     try:
         return extract_json(text)
@@ -440,13 +448,14 @@ def call_omni_json(
             text_msg("system", "You fix malformed JSON. Output ONLY valid JSON, preserving the original semantics."),
             text_msg("user", f"Fix this into valid JSON, output JSON only:\n{text}"),
         ]
+        if temperature is not None:
+            generation["temperature"] = 0.0
         fixed, _ = call_omni(
             base_url=base_url,
             api_key=api_key,
             model=model,
             messages=repair,
-            max_tokens=max_tokens,
-            temperature=0.0,
             max_retries=max_retries,
+            **generation,
         )
         return extract_json(fixed)

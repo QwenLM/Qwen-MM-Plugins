@@ -24,7 +24,7 @@ def test_api_registers_general_perception_tool():
     tool = next(tool for tool in api.list_tools() if tool["name"] == "perceive_media")
     properties = tool["inputSchema"]["properties"]
     assert properties["media_type"]["enum"] == ["auto", "audio", "video"]
-    assert properties["max_tokens"]["default"] == 65536
+    assert "max_tokens" not in properties and "temperature" not in properties
     assert {"start_time", "end_time"} <= properties.keys()
     assert "chunk_seconds" not in properties
     assert "workers" not in properties
@@ -39,7 +39,7 @@ def test_dry_run_does_not_read_media_or_call_model(monkeypatch):
     )
 
     assert result["media_type"] == "auto"
-    assert result["max_tokens"] == 65536
+    assert "max_tokens" not in result and "temperature" not in result
     assert result["prompt"] == "Summarize it"
     assert "No media was read" in result["note"]
 
@@ -78,7 +78,7 @@ def test_agent_prompt_is_sent_unchanged_in_one_call(monkeypatch, tmp_path):
     assert delivery["args"][1] == "auto"
     assert delivery["kwargs"]["base_url"] == "https://example.com/v1"
     assert delivery["kwargs"]["api_key"] == "secret"
-    assert request["max_tokens"] == 65536
+    assert "max_tokens" not in request and "temperature" not in request
     assert request["messages"] == [
         {"role": "user", "content": [prepared, {"type": "text", "text": "Find every visible title."}]}
     ]

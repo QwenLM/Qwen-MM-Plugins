@@ -26,9 +26,8 @@ class PerceiveMediaArgs(BaseModel):
     media_type: Literal["auto", "audio", "video"] = "auto"
     start_time: float | None = Field(default=None, ge=0.0)
     end_time: float | None = Field(default=None, gt=0.0)
-    fps: float = Field(default=1.0, gt=0.0, le=4.0)
+    fps: float = Field(default=1.0, gt=0.0, le=15.0, allow_inf_nan=False)
     max_pixels: int = Field(default=200704, ge=65536, le=1048576)
-    max_tokens: int = Field(default=65536, ge=256, le=65536)
     model: str | None = None
     api_key: str | None = None
     base_url: str | None = None
@@ -47,7 +46,6 @@ def _dry_run(arguments: dict[str, Any], model: str) -> list[dict[str, str]]:
         "end_time": arguments.get("end_time"),
         "fps": arguments.get("fps", 1.0),
         "max_pixels": arguments.get("max_pixels", 200704),
-        "max_tokens": arguments.get("max_tokens", 65536),
         "prompt": arguments["prompt"],
         "note": "No media was read and no model request was sent.",
     }
@@ -83,9 +81,9 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         start_time: Optional start of a local-media interval in seconds. Use together with end_time.
             The selected interval is rebased to 0 for model-visible timestamps.
         end_time: Optional end of a local-media interval in seconds. Must be greater than start_time.
-        fps: Video sampling rate sent to the model, from above 0 to 4. Default 1.
+        fps: Video sampling rate sent to the model, from above 0 to 15. Default 1. Raise for rapid actions;
+            higher rates increase token cost and frame fallback may sample fewer frames.
         max_pixels: Maximum sampled pixels per video frame, from 65536 to 1048576. Default 200704.
-        max_tokens: Maximum output tokens, from 256 to 65536. Default 65536.
         model: Model override. Defaults to QWEN_MM_API_OMNI_MODEL, then the shared Omni default.
         api_key: API key override; otherwise selected by endpoint.
         base_url: OpenAI-compatible endpoint override. Credentials are resolved from shared config.
@@ -130,7 +128,6 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     media_type = str(arguments.get("media_type") or "auto")
     fps = float(arguments.get("fps", 1.0))
     max_pixels = int(arguments.get("max_pixels", 200704))
-    max_tokens = int(arguments.get("max_tokens", 65536))
     cleanup: list[str] = []
     try:
         parts = build_media_parts(
@@ -145,13 +142,13 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             api_key=api_key,
             start_time=start_time,
             duration=duration,
+            preserve_timestamps=True,
         )
         text, _usage = call_omni(
             base_url=base_url,
             api_key=api_key,
             model=model,
             messages=[{"role": "user", "content": [*parts, {"type": "text", "text": prompt}]}],
-            max_tokens=max_tokens,
         )
         blocks = [{"type": "text", "text": text.strip()}]
         if requested_end_time is not None and end_time is not None:

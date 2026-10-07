@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from ._common import json_block, normalize_times, run_omni, summary_block
+from ._common import json_block, normalize_times, output_warnings, run_omni, summary_block
 
 
 class OmniAvCountingArgs(BaseModel):
@@ -40,6 +41,8 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     OSS_* is configured (no size limit), else split into sampled frames plus its full audio track —
     at which point the frame spacing bounds how finely occurrences can be separated. Passing an
     http(s)/OSS URL keeps full sampling (fetched server-side), as does counting over a trimmed clip.
+    Numeric-string counts and single-occurrence objects are accepted. Unreadable fields retain
+    their raw model reply with a warning instead of failing the call.
 
     Args:
         file_path: Absolute path to a local audio/video file, or an http(s)/OSS URL.
@@ -60,16 +63,38 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
 
     occurrences: list = []
     count: Optional[int] = None
+    warnings = []
     if isinstance(data, dict):
         occ = data.get("occurrences") or data.get("results") or []
+        if not isinstance(occ, list):
+            occ = [occ]
+            warnings.append("Occurrences were not an array; recognizable entries are retained.")
+        if any(not isinstance(item, dict) for item in occ):
+            warnings.append("Some occurrences could not be interpreted; the raw reply is retained.")
         occurrences = normalize_times([o for o in occ if isinstance(o, dict)])
         raw_count = data.get("count")
-        if isinstance(raw_count, (int, float)):
-            count = int(raw_count)
+        if raw_count is not None:
+            try:
+                numeric = float(raw_count)
+                if not math.isfinite(numeric) or not numeric.is_integer():
+                    raise ValueError("count must be a finite integer")
+                count = int(numeric)
+            except (TypeError, ValueError, OverflowError):
+                warnings.append("The count could not be interpreted; derived it from recognizable occurrences.")
     elif isinstance(data, list):
         occurrences = normalize_times([o for o in data if isinstance(o, dict)])
+        if any(not isinstance(item, dict) for item in data):
+            warnings.append("Some occurrences could not be interpreted; the raw reply is retained.")
+    else:
+        warnings.append("The model reply did not contain recognizable count fields.")
     if count is None:
         count = len(occurrences)
 
     result = {"target": target, "count": count, "occurrences": occurrences}
-    return [json_block(result), summary_block(f"Counted {count} occurrence(s) of {target!r}.")]
+    if warnings:
+        result["raw"] = data
+    return [
+        json_block(result),
+        summary_block(f"Counted {count} occurrence(s) of {target!r}."),
+        *output_warnings(warnings),
+    ]

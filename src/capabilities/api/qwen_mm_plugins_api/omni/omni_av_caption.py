@@ -1,18 +1,24 @@
-"""Omni A/V Caption — detailed Markdown report of a video: timestamped storyline, visible text,
-speaker transcript, plus minor-safety compliance flags and a final safety assessment."""
+"""Omni A/V descriptions using the official narrative, three-section, and JSON prompts."""
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ._common import run_omni, summary_block
+from shared.api_omni import is_omni_url
+from shared.content import text_error
+from shared.omni_media import media_duration
+
+from ._caption_schema import CaptionResult
+from ._common import json_block, output_warnings, run_omni, summary_block
+from ._prompts import CAPTION_JSON_PROMPT, NARRATIVE_PROMPT, SECTIONS_PROMPT
 
 
 class OmniAvCaptionArgs(BaseModel):
     file_path: str
-    fps: Optional[float] = None
+    format: Literal["sections", "narrative", "json"] = "sections"
+    fps: Optional[float] = Field(default=None, gt=0.0, le=15.0, allow_inf_nan=False)
     max_pixels: Optional[int] = None
     model: Optional[str] = None
     api_key: Optional[str] = None
@@ -22,89 +28,43 @@ class OmniAvCaptionArgs(BaseModel):
 
 TOOL = {"name": "omni_av_caption", "args": OmniAvCaptionArgs}
 
-_PROMPT = """
-Please provide a detailed description of the video. It must explicitly include three primary sections as defined below. Additionally, you are required to include two specific analytical sections to identify content that is inappropriate for minors.
-
-### Section 1: Storyline
-Provide a structured chronological storyline of every noticeable audio and visual detail.
-*   **Requirement:** In the storyline, if a segment contains content potentially harmful to minors (graphic violence, gore, dangerous acts, bullying, or inappropriate adult themes), you must append the following at the end of that specific paragraph: **[FLAG: <Category> - <Severity: Low/Medium/High>]**.
-
-### Section 2: Visible Text
-Provide a structured list of all visible text. For each text element, include start timestamp, end timestamp, the exact text content, and the appearance characteristics. If no text appears, explicitly state: "No text appears."
-
-### Section 3: Speakers and Transcript
-Provide a structured speech-to-text transcription. Include the speaker (corresponding to the character or voice-over, including accent and tone), exact spoken content, start timestamp, end timestamp, and speaking state (prosody, emotion, and style). If no speech appears, explicitly state: "No speech appears."
-
-### Section 4: Compliance Alert (Summary)
-Provide a table summarizing all flagged segments for quick review:
-| Time Range | Category | Risk Level | Justification |
-| :--- | :--- | :--- | :--- |
-| xx:xx - xx:xx | e.g., Violence | High | e.g., Realistic physical assault observed. |
-
-### Section 5: Summary of Safety Findings
-Provide a final assessment on whether the video is suitable for minors, citing the most critical timestamps and explaining the overall risk profile. Apply a zero-tolerance policy; if there is ambiguity regarding whether a scene is harmful, err on the side of caution.
-
----
-
-## Output Format:
-
-```
-## Storyline
-
-<xx:xx.xxx> - <xx:xx.xxx>
-<An unstructured long paragraph describing all audio/visual details. If harmful, append [FLAG: <Category> - <Severity>].>
-
-## Visible Text
-
-<xx:xx.xxx> - <xx:xx.xxx>
-“<element>”: <appearance>
-
-## Speakers and Transcript
-
-Speaker profiles:
-<speaker> - <profile>
-
-<xx:xx.xxx> - <xx:xx.xxx>
-Speaker: <speaker>
-State: <description>
-Content: “<content>”
-
-## Compliance Alert (Summary)
-
-| Time Range | Category | Risk Level | Justification |
-| :--- | :--- | :--- | :--- |
-
-## Summary of Safety Findings
-
-<Paragraphs detailing the safety assessment.>
-```
-"""
+_PROMPTS = {"sections": SECTIONS_PROMPT, "narrative": NARRATIVE_PROMPT, "json": CAPTION_JSON_PROMPT}
 
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    # The prompt asks for a Markdown report, not JSON — return the model's text as-is. The
-    # five-section report runs long, so give it more headroom than the default 4096 tokens.
-    """Produce a detailed Markdown report of an audio/video using the Qwen-Omni model (reads both the
-    video frames and the audio track): a timestamped storyline, all visible text, a speaker-
-    attributed transcript, plus flags for content inappropriate for minors with a compliance-alert
-    table and a final safety assessment. A local file is uploaded inline, where the endpoint caps a
-    media item at 10 MB of base64, so it is transcoded to fit — about 9 min at the default 1 fps /
-    448² sampling. A longer local video is delivered another way automatically: uploaded to OSS when
-    OSS_* is configured (no size limit), else split into sampled frames plus its full audio track.
-    Passing an http(s)/OSS URL skips all of that (fetched and sampled server-side); for hour-scale
-    video use video-memory. Use dry_run=true to preview the request payload without calling.
+    """Describe audio/video with an official Qwen-Omni prompt. The default returns three sections:
+    chronological storyline, visible text, and speaker-attributed transcription. Choose narrative
+    for flowing timestamped paragraphs, or json for scenes and events. Local videos retain
+    both frames and audio; oversized media uses temporary OSS, configured OSS, or frames plus audio.
+    Model schema/timestamp deviations return the original JSON with a warning, rather than failing
+    the call. Timestamps are relative to the source start and may need review.
 
     Args:
         file_path: Absolute path to a local audio/video file, or an http(s)/OSS URL.
-        fps: Video sampling fps (default 1.0). Higher = finer temporal detail, more tokens, and a
-            larger upload — which shortens the maximum uploadable length.
+        format: Output style: sections (default), narrative, or json (complete scene/event schema).
+        fps: Video sampling fps, above 0 and up to 15 (default 1.0). Raise for rapid actions.
+            Higher sampling increases token cost; frame fallback may use fewer frames.
         max_pixels: Per-frame pixel budget (default 200704 ≈ 448²).
         model: Omni model id override. Defaults to QWEN_MM_API_OMNI_MODEL, then qwen3.8-omni-flash.
         api_key: API key override; otherwise selected by endpoint.
         base_url: OpenAI-compatible base URL override.
         dry_run: Return the request that would be sent, without calling the API.
     """
-    text, blocks = run_omni(arguments, prompt=_PROMPT, mode="auto", json_output=False, max_tokens=65536)
+    output_format = arguments.get("format", "sections")
+    if output_format not in _PROMPTS:
+        return text_error("format must be sections, narrative, or json")
+    data, blocks = run_omni(arguments, prompt=_PROMPTS[output_format], mode="auto", json_output=output_format == "json")
     if blocks is not None:
         return blocks
-    return [summary_block(str(text))]
+    if output_format != "json":
+        return [summary_block(str(data))]
+    warnings = []
+    try:
+        result = CaptionResult.model_validate(data)
+        if not is_omni_url(arguments["file_path"]):
+            result.check_duration(media_duration(arguments["file_path"]))
+    except ValueError as exc:
+        warnings.append(f"Caption JSON differs from the requested schema or timeline: {exc}")
+    except Exception:  # noqa: BLE001 — unavailable local metadata must not discard a model reply
+        warnings.append("Could not check the local media duration.")
+    return [json_block(data), *output_warnings(warnings)]
