@@ -48,15 +48,15 @@ TOOL = {"name": "read_video", "args": ReadVideoArgs}
 
 def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract frames from a video file with dynamic resolution and FPS. When fps=0 (default),
-    automatically selects the best sampling rate based on video duration. Resolution is
+    automatically selects the sampling rate based on video duration and native frame rate. Resolution is
     automatically adjusted to fit the patch grid. For full source properties (codec, bitrate, native
     fps, rotation, VFR, audio tracks) — and before any clip/edit task — run media_info first.
 
     Args:
         video_path: Absolute path to the video file
         fps: Sampling FPS. 0 = auto-detect based on duration (recommended). Default: 0
-        max_frames: Maximum frames to extract (capped at 600). Actual count may be lower or stripped
-            depending on video length and response size limits.
+        max_frames: Maximum frames to extract (capped at 600). Actual count may be lower depending on
+            video length, native frame rate, and response size limits.
         budget: Per-frame resolution preset: small (~288×288), normal (~512×512), large
             (~1024×1024).
         start_time: Start time — seconds or a clock string ('MM:SS'/'HH:MM:SS'). Default: 0
@@ -149,7 +149,8 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         f"Source: {duration:.1f}s | {info['width']}x{info['height']} (WxH) | "
         f"{info['native_fps']:.1f} fps native{rotation_note} "
         f"— call the media_info tool for codecs, bitrate, audio tracks, VFR\n"
-        f"Sampled: {len(frames)} frames @ {fps:.1f} fps | {time_range} | {target_w}x{target_h} (WxH) per frame"
+        f"Sampled: {len(frames)} {'frame' if len(frames) == 1 else 'frames'} @ {fps:.1f} fps | "
+        f"{time_range} | {target_w}x{target_h} (WxH) per frame"
     )
 
     content: list[dict[str, Any]] = [text(summary)]

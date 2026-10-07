@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import math
 import mimetypes
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -167,18 +168,18 @@ def _temporary_oss_url(path: str | Path, base_url: str | None, api_key: str | No
 def _frame_sampling_would_cap(source: str, max_frames: int) -> bool:
     """Whether sampling ``source`` locally would hit ``max_frames`` and so lose temporal detail.
 
-    ``compute_dynamic_fps`` clamps the frame count to ``max_frames``, so a video short enough that
-    ``duration * DEFAULT_FPS`` fits under that cap is represented in full by local frames and an
-    upload buys nothing.
+    A low native frame rate can fit under the cap even when ``duration * DEFAULT_FPS`` cannot.
+    The minimum-frame floor does not by itself signal lost source detail.
     """
     from shared.env import DEFAULT_FPS
     from shared.video import get_video_info
 
     try:
-        duration = float(get_video_info(source).get("duration") or 0.0)
+        info = get_video_info(source)
+        duration = float(info.get("duration") or 0.0)
     except Exception:  # noqa: BLE001 — unreadable locally: let the upload path try
         return True
-    return duration > 0 and int(duration * DEFAULT_FPS) > max_frames
+    return duration > 0 and min(int(duration * DEFAULT_FPS), math.ceil(duration * info["native_fps"])) > max_frames
 
 
 def encode_image_source(
