@@ -92,6 +92,19 @@ def has_audio_stream(path: str) -> bool:
         return False
 
 
+def video_time_base(path: str) -> str | None:
+    """Time base of the first video stream (e.g. ``1/15360``), or None when it cannot be read."""
+    from shared.video import probe_media
+
+    try:
+        streams = probe_media(path).get("streams", [])
+    except Exception:  # noqa: BLE001 — callers fall back to ffmpeg's default time base
+        return None
+    time_base = next((str(s.get("time_base") or "") for s in streams if s.get("codec_type") == "video"), "")
+    num, _, den = time_base.partition("/")
+    return time_base if num.isdigit() and den.isdigit() and int(num) > 0 and int(den) > 0 else None
+
+
 def _range_args(start_time: float, duration: float | None) -> list[str]:
     args: list[str] = []
     if start_time > 0:
@@ -315,7 +328,11 @@ def encode_video(
     if preserve_timestamps:
         # Output -r duplicates/drops frames and rounds the tail to the output frame period.
         # Keep decoded PTS (including VFR); the API's content-part fps handles sampling.
-        cmd += ["-fps_mode:v", "passthrough", "-enc_time_base:v", "-1", "-bf", "0"]
+        cmd += ["-fps_mode:v", "passthrough", "-bf", "0"]
+        # Encode in the source time base. Pass it explicitly: ffmpeg 6 spells this
+        # "-enc_time_base -1", ffmpeg 7 adds "demux", and ffmpeg 8+ rejects "-1".
+        if time_base := video_time_base(file_path):
+            cmd += ["-enc_time_base:v", time_base]
         # Retain leading silence rather than moving delayed audio to zero. Do not use
         # infinite apad here: together with sparse VFR video it can stall ffmpeg.
         cmd += ["-af", _audio_timeline_filter(None)]
