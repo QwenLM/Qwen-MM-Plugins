@@ -110,7 +110,7 @@ def test_call_omni_resolves_env_default(monkeypatch):
     text, _ = api_omni.call_omni(base_url="http://local/v1", api_key="key", messages=[])
     assert text == "ok"
     assert captured["model"] == "env-omni"
-    assert captured["max_tokens"] == 65536
+    assert "max_tokens" not in captured and "temperature" not in captured
 
 
 def test_call_omni_json_resolves_env_default(monkeypatch):
@@ -124,7 +124,34 @@ def test_call_omni_json_resolves_env_default(monkeypatch):
     monkeypatch.setattr(api_omni, "call_omni", fake_call)
     assert api_omni.call_omni_json(base_url="http://local/v1", api_key="key", messages=[]) == {"ok": True}
     assert captured["model"] == "env-omni"
-    assert captured["max_tokens"] == 65536
+    assert "max_tokens" not in captured and "temperature" not in captured
+
+
+@pytest.mark.parametrize("name", sorted(_EXPECTED))
+def test_atomic_tools_leave_generation_settings_to_provider(monkeypatch, name):
+    calls = []
+
+    def fake_json(**kwargs):
+        calls.append(kwargs)
+        return {"text": "transcript", "segments": [], "matches": [], "count": 0, "occurrences": [], "caption": "music"}
+
+    def fake_text(**kwargs):
+        calls.append(kwargs)
+        text = {
+            "omni_multi_speaker_asr": "<soc><eoc>",
+            "omni_asr_timestamped": "1\n00:00:00,000 --> 00:00:01,500\nhi\n",
+        }.get(name, "description")
+        return text, None
+
+    monkeypatch.setattr(_common, "call_omni_json", fake_json)
+    monkeypatch.setattr(_common, "call_omni", fake_text)
+    handler = oav.get_handler(name)
+    arguments = {"file_path": "https://example.com/audio.wav", "query": "bell", "target": "bell"}
+    handler(arguments)
+    assert len(calls) == 1
+    assert "max_tokens" not in calls[0] and "temperature" not in calls[0]
+    preview = _preview(handler({**arguments, "dry_run": True}))
+    assert "max_tokens" not in preview and "temperature" not in preview
 
 
 def test_caption_dry_run_sends_video_with_sampling_knobs():
@@ -202,28 +229,22 @@ def test_asr_formats_plain_text(monkeypatch):
 
 
 def test_timestamped_emits_segments_and_srt(monkeypatch):
-    _mock_json(monkeypatch, {"segments": [{"start": 0, "end": 1.5, "text": "hi"}]})
+    transcript = "1\n00:00:00,000 --> 00:00:01,500\nhi\n"
+    monkeypatch.setattr(_common, "call_omni", lambda **kw: (transcript, None))
     path = _dummy(".wav")
     try:
         blocks = oav.get_handler("omni_asr_timestamped")({"file_path": path})
     finally:
         os.remove(path)
     result = json.loads(blocks[0]["text"])
-    assert result["granularity"] == "sentence"
+    assert result["granularity"] == "utterance"
     assert result["segments"][0]["text"] == "hi"
     assert "00:00:00,000 --> 00:00:01,500" in blocks[1]["text"]  # SRT rendering
 
 
 def test_multi_speaker_labels_speakers_in_srt(monkeypatch):
-    _mock_json(
-        monkeypatch,
-        {
-            "segments": [
-                {"speaker": "Speaker 1", "start": 0, "end": 1, "text": "hi"},
-                {"speaker": "Speaker 2", "start": 1, "end": 2, "text": "bye"},
-            ]
-        },
-    )
+    transcript = "<soc><sos><0>hi<1><speaker1><eos><sos><1>bye<2><speaker2><eos><eoc>"
+    monkeypatch.setattr(_common, "call_omni", lambda **kw: (transcript, None))
     path = _dummy(".wav")
     try:
         blocks = oav.get_handler("omni_multi_speaker_asr")({"file_path": path})
@@ -248,8 +269,8 @@ def test_string_timestamps_are_coerced_to_float(monkeypatch):
 
 
 def test_caption_returns_markdown_report(monkeypatch):
-    # caption is the one report-style tool: raw Markdown from call_omni, no JSON parse
-    report = "## Storyline\n\n<0:00.000> - <0:03.000>\nA test pattern.\n\n## Summary of Safety Findings\n\nSafe."
+    # Default caption returns the three-section text unchanged, without a JSON parse.
+    report = "## Storyline\n\nA test pattern.\n\n## Visible Text\n\nNo text appears.\n\n## Speakers and Transcript\n\nNo speech appears."
     monkeypatch.setattr(_common, "call_omni", lambda **kw: (report, None))
     path = _dummy(".mp4")
     try:
@@ -398,13 +419,13 @@ def test_preprocess_video_lands_inside_the_byte_budget(sample_media_av, tmp_path
     assert 0 < os.path.getsize(out) <= 50_000
 
 
-def test_preprocess_video_caps_frame_rate_at_the_sampling_fps(sample_media_av, tmp_path):
-    # the fixture is 10 fps; encoding above the fps Omni samples at is pure payload
+def test_preprocess_video_preserves_frame_rate_for_api_sampling(sample_media_av, tmp_path):
+    # API-side sampling must not alter the uploaded video's timeline or round its tail.
     from shared.video import get_video_info
 
     out = str(tmp_path / "rate.mp4")
     _common._preprocess_video(sample_media_av, out, 200704, fps=1.0)
-    assert get_video_info(out)["native_fps"] <= 1.5
+    assert get_video_info(out)["native_fps"] == get_video_info(sample_media_av)["native_fps"]
 
 
 def test_preprocess_video_rejects_a_video_too_long_to_fit(sample_media_av, tmp_path):
@@ -919,7 +940,7 @@ def test_omni_audio_part_preserves_local_filename_suffix(tmp_path):
     assert base64.b64decode(part["input_audio"]["data"].split(",")[-1]) == b"audio"
 
 
-@pytest.mark.parametrize("tool", ["omni_asr", "omni_av_caption"])
+@pytest.mark.parametrize("tool", ["omni_asr", "omni_asr_timestamped", "omni_multi_speaker_asr", "omni_av_caption"])
 @pytest.mark.parametrize(
     "source,expected",
     [
@@ -930,6 +951,16 @@ def test_omni_audio_part_preserves_local_filename_suffix(tmp_path):
     ],
 )
 def test_remote_media_preview_matches_request(monkeypatch, tool, source, expected):
+    audio_only = tool != "omni_av_caption"
+    if audio_only:
+        expected = "input_audio"
+    extracted = []
+
+    def audio_part(path, cleanup, *, budget):
+        extracted.append(path)
+        return {"type": "input_audio", "input_audio": {"data": "extracted-audio", "format": "wav"}}
+
+    monkeypatch.setattr(_common, "_local_audio_part", audio_part)
     preview = _preview(oav.get_handler(tool)({"file_path": source, "dry_run": True}))
     captured = {}
 
@@ -943,4 +974,8 @@ def test_remote_media_preview_matches_request(monkeypatch, tool, source, expecte
     part = captured["messages"][0]["content"][0]
     assert preview["messages"][0]["content"][0]["type"] == part["type"] == expected
     returned_url = part["video_url"]["url"] if expected == "video_url" else part["input_audio"]["data"]
-    assert returned_url == source
+    if audio_only and _common.has_video_extension(source):
+        assert extracted == [source]
+        assert returned_url == "extracted-audio"
+    else:
+        assert returned_url == source

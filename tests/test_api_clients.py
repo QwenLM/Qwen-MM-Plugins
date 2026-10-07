@@ -8,6 +8,7 @@ module's attribute is enough, no live network.
 
 import base64
 import io
+import json
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -301,6 +302,68 @@ def test_call_omni_enables_temporary_oss_resolution(monkeypatch):
     assert text == "ok"
     sent = holder["client"].chat.completions.seen[0]
     assert sent["extra_headers"] == {"X-DashScope-OssResourceResolve": "enable"}
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_omni_http_requests_use_provider_generation_defaults(monkeypatch, json_output):
+    import openai
+
+    payloads = []
+    responses = iter(["invalid JSON", '{"ok": true}'] if json_output else ["answer"])
+
+    def respond(request):
+        payloads.append(json.loads(request.content))
+        chunk = {"choices": [{"index": 0, "delta": {"content": next(responses)}}]}
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text=f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n",
+        )
+
+    client_type = openai.OpenAI
+    monkeypatch.setattr(
+        openai,
+        "OpenAI",
+        lambda **kwargs: client_type(**kwargs, http_client=httpx.Client(transport=httpx.MockTransport(respond))),
+    )
+    call = omni.call_omni_json if json_output else omni.call_omni
+    result = call(base_url="http://local/v1", api_key="test-key", model="test-omni", messages=[])
+    if json_output:
+        assert result == {"ok": True}
+    else:
+        assert result[0] == "answer"
+    assert len(payloads) == (2 if json_output else 1)
+    for payload in payloads:
+        assert "max_tokens" not in payload and "temperature" not in payload
+        assert payload["model"] == "test-omni"
+        assert payload["stream"] is True and payload["modalities"] == ["text"]
+
+
+@pytest.mark.parametrize(
+    "settings", [{"max_tokens": 4096}, {"temperature": 0.0}, {"max_tokens": 4096, "temperature": 0.01}]
+)
+def test_omni_explicit_generation_settings_still_work_for_other_callers(monkeypatch, settings):
+    chunk = SimpleNamespace(usage=None, choices=[SimpleNamespace(delta=SimpleNamespace(content="ok"))])
+    holder = _install_fake_openai(monkeypatch, lambda _: [chunk])
+    omni.call_omni(base_url="http://local/v1", api_key="test-key", messages=[], **settings)
+    sent = holder["client"].chat.completions.seen[0]
+    assert {key: sent[key] for key in ("max_tokens", "temperature") if key in sent} == settings
+
+
+def test_omni_json_preserves_explicit_settings_and_repair_behavior(monkeypatch):
+    calls = []
+    responses = iter(["invalid JSON", '{"ok": true}'])
+
+    def fake_call(**kwargs):
+        calls.append(kwargs)
+        return next(responses), None
+
+    monkeypatch.setattr(omni, "call_omni", fake_call)
+    assert omni.call_omni_json(
+        base_url="http://local/v1", api_key="key", messages=[], max_tokens=4096, temperature=0.01
+    ) == {"ok": True}
+    assert calls[0]["temperature"] == 0.01 and calls[1]["temperature"] == 0.0
+    assert all(call["max_tokens"] == 4096 for call in calls)
 
 
 def test_call_openai_chat_retries_transient_then_succeeds(monkeypatch):

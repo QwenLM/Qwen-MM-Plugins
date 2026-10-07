@@ -14,6 +14,7 @@ affect it.
 from __future__ import annotations
 
 import json
+import math
 import os
 from typing import Any
 
@@ -24,7 +25,7 @@ from shared.api_omni import (
     OMNI_MAX_B64_BYTES,
     OMNI_MAX_UPLOAD_BYTES,
     call_omni,
-    call_omni_json,
+    extract_json,
     has_video_extension,
     has_video_stream,
     is_omni_url,
@@ -35,10 +36,25 @@ from shared.api_omni import (
     resolve_omni_model,
 )
 from shared.content import require_dep, require_file, text_error
+from shared.dashscope_upload import contains_temporary_oss_url
 from shared.syscmd import find_tool  # noqa: F401 — compatibility surface for reachability tests
 
 _INLINE_B64_BUDGET = omni_media.INLINE_B64_BUDGET
 _InlineBudgetExceeded = omni_media.InlineBudgetExceeded
+
+
+class _UnparsedJson:
+    def __init__(self, text: str):
+        self.text = text
+
+
+def call_omni_json(**kwargs: Any) -> Any:
+    """Parse one reply locally, retaining the model's text when JSON cannot be recovered."""
+    text, _usage = call_omni(**kwargs)
+    try:
+        return extract_json(text)
+    except ValueError:
+        return _UnparsedJson(text)
 
 
 # Compatibility adapters. Keep these small: media policy belongs in shared.omni_media.
@@ -99,6 +115,7 @@ def _preprocess_video(
         max_bytes=max_bytes,
         start_time=start_time,
         duration=duration,
+        preserve_timestamps=True,
     )
 
 
@@ -118,6 +135,7 @@ def _transcode_and_upload(
         fps,
         start_time=start_time,
         duration=duration,
+        preserve_timestamps=True,
     )
 
 
@@ -222,9 +240,13 @@ def _build_media_parts(
     api_key: str,
 ) -> list[dict]:
     if is_omni_url(file_path):
+        # Model-bound OSS resources cannot be opened by local ffmpeg. Preserve their
+        # video content type so DashScope resolves and decodes the original container.
+        if mode == "audio" and has_video_stream(file_path) and not contains_temporary_oss_url(file_path):
+            return [_local_audio_part(file_path, cleanup, budget=OMNI_MAX_UPLOAD_BYTES)]
         return (
             [omni_video_part(file_path, fps=fps, max_pixels=max_pixels)]
-            if has_video_stream(file_path)
+            if mode == "video" or has_video_stream(file_path)
             else [omni_audio_part(file_path)]
         )
     temporary = _temporary_oss_parts(
@@ -247,7 +269,9 @@ def _build_media_parts(
 
 def _dry_run_blocks(file_path: str, prompt: str, mode: str, fps: float, max_pixels: int, model: str) -> list[dict]:
     """Preview a request without reading media, invoking ffmpeg, or calling the model."""
-    if has_video_extension(file_path) and (mode != "audio" or is_omni_url(file_path)):
+    if mode == "video" or (
+        (mode != "audio" or contains_temporary_oss_url(file_path)) and has_video_extension(file_path)
+    ):
         media = {
             "type": "video_url",
             "source": os.path.basename(file_path),
@@ -258,6 +282,12 @@ def _dry_run_blocks(file_path: str, prompt: str, mode: str, fps: float, max_pixe
                 "through DashScope temporary OSS, then configured OSS or a frames + audio fallback"
             ),
         }
+        if contains_temporary_oss_url(file_path):
+            media["note"] = (
+                "<url elided in dry_run> — temporary OSS video requires server-side decoding; "
+                "the original video, including its frames and audio, is sent even in audio mode. "
+                "For strictly audio-only input, provide an audio URL or a local file."
+            )
     else:
         media = {"type": "input_audio", "source": os.path.basename(file_path), "note": "<base64/url elided in dry_run>"}
     preview = {
@@ -283,7 +313,6 @@ def run_omni(
     default_fps: float = DEFAULT_OMNI_FPS,
     default_max_pixels: int = DEFAULT_OMNI_MAX_PIXELS,
     json_output: bool = True,
-    max_tokens: int = 65536,
 ) -> tuple[Any, list[dict] | None]:
     """Validate, prepare media, and call Omni for a specialized atomic tool."""
     file_path = arguments.get("file_path", "")
@@ -321,7 +350,6 @@ def run_omni(
                 api_key=api_key,
                 model=model,
                 messages=messages,
-                max_tokens=max_tokens,
             )
         else:
             data, _usage = call_omni(
@@ -329,8 +357,12 @@ def run_omni(
                 api_key=api_key,
                 model=model,
                 messages=messages,
-                max_tokens=max_tokens,
             )
+        if isinstance(data, _UnparsedJson):
+            return None, [
+                summary_block(data.text),
+                *output_warnings(["Could not parse JSON; returning the model reply."]),
+            ]
         return data, None
     except Exception as exc:  # noqa: BLE001 — MCP tools return errors instead of crashing
         return None, text_error(str(exc))
@@ -348,10 +380,10 @@ def _coerce_time(value: Any) -> Any:
     from shared.video import parse_time
 
     try:
-        parsed = parse_time(value)
+        parsed = parse_time(value.replace(",", ".") if isinstance(value, str) else value)
     except Exception:  # noqa: BLE001 — retain the model value when it is not parseable
         return value
-    return parsed if parsed is not None else value
+    return parsed if parsed is not None and math.isfinite(parsed) else value
 
 
 def normalize_times(items: list, keys: tuple[str, ...] = ("start", "end")) -> list:
@@ -374,18 +406,22 @@ def ms_to_srt_time(ms: int) -> str:
 def segments_to_srt(segments: list[dict], *, label_key: str | None = None) -> str:
     """Render timestamped segments as SRT, optionally prefixing each cue with a label."""
     lines: list[str] = []
-    for index, segment in enumerate(segments, 1):
+    index = 0
+    for segment in segments:
         try:
             start = float(segment.get("start", 0) or 0)
             end = float(segment.get("end", start) or start)
         except (TypeError, ValueError):
             continue
+        if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end < start:
+            continue
+        index += 1
         body = str(segment.get("text", "")).strip()
         if label_key and segment.get(label_key):
             body = f"[{segment[label_key]}] {body}"
         lines += [
             str(index),
-            f"{ms_to_srt_time(int(start * 1000))} --> {ms_to_srt_time(int(end * 1000))}",
+            f"{ms_to_srt_time(round(start * 1000))} --> {ms_to_srt_time(round(end * 1000))}",
             body,
             "",
         ]
@@ -398,3 +434,13 @@ def json_block(data: Any) -> dict:
 
 def summary_block(message: str) -> dict:
     return {"type": "text", "text": message}
+
+
+def output_warnings(messages: list[str], *, raw_text: str | None = None) -> list[dict]:
+    """Report model-output issues without turning usable content into a tool error."""
+    if not messages:
+        return []
+    blocks = [summary_block("Warning: " + " ".join(dict.fromkeys(messages)))]
+    if raw_text is not None:
+        blocks.append(summary_block("Raw model output:\n" + raw_text))
+    return blocks
