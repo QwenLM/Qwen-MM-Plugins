@@ -1,11 +1,14 @@
-"""Configuration regressions for the standalone video-memory builder."""
+"""Configuration regressions for the standalone video-memory builder and its MCP toolkit loader."""
 
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from shared import env as env_config
 
 _BUILD_DIR = Path(__file__).resolve().parents[1] / "src/capabilities/video-memory/skill/script/build_memory"
 
@@ -44,3 +47,40 @@ def test_builder_import_tolerates_url_expiry(tmp_path, source, value, expected, 
 
     assert result.stdout.strip() == str(expected)
     assert ("invalid OSS_URL_EXPIRY=" in result.stderr) is warns
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (None, None),
+        ("", None),
+        ("   ", None),
+        ("90", 90.0),
+        ("  90.5  ", 90.5),
+        ("1:30", None),
+        ("90s", None),
+    ],
+)
+def test_toolkit_load_survives_the_cutoff_knob(tmp_path, monkeypatch, caplog, value, expected):
+    """A blank or human-typed CUTOFF_SEC must degrade to "no cutoff", not fail every tool.
+
+    The loader resolved the cutoff with a bare ``float(...)``, so one mistyped value raised on
+    the first tool call while the startup pre-load swallowed it as a warning.
+    """
+    from qwen_mm_plugins_video_memory import loader
+
+    config = tmp_path / "config"
+    config.write_text("", encoding="utf-8")
+    monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
+    monkeypatch.setattr(env_config, "_config_cache", None)
+    graph = tmp_path / "graph_memory.json"
+    graph.write_text(json.dumps({"macro_events": [], "nodes": [], "edges": []}), encoding="utf-8")
+    monkeypatch.setenv("GRAPH_MEMORY_PATH", str(graph))
+    monkeypatch.delenv("EMBEDDINGS_PATH", raising=False)
+    if value is None:
+        monkeypatch.delenv("CUTOFF_SEC", raising=False)
+    else:
+        monkeypatch.setenv("CUTOFF_SEC", value)
+
+    assert loader.get_toolkit()._cutoff_sec == expected
+    assert (f"invalid CUTOFF_SEC={value!r}" in caplog.text) is (value in ("1:30", "90s"))
