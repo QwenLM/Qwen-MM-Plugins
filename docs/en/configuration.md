@@ -70,6 +70,7 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 | `ORCAROUTER_API_KEY` | — | OpenAI-compatible calls to api.orcarouter.ai *(secret)* |
 | `OPENROUTER_API_KEY` | — | OpenAI-compatible calls to openrouter.ai *(secret)* |
 | `CHEAPER_INFERENCE_API_KEY` | — | OpenAI-compatible calls to api.cheaperinference.com *(secret)* |
+| `API_ROUTE_API_KEY` | — | OpenAI-compatible calls to global.api-route.com *(secret)* |
 | `MINIMAX_API_KEY` | — | MiniMax text-to-speech generation *(secret)* |
 | `DASHSCOPE_BASE_URL` | DashScope compat URL | override the DashScope OpenAI-compatible base URL |
 | `DASHSCOPE_UPLOAD_POLICY_URL` | inferred for official DashScope hosts | override the model-bound temporary OSS policy endpoint used for oversized Omni and VL media |

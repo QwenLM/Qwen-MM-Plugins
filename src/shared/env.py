@@ -206,6 +206,13 @@ CONFIG_FIELDS: list[tuple[str, bool, str, str, str]] = [
         "OpenAI-compatible calls to api.cheaperinference.com",
     ),
     (
+        "API_ROUTE_API_KEY",
+        True,
+        "Media APIs & endpoints",
+        "",
+        "OpenAI-compatible calls to global.api-route.com",
+    ),
+    (
         "MINIMAX_API_KEY",
         True,
         "Media APIs & endpoints",
