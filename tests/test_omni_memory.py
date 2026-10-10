@@ -556,7 +556,4 @@ def test_the_two_config_readers_stay_identical():
     marker = "IDENTICAL IN env_config.py BELOW THIS LINE"
     server = _below_marker(os.path.join(OM_SERVER_DIR, "config.py"), marker)
     build = _below_marker(os.path.join(_BUILD_DIR, "env_config.py"), marker)
-    # env_config is also runnable, for a shell launcher that needs the keys exported; that tail is
-    # build-only and stops the shared region.
-    build = build.partition('if __name__ == "__main__":')[0]
     assert server.strip() == build.strip(), "the build and the server read settings differently now"

@@ -410,11 +410,3 @@ def local_dir():
     """Explicit shared-library root, or empty when memories should live beside the video."""
     configured = get_env("MEM_LOCAL_DIR")
     return os.path.expanduser(configured) if configured else ""
-
-
-if __name__ == "__main__":
-    # KEY=VALUE for config keys not already in the environment (the environment always wins), one per
-    # line, for a shell launcher to export before it starts python.
-    for _k, _v in _config().items():
-        if os.environ.get(_k) is None:
-            print(f"{_k}={_v}")

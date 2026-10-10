@@ -45,7 +45,6 @@ def diag(*args, **kwargs):
 
 
 MODEL = config.DEFAULT_OMNI_MODEL  # build-time explicit model selection
-EMBED_MODEL = config.DEFAULT_EMBED_MODEL
 
 RESIDENT_ENTITY_CAP = 40  # over cap, people with low frequency×recency are evicted
 

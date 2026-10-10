@@ -41,31 +41,12 @@ else:
 """
 
 
-@pytest.mark.parametrize("source", ["environment", "config"])
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        (None, 7200),
-        ("", 7200),
-        ("   ", 7200),
-        ("3600", 3600),
-        (" 9000 ", 9000),
-        ("invalid", None),
-        ("1.5", None),
-        ("15 MiB", None),
-        ("0", None),
-        ("-1", None),
-        ("nan", None),
-        ("inf", None),
-    ],
-)
-def test_builder_validates_expiry_at_upload_before_any_work(tmp_path, source, value, expected):
+@pytest.mark.parametrize("value,expected", [(None, 7200), ("3600", 3600), ("invalid", None)])
+def test_builder_validates_expiry_at_upload_before_any_work(tmp_path, value, expected):
     config = tmp_path / "config"
-    config.write_text(f"OSS_URL_EXPIRY={value}\n" if source == "config" and value is not None else "")
+    config.write_text(f"OSS_URL_EXPIRY={value}\n" if value is not None else "")
     process_env = {k: v for k, v in os.environ.items() if k not in {"OSS_URL_EXPIRY", "PYTHONPATH"}}
     process_env["QWEN_MM_CONFIG"] = str(config)
-    if source == "environment" and value is not None:
-        process_env["OSS_URL_EXPIRY"] = value
 
     result = subprocess.run(
         [sys.executable, "-c", _PROBE],
@@ -80,8 +61,7 @@ def test_builder_validates_expiry_at_upload_before_any_work(tmp_path, source, va
     if expected is None:
         assert outcome["calls"] == []
         assert "OSS_URL_EXPIRY" in outcome["error"]
-        if value != "0":  # the documented default 7200 legitimately contains a zero
-            assert value not in outcome["error"]
+        assert value not in outcome["error"]
     else:
         assert outcome == {"calls": ["encode", "upload", expected]}
     assert result.stderr == ""

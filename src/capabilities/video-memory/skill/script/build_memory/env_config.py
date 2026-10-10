@@ -371,11 +371,3 @@ def _config(*, refresh: bool = False) -> dict[str, str]:
 
 
 # END STANDALONE ENV READER
-
-
-if __name__ == "__main__":
-    # Emit KEY=VALUE for config keys not already in the environment (env always wins),
-    # one per line, for a shell launcher to export.
-    for _k, _v in _config().items():
-        if os.environ.get(_k) is None:
-            print(f"{_k}={_v}")

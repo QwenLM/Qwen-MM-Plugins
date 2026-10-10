@@ -15,7 +15,7 @@ import clipping
 import omni_core
 import stages
 import storage
-from env_config import get_int_env
+from env_config import embed_config, get_int_env
 from store_writer import MemoryStore
 
 
@@ -578,11 +578,7 @@ def _build_memory(
     t_i0 = time.time()
     t_idx = 0.0
     try:
-        # Named rather than hard-coded: EMBED_MODEL_NAME can change it, and a progress line that
-        # reports the wrong model is worse than one that reports none.
-        ok = yield from _run_hb(
-            hb_exec, store.build_index, (client,), emit, f"🔢 建立向量索引（{omni_core.EMBED_MODEL}）"
-        )
+        ok = yield from _run_hb(hb_exec, store.build_index, (client,), emit, f"🔢 建立向量索引（{embed_config()[1]}）")
         t_idx = round(time.time() - t_i0, 1)
         log.append(
             f"🔢 向量索引已建（{t_idx}s，混合检索：向量 + 关键词 RRF）。" if ok else "🔢 向量不可用，退回关键词检索。"
