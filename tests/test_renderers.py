@@ -228,6 +228,33 @@ def test_web_isolated_entry_validates_arguments():
         render_isolated({"path": "sample.html", "options": []})
 
 
+def test_subtitle_utf8_non_ascii_and_bom(tmp_path):
+    """Subtitle text must be read as UTF-8 regardless of the host locale.
+
+    Regression for #97: on Windows with a non-UTF-8 default encoding (e.g.
+    cp1252/cp936), opening the file without an explicit encoding corrupted
+    non-ASCII captions. utf-8-sig also tolerates a leading BOM.
+    """
+    from qwen_mm_plugins_core.renderers import subtitle
+
+    non_ascii = "Café 東京"
+    cases = {
+        "sample.srt": f"1\n00:00:00,000 --> 00:00:01,000\n{non_ascii}\n\n",
+        "sample.vtt": f"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n{non_ascii}\n\n",
+    }
+    for filename, content in cases.items():
+        file = tmp_path / filename
+        file.write_bytes(content.encode("utf-8"))
+        text = subtitle.render(str(file))[0]["text"]
+        assert non_ascii in text, f"{filename}: non-ASCII caption lost ({text!r})"
+
+    # BOM-prefixed files must also decode cleanly.
+    bom_file = tmp_path / "sample_bom.srt"
+    bom_file.write_bytes(b"\xef\xbb\xbf" + f"1\n00:00:00,000 --> 00:00:01,000\n{non_ascii}\n\n".encode("utf-8"))
+    text = subtitle.render(str(bom_file))[0]["text"]
+    assert non_ascii in text, f"BOM SRT: non-ASCII caption lost ({text!r})"
+
+
 @pytest.mark.parametrize(
     ("spec", "expected"),
     [("1-5", [0, 1, 2, 3, 4]), ("3", [2]), ("1,3,5-8", [0, 2, 4, 5, 6, 7]), ("9-99", [8, 9])],
