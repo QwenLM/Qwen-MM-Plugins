@@ -228,6 +228,31 @@ def test_web_isolated_entry_validates_arguments():
         render_isolated({"path": "sample.html", "options": []})
 
 
+@pytest.mark.parametrize("default_encoding", ["cp1252", "cp936"])
+def test_subtitle_utf8_non_ascii_and_bom(tmp_path, monkeypatch, default_encoding):
+    """Reproduce Windows locale decoding even when the test host defaults to UTF-8."""
+    from qwen_mm_plugins_core.renderers import subtitle
+
+    def open_with_default_encoding(path, mode="r", *, encoding=None, **kwargs):
+        return open(path, mode, encoding=encoding or default_encoding, **kwargs)
+
+    # Patch only this renderer's file reads; fixture writes and pytest keep their defaults.
+    monkeypatch.setattr(subtitle, "open", open_with_default_encoding, raising=False)
+
+    non_ascii = "Café 東京"
+    cases = {
+        "sample.srt": f"1\n00:00:00,000 --> 00:00:01,000\n{non_ascii}\n\n",
+        "sample.vtt": f"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n{non_ascii}\n\n",
+    }
+    for filename, content in cases.items():
+        file = tmp_path / filename
+        for bom in (b"", b"\xef\xbb\xbf"):
+            file.write_bytes(bom + content.encode("utf-8"))
+            text = subtitle.render(str(file))[0]["text"]
+            assert non_ascii in text, f"{filename}, {bom=}: non-ASCII caption lost ({text!r})"
+            assert "\ufeff" not in text
+
+
 @pytest.mark.parametrize(
     ("spec", "expected"),
     [("1-5", [0, 1, 2, 3, 4]), ("3", [2]), ("1,3,5-8", [0, 2, 4, 5, 6, 7]), ("9-99", [8, 9])],

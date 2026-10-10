@@ -11,7 +11,11 @@ def render(path: str, **opts: Any) -> list[dict[str, Any]]:
     """Return subtitle content as MCP text blocks."""
     ext = os.path.splitext(path)[1].lower()
 
-    with open(path, "r", errors="replace") as f:
+    # SRT/VTT files are UTF-8 text. Read explicitly as UTF-8 so parsing does not
+    # depend on the host default encoding (locale-dependent on Windows), which
+    # otherwise corrupts non-ASCII captions. utf-8-sig transparently strips a
+    # leading BOM when present.
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
         text = f.read()
 
     if ext == ".vtt":
