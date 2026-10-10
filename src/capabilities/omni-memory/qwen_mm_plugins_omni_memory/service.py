@@ -46,21 +46,12 @@ _tl = threading.local()
 # ─────────────────────────────────────────────────────────── locating a memory
 
 
-def memory_root() -> str:
-    """Configured shared root used when callers pass `namespace` without `video_path`.
-
-    config.local_dir() already resolves MEM_LOCAL_DIR — reading it here as well would bypass the
-    settings-file fallback that lookup goes through.
-    """
-    return config.local_dir()
-
-
 def memory_dir(video_path: str | None = None, namespace: str | None = None) -> Path:
     if namespace:
         ns = str(namespace).strip().strip("/")
         if not ns or ns in {".", ".."} or "/" in ns or "\\" in ns:
             raise ValueError("namespace must be a simple non-empty name")
-        root = memory_root()
+        root = config.local_dir()
         if root:
             return Path(root) / ns
         if video_path:
@@ -78,7 +69,7 @@ def memory_label(video_path: str | None, namespace: str | None) -> str:
 def library_namespaces() -> list[str]:
     """Namespaces under the shared library root. Only used to make a not-found status actionable —
     per-video memories are located by video_path, so there is no listing tool."""
-    root = Path(memory_root())
+    root = Path(config.local_dir())
     if not root.is_dir():
         return []
     return sorted(d.name for d in root.iterdir() if (d / "store.json").is_file())
@@ -118,14 +109,14 @@ def preload() -> None:
 
 def embed_client():
     """Client used ONLY to embed the query for dense retrieval. None if no key is configured."""
-    c = getattr(_tl, "embed", None)
-    if c is None:
-        try:
-            # `or False` so an absent credential is remembered too, like the exception below.
-            c = _tl.embed = omni_core.get_embed_client() or False
-        except Exception:
-            c = _tl.embed = False
-    return c or None
+    settings = config.embed_config()
+    cached = getattr(_tl, "embed", None)
+    if cached is None or cached[0] != settings:
+        client = omni_core.get_embed_client()
+        if cached is not None and cached[1] is not None:
+            cached[1].close()
+        cached = _tl.embed = (settings, client)
+    return cached[1]
 
 
 # ───────────────────────────────── dialogue: read by get_people and get_person_dialogue

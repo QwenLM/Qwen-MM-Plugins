@@ -30,10 +30,9 @@ _SETTINGS = (
 
 
 @pytest.fixture
-def vl_backend(monkeypatch):
+def vl_backend(monkeypatch, empty_user_config):
     for name in _SETTINGS:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(env, "_config_cache", {})
     monkeypatch.setattr("shared.retry.time.sleep", lambda *_: None)
     backend = SimpleNamespace(
         requests=[], clients=[], statuses=[], text='[{"label":"red card","bbox":[250,250,750,750]}]'
@@ -86,7 +85,6 @@ def test_shared_config_file_controls_model_endpoint_and_timeout(vl_backend, samp
         "OPENROUTER_API_KEY=router-test-key\nQWEN_MM_API_VL_MODEL=config-vl\nQWEN_MM_CHAT_TIMEOUT=37\n"
     )
     monkeypatch.setattr(env, "config_file", lambda: str(config))
-    monkeypatch.setattr(env, "_config_cache", None)
     for key, value in {
         "OMNI_GROUNDING_MODEL": "obsolete-model",
         "OMNI_GROUNDING_BASE_URL": "https://obsolete.invalid",

@@ -4,6 +4,10 @@ For most setups, open **Configure** in `install.sh`. It stores shared settings i
 `~/.qwen-mm-plugins/config` as `KEY=VALUE` lines with mode `600`. Qwen-MM-Plugins components launched
 by any harness read that file. A process environment variable overrides the same key in the file.
 
+Config-file changes apply on the next operation. Running operations and established application
+connections keep their current settings. After changing the launcher's environment, restart its
+MCP server.
+
 Use `QWEN_MM_CONFIG=/path/to/file` to select another file, or `QWEN_MM_CONFIG_DIR=/path/to/dir` to
 change the directory containing the default `config` file. These bootstrap variables must be set
 in the process environment because they determine which file is read.
@@ -26,6 +30,24 @@ Installed MCP entry points also support `--set KEY=VALUE` and `--unset KEY`, for
 with exit status 2 before writing any entries. To remove an override and restore its default, use
 `qwen-mm-plugins-blender --unset BLENDER_PORT`.
 
+## Runtime configuration
+
+Unset or blank values use the defaults below. Surrounding whitespace is removed. A blank environment
+variable selects the default even when the config file contains a value.
+
+Tools report invalid values and malformed config files. Correct the setting or file and retry.
+Tool discovery remains available.
+
+- Timeouts, frame limits and `OSS_URL_EXPIRY` require positive integers, such as `120`, without units.
+- Ports must be integers from 1 to 65535.
+- `CUTOFF_SEC` accepts finite, non-negative seconds (`90` or `90.5`); blank means no cutoff.
+- Booleans accept `1/0`, `true/false`, `yes/no` and `on/off`, ignoring case.
+- `QWEN_MM_MHS_CACHE_TTL` accepts finite, non-negative seconds; `0` disables metadata caching.
+
+The shared chat timeout is now **1800 seconds**. Set `QWEN_MM_CHAT_TIMEOUT` to keep a different value.
+`read_video` uses the current `QWEN_MM_MAX_TOTAL_FRAMES` limit (default 600) when `max_frames` is omitted,
+and caps explicit values at that limit.
+
 ## Model output mode
 
 `QWEN_MM_NATIVE_MODE=1` is the default. MCP tools return native image content blocks so a
@@ -44,7 +66,7 @@ Authentication-free local endpoints need no key configuration. A failed caption 
 
 Enabling text-only mode sends tool-result images—including local files and application or desktop
 screenshots—to the configured VL endpoint. Use it only when that data may be shared with the
-endpoint. Invalid mode values fail safe to native mode and do not trigger an upload.
+endpoint. Invalid mode values return an MCP tool error before the tool runs and do not trigger an upload.
 
 ## Search selection
 
@@ -71,8 +93,8 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 | `OPENROUTER_API_KEY` | — | OpenAI-compatible calls to openrouter.ai *(secret)* |
 | `CHEAPER_INFERENCE_API_KEY` | — | OpenAI-compatible calls to api.cheaperinference.com *(secret)* |
 | `MINIMAX_API_KEY` | — | MiniMax text-to-speech generation *(secret)* |
-| `DASHSCOPE_BASE_URL` | DashScope compat URL | override the DashScope OpenAI-compatible base URL |
-| `DASHSCOPE_UPLOAD_POLICY_URL` | inferred for official DashScope hosts | override the model-bound temporary OSS policy endpoint used for oversized Omni and VL media |
+| `DASHSCOPE_BASE_URL` | https://dashscope.aliyuncs.com/compatible-mode/v1 | override the DashScope OpenAI-compatible base URL |
+| `DASHSCOPE_UPLOAD_POLICY_URL` | — | temporary OSS policy endpoint for oversized Omni and VL media; inferred for official DashScope hosts |
 | `QWEN_MM_API_VL_MODEL` | qwen3.7-plus | default VL model for vision_chat, OCR, grounding, text-only image captions, and video-spatio VLM tools |
 | `QWEN_MM_API_OMNI_MODEL` | qwen3.8-omni-flash | default Omni model for audio/video understanding tools, omni-memory, and Omni ChatCut |
 | `SAM3_SERVER_URL` | — | segmentation SAM3 server URL |
@@ -99,9 +121,9 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `QWEN_MM_CACHE` | OS cache dir | cache dir for derived render artifacts |
+| `QWEN_MM_CACHE` | — | cache dir for derived render artifacts; defaults to the OS cache dir |
 | `QWEN_MM_FFMPEG_TIMEOUT` | 120 | ffmpeg/ffprobe timeout seconds |
-| `QWEN_MM_CHAT_TIMEOUT` | tool-specific (600; Omni 1800) | OpenAI-compatible chat request timeout seconds |
+| `QWEN_MM_CHAT_TIMEOUT` | 1800 | OpenAI-compatible chat request timeout seconds |
 | `QWEN_MM_NATIVE_MODE` | 1 | 1 returns MCP images; 0 sends images to the VL endpoint and returns captions |
 | `QWEN_MM_MAX_TOTAL_FRAMES` | 600 | max frames sampled from a video |
 
@@ -128,7 +150,7 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MEM_LOCAL_DIR` | video directory | optional shared root for namespace memories; defaults beside the input video |
+| `MEM_LOCAL_DIR` | — | optional shared root for namespace memories; defaults beside the input video |
 
 ### Blender / FreeCAD hosts
 

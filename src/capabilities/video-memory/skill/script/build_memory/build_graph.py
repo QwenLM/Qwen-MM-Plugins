@@ -23,8 +23,8 @@ except ImportError:
     oss2 = None
 
 from embeddings import EmbeddingIndex
-from env_config import get_env, get_int_env
-from llm_client import DEFAULT_MODEL, call_vlm_curl, extract_json
+from env_config import ConfigurationError, get_env, get_int_env
+from llm_client import call_vlm_curl, extract_json
 from prompts import (
     HIERARCHICAL_AGGREGATION_PROMPT,
     HIERARCHICAL_AGGREGATION_WINDOW_PROMPT,
@@ -46,15 +46,7 @@ from schema import (
 )
 from time_utils import sec_to_time_str, time_str_to_sec
 
-# ── OSS config ──
-OSS_AK = get_env("OSS_AK", "")
-OSS_SK = get_env("OSS_SK", "")
-OSS_ENDPOINT = get_env("OSS_ENDPOINT", "")
-DST_BUCKET_NAME = get_env("OSS_BUCKET") or get_env("OSS_BUCKET_NAME", "")
-DST_VIDEO_PREFIX = get_env("OSS_VIDEO_CLIP_PREFIX", "tmp/video_clips")
-URL_EXPIRY = get_int_env("OSS_URL_EXPIRY", 7200)
-_USE_OSS = bool(OSS_AK and OSS_SK and oss2)
-
+# Bound parallel frame extraction independently of API worker counts.
 FRAME_WORKERS = 10
 _ffmpeg_sem = threading.Semaphore(FRAME_WORKERS)
 
@@ -182,6 +174,12 @@ def clip_and_upload_video(
     _max_retries: int = 2,
 ) -> str:
     """Clip a video segment with ffmpeg, upload to OSS, return signed HTTPS URL."""
+    expiry = get_int_env("OSS_URL_EXPIRY")
+    access_key = get_env("OSS_AK", "")
+    secret_key = get_env("OSS_SK", "")
+    endpoint = get_env("OSS_ENDPOINT", "")
+    bucket_name = get_env("OSS_BUCKET") or get_env("OSS_BUCKET_NAME", "")
+    prefix = get_env("OSS_VIDEO_CLIP_PREFIX")
     duration = end_sec - start_sec
     min_size = max(50_000, int(duration * 500))
 
@@ -249,14 +247,14 @@ def clip_and_upload_video(
             for chunk in iter(lambda: fh.read(8 * 1024 * 1024), b""):
                 h.update(chunk)
         md5 = h.hexdigest()
-        key = f"{DST_VIDEO_PREFIX}/{md5}.mp4"
+        key = f"{prefix}/{md5}.mp4"
 
         size_mb = os.path.getsize(tmp.name) / 1024 / 1024
-        auth = oss2.Auth(OSS_AK, OSS_SK)
-        bucket = oss2.Bucket(auth, OSS_ENDPOINT, DST_BUCKET_NAME)
+        auth = oss2.Auth(access_key, secret_key)
+        bucket = oss2.Bucket(auth, endpoint, bucket_name)
         with open(tmp.name, "rb") as fh:
             bucket.put_object(key, fh)
-        url = bucket.sign_url("GET", key, URL_EXPIRY).replace("http://", "https://")
+        url = bucket.sign_url("GET", key, expiry).replace("http://", "https://")
         os.unlink(tmp.name)
         print(f"  Video clip uploaded: {size_mb:.1f}MB")
         return url
@@ -651,7 +649,7 @@ def _extract_one_subgraph(
         context += f"\nAudio transcript (ASR) for this segment:\n{macro.asr_text}\n"
     context += "\n"
 
-    if _USE_OSS:
+    if oss2 and get_env("OSS_AK") and get_env("OSS_SK"):
         fallback_configs = [
             (d, c)
             for d, c in [
@@ -701,6 +699,8 @@ def _extract_one_subgraph(
             resp = call_vlm_curl(
                 context + SUBGRAPH_CONSTRUCTION_PROMPT, frame_items=frame_items, model=model, api_key=api_key
             )
+        except ConfigurationError:
+            raise
         except Exception as exc:
             print(f"  [{i}] {macro.macro_id}: API error: {exc}")
             macro.subgraph = Subgraph(macro_id=macro.macro_id)
@@ -879,7 +879,7 @@ def step2_subgraph_extraction(
     video_path: str,
     macros: list[MacroEvent],
     concurrency: int = 8,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     api_key: str | None = None,
     max_retries: int = 3,
     output_dir: str | None = None,
@@ -922,6 +922,8 @@ def step2_subgraph_extraction(
                     macros[idx] = updated
                     if not _has_subgraph_content(updated):
                         failed.append(idx)
+                except ConfigurationError:
+                    raise
                 except Exception as e:
                     print(f"  [{idx}] ERROR: {e}")
                     failed.append(idx)
@@ -939,7 +941,7 @@ def step2_subgraph_extraction(
 
 def step3_hierarchical_aggregation(
     macros: list[MacroEvent],
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     api_key: str = "",
     window_size: int = 50,
 ) -> tuple[VideoRoot, list[SuperEvent], list[MacroRelation], list[SuperRelation]]:
@@ -1008,7 +1010,7 @@ def _parse_window_result(
 
 def _step3_single_pass(
     macros: list[MacroEvent],
-    model: str,
+    model: str | None,
     api_key: str,
 ) -> tuple[VideoRoot, list[SuperEvent], list[MacroRelation], list[SuperRelation]]:
     """Original single-pass aggregation for small macro counts."""
@@ -1067,7 +1069,7 @@ def _step3_single_pass(
 
 def _step3_sliding_window(
     macros: list[MacroEvent],
-    model: str,
+    model: str | None,
     api_key: str,
     window_size: int,
 ) -> tuple[VideoRoot, list[SuperEvent], list[MacroRelation], list[SuperRelation]]:
@@ -1177,7 +1179,7 @@ def _step3_sliding_window(
 
 def _synthesize_root(
     supers: list[SuperEvent],
-    model: str,
+    model: str | None,
     api_key: str,
 ) -> tuple[VideoRoot, list[SuperRelation]]:
     """Synthesize root summary and super relations from all super events."""
@@ -1331,7 +1333,7 @@ def build_graph_memory(
     video_key: str = "",
     output_dir: str = "",
     concurrency: int = 60,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     api_key: str | None = None,
     min_scene_sec: float = 30.0,
     max_scene_sec: float = 300.0,
@@ -1501,7 +1503,7 @@ if __name__ == "__main__":
     parser.add_argument("video_path", help="Path to video file")
     parser.add_argument("--output-dir", default=None, help="Output directory (default: <video_path>.memory)")
     parser.add_argument("--video-key", default="")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--model", default=None, help="VL model; defaults to QWEN_MM_API_VL_MODEL")
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--phase1-only", action="store_true", help="Run only Phase 1 (segmentation), then exit")
     parser.add_argument(

@@ -24,10 +24,11 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         code: The Python code to execute inside FreeCAD (FreeCAD, Part, etc. are available).
     """
     from qwen_mm_plugins_freecad._responses import add_screenshot_if_available, text_response
-    from qwen_mm_plugins_freecad.loader import get_connection, only_text_feedback
+    from qwen_mm_plugins_freecad.loader import get_connection
+    from shared.env import get_bool_env
 
     code = arguments.get("code", "")
-    only_text = only_text_feedback()
+    only_text = get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
     try:
         conn = get_connection()
         res = conn.execute_code(code)

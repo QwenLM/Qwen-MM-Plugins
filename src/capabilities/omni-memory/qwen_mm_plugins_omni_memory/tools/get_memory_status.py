@@ -6,8 +6,8 @@ from typing import Any
 
 from shared.content import json_text
 
-from .. import watch
-from ..service import library_namespaces, memory_dir, memory_label, memory_root
+from .. import config, watch
+from ..service import library_namespaces, memory_dir, memory_label
 from . import MemoryRef
 
 
@@ -46,18 +46,20 @@ def _no_memory_next_step(video_path: str | None, duration_sec: float) -> str:
     build = f"build it: python3 script/build_memory/build_memory.py {video_path or '<video>'}"
     if not duration_sec:
         return build
+    preferred = config.get_float_env("MEM_WATCH_PREFER_MIN", watch.WATCH_PREFER_MIN, min_value=0)
+    maximum = config.get_float_env("MEM_WATCH_MAX_MIN", watch.WATCH_MAX_MIN, min_value=0)
     mins = duration_sec / 60
-    if mins <= watch.WATCH_PREFER_MIN:
+    if mins <= preferred:
         return (
             f"only {mins:.1f} min — watch_and_answer(video_path, question) answers it in one call, no "
             f"memory needed. Build one instead if you expect several questions about this video: {build}"
         )
-    if mins <= watch.WATCH_MAX_MIN:
+    if mins <= maximum:
         return (
             f"{mins:.1f} min — {build}. Use watch_and_answer only if the user has said they do not want "
             f"a memory and just wants a quick answer"
         )
-    return f"{mins:.1f} min, past the {watch.WATCH_MAX_MIN:.0f} min watch limit — {build}"
+    return f"{mins:.1f} min, past the {maximum:.0f} min watch limit — {build}"
 
 
 def _planned_clip_count(mdir: Path) -> int | None:
@@ -109,7 +111,7 @@ def memory_status(video_path: str | None = None, namespace: str | None = None) -
         others = library_namespaces()
         if others:
             out["available_in_library"] = others[:40]
-            out["library_root"] = memory_root()
+            out["library_root"] = config.local_dir()
         return out
     info = _quick_info(mdir)
     # Two independent baselines for "how many clips should there be":

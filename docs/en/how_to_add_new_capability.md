@@ -155,6 +155,13 @@ stable installation.
 
 There is already a shared library `src/shared/`:
 
+Read settings inside the operation with `shared.env` readers, before provider retries or fallbacks.
+Declare shared defaults and constraints in `CONFIG_FIELDS`; keep private defaults in the owning capability.
+Let `ConfigurationError` reach the SDK, or return its message with `text_error`. For tool arguments
+whose defaults come from configuration, advertise `None` and resolve them in the handler.
+After changing the shared reader, run `scripts/sync_env_readers.py --write`. Standalone scripts need
+`pydantic>=2.11,<3` in their interpreter. See [configuration rules](configuration.md#runtime-configuration).
+
 - `shared.env` — config/constants + `get_env` (the single call-time entry for reading env vars; precedence: environment > `~/.qwen-mm-plugins/config` > default) (`TOKEN_SIZE`, `DEFAULT_*`, `IMAGE_BUDGET_TOKENS`/`VIDEO_BUDGET_TOKENS`, `MAX_RESPONSE_BYTES`…)
 - `shared.content` — input guards + error blocks (`text_error` / `require_file` / `require_dep` / `default_output_path`)
 - `shared.image` — PIL image processing + resolution math (`draw_boxes`, `norm_to_pixel`, `save_image`, `budget_to_pixels`, `smart_resize`)

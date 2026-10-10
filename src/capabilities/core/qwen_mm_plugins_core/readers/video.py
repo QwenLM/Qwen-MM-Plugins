@@ -9,16 +9,16 @@ from __future__ import annotations
 import os
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from shared.content import image, text, text_error
 from shared.env import (
     DEFAULT_BUDGET,
     DEFAULT_FPS,
     MAX_RESPONSE_BYTES,
-    MAX_TOTAL_FRAMES,
     VIDEO_BUDGET_TOKENS,
     VIDEO_MIN_PIXELS,
+    get_int_env,
 )
 from shared.image import budget_to_pixels, smart_resize
 from shared.video import (
@@ -37,7 +37,7 @@ B64_BYTES_PER_PIXEL = 0.35
 class ReadVideoArgs(BaseModel):
     video_path: str
     fps: float = 0
-    max_frames: int = MAX_TOTAL_FRAMES
+    max_frames: int | None = Field(default=None, gt=0)
     budget: Literal["small", "normal", "large"] = "normal"
     start_time: Optional[float | str] = None
     end_time: Optional[float | str] = None
@@ -55,8 +55,9 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     Args:
         video_path: Absolute path to the video file
         fps: Sampling FPS. 0 = auto-detect based on duration (recommended). Default: 0
-        max_frames: Maximum frames to extract (capped at 600). Actual count may be lower or stripped
-            depending on video length and response size limits.
+        max_frames: Maximum frames to extract, bounded by QWEN_MM_MAX_TOTAL_FRAMES (default 600).
+            Omit to use that configured limit. Actual count may be lower depending on video length
+            and response size limits.
         budget: Per-frame resolution preset: small (~288×288), normal (~512×512), large
             (~1024×1024).
         start_time: Start time — seconds or a clock string ('MM:SS'/'HH:MM:SS'). Default: 0
@@ -70,7 +71,9 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     budget = arguments.get("budget", DEFAULT_BUDGET)
     max_pixels = budget_to_pixels(budget, VIDEO_BUDGET_TOKENS)
     min_pixels = VIDEO_MIN_PIXELS
-    max_frames = min(arguments.get("max_frames", MAX_TOTAL_FRAMES), MAX_TOTAL_FRAMES)
+    frame_limit = get_int_env("QWEN_MM_MAX_TOTAL_FRAMES")
+    requested_limit = arguments.get("max_frames")
+    max_frames = frame_limit if requested_limit is None else min(requested_limit, frame_limit)
     requested_fps = arguments.get("fps", 0)
 
     info = get_video_info(video_path)
@@ -117,7 +120,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     sample = extract_frames_by_seeking(video_path, [start_time + segment_duration * 0.5], target_h, target_w)
     bytes_per_frame = len(sample[0][1]) if sample else int(target_h * target_w * B64_BYTES_PER_PIXEL)
     max_safe_frames = max(MIN_FRAMES, MAX_RESPONSE_BYTES // bytes_per_frame)
-    nframes = min(nframes, max_safe_frames)
+    nframes = min(nframes, max_frames, max_safe_frames)
 
     # Stage 3: extract frames; uniformly downsample if total exceeds MAX_RESPONSE_BYTES.
     seg_end = end_time if end_time is not None else duration

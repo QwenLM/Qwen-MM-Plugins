@@ -10,13 +10,12 @@ import httpx
 import pytest
 
 from qwen_mm_plugins_omni_skill_creator.tools import read_native_av as av
-from shared import dashscope_upload, env, omni_media
+from shared import dashscope_upload, omni_media
 
 
 @pytest.fixture
-def wire(monkeypatch):
+def wire(monkeypatch, empty_user_config):
     calls = []
-    monkeypatch.setattr(env, "_config_cache", {})
     for name in ("OMNI_AV_SOURCE_PATH", "OMNI_AV_SOURCE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")

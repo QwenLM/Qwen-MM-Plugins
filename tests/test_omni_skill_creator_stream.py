@@ -118,7 +118,7 @@ def test_stream_retries_only_transient_http_errors(server, status, attempts):
 def test_terminal_provider_errors_stop_and_give_specific_recovery(server, monkeypatch, status, body, recovery):
     requests, _options, responses, sleep = server
     responses.append((status, body))
-    monkeypatch.setattr(av, "_default_openai_base", lambda: "https://dashscope.example/v1")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://dashscope.example/v1")
 
     text = av.handle({"video_path": "https://media.example/video.mp4"})[0]["text"]
 
@@ -133,7 +133,7 @@ def test_terminal_provider_errors_stop_and_give_specific_recovery(server, monkey
 def test_transient_provider_failure_has_bounded_retry_recovery(server, monkeypatch):
     requests, _options, responses, sleep = server
     responses.append((503, '{"error":{"code":"ServiceUnavailable","message":"temporary error"}}'))
-    monkeypatch.setattr(av, "_default_openai_base", lambda: "https://dashscope.example/v1")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://dashscope.example/v1")
 
     text = av.handle({"video_path": "https://media.example/video.mp4"})[0]["text"]
 
@@ -220,7 +220,7 @@ def test_handle_appends_one_length_notice_after_existing_text(server, monkeypatc
             sse({"choices": [{"delta": {"content": "partial answer"}, "finish_reason": "length"}]}),
         )
     )
-    monkeypatch.setattr(av, "_default_openai_base", lambda: "https://dashscope.example/v1")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://dashscope.example/v1")
 
     text = av.handle({"video_path": "https://media.example/video.mp4"})[0]["text"]
 
@@ -236,7 +236,7 @@ def test_handle_appends_one_length_notice_after_existing_text(server, monkeypatc
 def test_handle_does_not_append_length_notice_after_normal_stop(server, monkeypatch):
     requests, _options, responses, _sleep = server
     responses.append((200, sse({"choices": [{"delta": {"content": "complete"}, "finish_reason": "stop"}]})))
-    monkeypatch.setattr(av, "_default_openai_base", lambda: "https://dashscope.example/v1")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://dashscope.example/v1")
 
     text = av.handle({"video_path": "https://media.example/video.mp4"})[0]["text"]
 

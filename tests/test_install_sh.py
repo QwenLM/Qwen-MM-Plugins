@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.env import CONFIG_FIELDS, _parse_config
+from shared.env import _parse_config, config_catalog
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -478,7 +478,7 @@ def test_config_spec_mirrors_shared_catalog():
     }
     expected = [
         [key, str(int(secret)), group_tags[group], default, description]
-        for key, secret, group, default, description in CONFIG_FIELDS
+        for key, secret, group, default, description in config_catalog()
     ]
     assert actual == expected
 

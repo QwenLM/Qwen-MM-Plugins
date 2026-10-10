@@ -6,7 +6,7 @@ import logging
 import os
 import threading
 
-from shared.env import get_env
+from shared.env import get_env, get_float_env
 
 from .embeddings import EmbeddingIndex
 from .schema import HierarchicalGraphMemory
@@ -82,8 +82,7 @@ def get_toolkit(video_path: str | None = None) -> MemoryToolkit:
     memory_dir = os.path.realpath(memory_dir)
     graph_path = os.path.realpath(graph_path)
     embed_path = _resolve_embed_path(memory_dir, get_env("EMBEDDINGS_PATH") or None)
-    cutoff = get_env("CUTOFF_SEC") or None
-    cutoff_value = float(cutoff) if cutoff is not None else None
+    cutoff_value = get_float_env("CUTOFF_SEC")
     signature = (_path_stamp(graph_path), _path_stamp(embed_path), cutoff_value)
     cached = _toolkits.get(memory_dir)
     if cached is not None and cached[0] == signature:

@@ -13,7 +13,9 @@ from qwen_mm_plugins_search import backends, serper  # noqa: E402
 
 
 def _fake_env(values):
-    return lambda name, default=None: values.get(name, default)
+    return lambda name, default=None: (
+        (values.get(name) or "").strip() or ("auto" if name == "QWEN_MM_SEARCH_BACKEND" else default)
+    )
 
 
 def test_explicit_backend_is_normalized_and_does_not_fallback(monkeypatch):
@@ -93,7 +95,7 @@ def test_invalid_backend_message_lists_choices():
 
 
 def test_shared_config_catalog_lists_backend_selector_and_keys():
-    fields = {key: (secret, default) for key, secret, _group, default, _description in shared_env.CONFIG_FIELDS}
+    fields = {key: (secret, default) for key, secret, _group, default, _description in shared_env.config_catalog()}
     assert fields["QWEN_MM_SEARCH_BACKEND"] == (False, "auto")
     assert fields["SERPER_API_KEY"] == (True, "")
     assert fields["EXA_API_KEY"] == (True, "")

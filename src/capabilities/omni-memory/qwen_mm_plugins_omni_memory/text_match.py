@@ -9,13 +9,13 @@ import re
 
 import numpy as np
 
-from .omni_core import NAME_STOP, env_float
+from .omni_core import NAME_STOP
 
-BM25_K1 = env_float("MEM_BM25_K1", 1.5)  # term-frequency saturation
+BM25_K1 = 1.5  # term-frequency saturation
 
-BM25_B = env_float("MEM_BM25_B", 0.75)  # document-length normalisation
+BM25_B = 0.75  # document-length normalisation
 
-BM25_BOOST = env_float("MEM_BM25_BOOST", 2.0)  # weight on the entity-name field
+BM25_BOOST = 2.0  # weight on the entity-name field
 
 
 def soundex(s):

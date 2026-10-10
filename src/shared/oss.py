@@ -14,11 +14,10 @@ import logging
 import os
 import posixpath
 
-from shared.env import get_env
+from shared.env import get_env, get_int_env
 
 log = logging.getLogger(__name__)
 
-DEFAULT_URL_EXPIRY = 7200
 _MD5_CHUNK = 8 * 1024 * 1024
 
 
@@ -40,16 +39,6 @@ def bucket(endpoint: str, bucket_name: str):
     if not ak or not sk:
         raise RuntimeError("OSS credentials not set. Set OSS_AK/OSS_SK, OSS_ENDPOINT, OSS_BUCKET.")
     return oss2.Bucket(oss2.Auth(ak, sk), to_public_endpoint(endpoint), bucket_name)
-
-
-def url_expiry() -> int:
-    """Signed-URL TTL in seconds (OSS_URL_EXPIRY, default 7200)."""
-    raw = get_env("OSS_URL_EXPIRY")
-    try:
-        return int(raw) if raw else DEFAULT_URL_EXPIRY
-    except ValueError:
-        log.warning("OSS_URL_EXPIRY=%r is not a valid integer; using %d", raw, DEFAULT_URL_EXPIRY)
-        return DEFAULT_URL_EXPIRY
 
 
 def is_upload_configured() -> bool:
@@ -81,6 +70,8 @@ def upload_and_sign(path: str, *, key_prefix: str = "", expires: int | None = No
     if not endpoint or not bucket_name:
         raise RuntimeError("OSS upload needs OSS_ENDPOINT + OSS_BUCKET (plus OSS_AK/OSS_SK)")
 
+    # Reject a bad TTL before uploading anything.
+    expires = expires if expires is not None else get_int_env("OSS_URL_EXPIRY")
     digest = hashlib.md5()  # noqa: S324 — a content address, not a security digest
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(_MD5_CHUNK), b""):
@@ -90,6 +81,6 @@ def upload_and_sign(path: str, *, key_prefix: str = "", expires: int | None = No
     b = bucket(endpoint, bucket_name)
     with open(path, "rb") as fh:
         b.put_object(key, fh)
-    url = b.sign_url("GET", key, expires if expires is not None else url_expiry(), slash_safe=True)
+    url = b.sign_url("GET", key, expires, slash_safe=True)
     log.info("uploaded %.1f MB to oss://%s/%s", os.path.getsize(path) / 1e6, bucket_name, key)
     return url.replace("http://", "https://")

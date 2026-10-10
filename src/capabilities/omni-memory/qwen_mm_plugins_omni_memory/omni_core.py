@@ -19,7 +19,6 @@ must never drift silently.
 """
 
 import base64
-import os
 import random
 import re
 import subprocess
@@ -45,41 +44,15 @@ def diag(*args, **kwargs):
     print(*args, **kwargs)
 
 
-BASE_URL, MODEL, _CHAT_KEY = config.chat_config()
-
-EMBED_BASE_URL, EMBED_MODEL, _EMBED_KEY = config.embed_config()
+MODEL = config.DEFAULT_OMNI_MODEL  # build-time explicit model selection
 
 RESIDENT_ENTITY_CAP = 40  # over cap, people with low frequency×recency are evicted
 
 
-def env_float(name, default=None):
-    """Uncatalogued MEM_* float knob; `default` when unset, blank or unparseable."""
-    try:
-        v = os.environ.get(name, "").strip()
-        return float(v) if v else default
-    except ValueError:
-        return default
-
-
-def env_int(name, default):
-    """Uncatalogued MEM_* int knob; `default` when unset, blank or unparseable."""
-    try:
-        v = os.environ.get(name, "").strip()
-        return int(v) if v else default
-    except ValueError:
-        return default
-
-
-# Temperature for every chat/omni call — extraction, stage-2, PLAN, answer, replay. 0 keeps building
-# and answering deterministic; MEM_TEMPERATURE overrides.
-GEN_TEMPERATURE = env_float("MEM_TEMPERATURE", 0.0)
-
-TEMP_KWARGS = {"temperature": GEN_TEMPERATURE} if GEN_TEMPERATURE is not None else {}
-
-
 def get_client():
     """Client for the CHAT / omni model (endpoint per config.chat_config())."""
-    return OpenAI(api_key=_CHAT_KEY or "EMPTY", base_url=BASE_URL)
+    base, _, key = config.chat_config()
+    return OpenAI(api_key=key, base_url=base)
 
 
 def set_chat_model(name):
@@ -101,9 +74,10 @@ def get_embed_client():
     None rather than a client holding a placeholder key, which would spend two requests that can only
     401 plus a 2s backoff on every query before falling back to BM25.
     """
-    if not _EMBED_KEY:
+    base, _, key = config.embed_config()
+    if not key:
         return None
-    return OpenAI(api_key=_EMBED_KEY, base_url=EMBED_BASE_URL)
+    return OpenAI(api_key=key, base_url=base)
 
 
 def normalize_acoustic_events(events):
@@ -220,14 +194,13 @@ def probe_duration(src):
 
 
 # ============================================================ MODEL CALLS
-STREAM_STALL_SEC = int(os.environ.get("MEM_STREAM_STALL", "150") or "150")  # abort+retry if no chunk for this long
-
-
-def iter_deadline(stream, stall=STREAM_STALL_SEC):
+def iter_deadline(stream, stall=None):
     """Yield chunks from a streaming response, raising TimeoutError if NO new chunk arrives for
     `stall` seconds — catches mid-stream vLLM stalls the SDK read-timeout misses (server trickles
     keepalives → read-timeout never fires; observed 13-min hangs on some clips). The producing
     iteration runs in a daemon thread; on stall we abandon it and let the caller's retry re-issue."""
+    if stall is None:
+        stall = config.get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     import queue as _queue
     import threading as _th
 
@@ -254,8 +227,6 @@ def iter_deadline(stream, stall=STREAM_STALL_SEC):
         else:
             raise val
 
-
-ANON_NAMES = os.environ.get("MEM_ANON_ENTITIES", "1") == "1"
 
 SALIENT_EMO = {"neutral", "unknown", ""}
 
@@ -426,13 +397,14 @@ def embed_texts(client, texts, max_retries=4, batch=10):
         return None
     if not texts:
         return []
+    model = config.embed_config()[1]
     out = []
     for i in range(0, len(texts), batch):
         chunk = [t if t.strip() else " " for t in texts[i : i + batch]]
         vec = None
         for attempt in range(1, max_retries + 1):
             try:
-                r = client.embeddings.create(model=EMBED_MODEL, input=chunk)
+                r = client.embeddings.create(model=model, input=chunk)
                 vec = [d.embedding for d in r.data]
                 break
             except Exception as e:

@@ -9,15 +9,7 @@ import time
 from typing import Any
 
 import requests
-from env_config import get_env
-
-DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_MODEL = "qwen3.7-plus"
-
-# Honor DASHSCOPE_BASE_URL so builds can point at a Bailian-compatible proxy/gateway.
-_base_url = ((get_env("DASHSCOPE_BASE_URL") or "").strip() or DEFAULT_BASE_URL).rstrip("/")
-DASHSCOPE_API_URL = f"{_base_url}/chat/completions"
-
+from env_config import get_env, get_int_env
 
 MAX_RETRIES = 60
 RETRYABLE_STATUS_CODES = {418, 429, 500, 502, 503}
@@ -52,13 +44,16 @@ def call_vlm_curl(
     prompt: str,
     video_url: str | None = None,
     frame_items: list[tuple[str, str]] | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     api_key: str = "",
     temperature: float = 0.7,
     max_output_tokens: int = 65536,
     max_retries: int = MAX_RETRIES,
 ) -> str:
     """Call DashScope VLM with a video URL, base64 frames, or plain text."""
+    model = model or get_env("QWEN_MM_API_VL_MODEL")
+    api_url = get_env("DASHSCOPE_BASE_URL").rstrip("/") + "/chat/completions"
+    timeout = get_int_env("QWEN_MM_CHAT_TIMEOUT")
     content: list[dict] = []
     if frame_items:
         ts_lines = [f"Frame {i + 1}: {label}" for i, (_, label) in enumerate(frame_items)]
@@ -92,10 +87,10 @@ def call_vlm_curl(
     for attempt in range(max_retries + 1):
         try:
             resp = requests.post(
-                DASHSCOPE_API_URL,
+                api_url,
                 headers=headers,
                 data=json.dumps(payload, ensure_ascii=False),
-                timeout=1800,
+                timeout=timeout,
             )
 
             data = resp.json()
@@ -124,7 +119,7 @@ def call_vlm_curl(
             if attempt == max_retries:
                 raise
             delay = min(2**attempt + random.uniform(0, 1), 60.0)
-            host = DASHSCOPE_API_URL.split("//")[1].split("/")[0] if "//" in DASHSCOPE_API_URL else DASHSCOPE_API_URL
+            host = api_url.split("//")[1].split("/")[0] if "//" in api_url else api_url
             print(f"[retry] attempt {attempt + 1}/{max_retries} ({host}): {err_msg[:250]}, waiting {delay:.1f}s")
             time.sleep(delay)
 

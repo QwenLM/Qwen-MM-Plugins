@@ -34,24 +34,18 @@ def _dashscope_native_host() -> str:
     return "https://dashscope.aliyuncs.com"
 
 
-DASHSCOPE_NATIVE_URL = (
-    f"{_dashscope_native_host()}/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
-)
 DASHSCOPE_NATIVE_MODEL = "qwen3-vl-embedding"
 DASHSCOPE_NATIVE_DIM = 2560
 # Native endpoint rejects large batches; cap per-request size.
 _NATIVE_MAX_BATCH = 10
 
 
-def _api_key() -> str:
-    return get_env("DASHSCOPE_API_KEY", "")
-
-
 def _embed_via_dashscope_native(texts: list[str], batch_size: int = 256, max_retries: int = _MAX_RETRIES) -> np.ndarray:
     """Embed texts via DashScope native multimodal-embedding API."""
     import requests as _requests
 
-    api_key = _api_key()
+    api_key = get_env("DASHSCOPE_API_KEY", "")
+    url = f"{_dashscope_native_host()}/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
     batch_size = min(batch_size, _NATIVE_MAX_BATCH)
     all_embs = []
     for i in range(0, len(texts), batch_size):
@@ -63,7 +57,7 @@ def _embed_via_dashscope_native(texts: list[str], batch_size: int = 256, max_ret
             "parameters": {"dimension": DASHSCOPE_NATIVE_DIM},
         }
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        resp = _requests.post(DASHSCOPE_NATIVE_URL, headers=headers, json=payload, timeout=120)
+        resp = _requests.post(url, headers=headers, json=payload, timeout=120)
         if resp.status_code == 429:
             for attempt in range(max_retries):
                 # Exponential backoff (capped).
@@ -73,7 +67,7 @@ def _embed_via_dashscope_native(texts: list[str], batch_size: int = 256, max_ret
                     file=sys.stderr,
                 )
                 time.sleep(delay)
-                resp = _requests.post(DASHSCOPE_NATIVE_URL, headers=headers, json=payload, timeout=120)
+                resp = _requests.post(url, headers=headers, json=payload, timeout=120)
                 if resp.status_code != 429:
                     break
             else:

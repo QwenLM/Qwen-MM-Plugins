@@ -48,6 +48,7 @@ from qwen_mm_plugins_search.tools import (  # noqa: E402
     web_extractor,
     web_search,
 )
+from shared.env import DEFAULT_DASHSCOPE_BASE_URL  # noqa: E402
 
 
 def _is_error(blocks) -> bool:
@@ -207,7 +208,7 @@ def test_asr_media_calls_honour_ffmpeg_timeout(monkeypatch, ffmpeg_timeout, extr
 
     monkeypatch.setattr(asr, "subprocess", types.SimpleNamespace(run=fake_run))
     monkeypatch.setattr(asr, "find_tool", lambda name: name)
-    monkeypatch.setattr(asr, "FFMPEG_TIMEOUT", ffmpeg_timeout)
+    monkeypatch.setenv("QWEN_MM_FFMPEG_TIMEOUT", str(ffmpeg_timeout))
 
     assert asr._get_duration("a.wav") == 12.5
     asr._extract_audio("a.wav", "b.wav")
@@ -320,7 +321,7 @@ def test_vision_chat_model_precedence(monkeypatch):
     assert explicit_payload["request"]["model"] == "explicit-vl"
 
 
-@pytest.mark.parametrize("base_url", [oa.DEFAULT_DASHSCOPE_BASE_URL, "https://openrouter.ai/api/v1"])
+@pytest.mark.parametrize("base_url", [DEFAULT_DASHSCOPE_BASE_URL, "https://openrouter.ai/api/v1"])
 def test_vision_chat_preview_contains_sampled_images(monkeypatch, sample_video, base_url):
     from shared import oss
 

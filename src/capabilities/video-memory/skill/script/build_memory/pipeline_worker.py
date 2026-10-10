@@ -14,7 +14,7 @@ from build_graph import (
     _extract_one_subgraph,
     _save_subgraph_compat,
 )
-from env_config import get_env
+from env_config import ConfigurationError, get_env
 
 
 def _read_macros_from_checkpoint(path: str) -> list[dict]:
@@ -40,7 +40,7 @@ def _p1_alive(pid: int | None) -> bool:
 def run_pipeline_worker(
     video_path: str,
     output_dir: str,
-    model: str,
+    model: str | None,
     api_key: str,
     num_workers: int = 10,
     poll_interval: float = 2.0,
@@ -99,6 +99,8 @@ def run_pipeline_worker(
                 n_ev = len(updated.subgraph.micro_events) if updated.subgraph else 0
                 completed_count += 1
                 print(f"[P2-WORKER] {mid}: done ({n_ent} entities, {n_ev} events) [{completed_count}/{len(submitted)}]")
+            except ConfigurationError:
+                raise
             except Exception as e:
                 completed_count += 1
                 failed_ids.append(mid)
@@ -134,6 +136,8 @@ def run_pipeline_worker(
                 _save_subgraph_compat(output_dir, updated)
                 completed_count += 1
                 print(f"[P2-WORKER] {mid}: done [{completed_count}/{len(submitted)}]")
+            except ConfigurationError:
+                raise
             except Exception as e:
                 completed_count += 1
                 failed_ids.append(mid)
@@ -155,7 +159,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Phase 2 pipeline worker")
     parser.add_argument("video_path", help="Path to video file")
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--model", default="qwen3.7-plus")
+    parser.add_argument("--model", default=None, help="VL model; defaults to QWEN_MM_API_VL_MODEL")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--num-workers", type=int, default=10)
     parser.add_argument("--poll-interval", type=float, default=2.0)

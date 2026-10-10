@@ -208,7 +208,7 @@ def launch_app(argv: list[str]) -> int:
     ap.add_argument(
         "--port",
         type=int,
-        default=get_int_env("FREECAD_RPC_PORT", 9875),
+        default=get_int_env("FREECAD_RPC_PORT"),
         help="XML-RPC port for the addon server (default: $FREECAD_RPC_PORT or 9875)",
     )
     ap.add_argument(
@@ -233,7 +233,7 @@ def launch_app(argv: list[str]) -> int:
     )
     args = ap.parse_args(argv)
 
-    host = get_env("FREECAD_RPC_HOST", "127.0.0.1")
+    host = get_env("FREECAD_RPC_HOST")
     if applaunch.is_port_open(host, args.port):
         # status → stderr: launch_app is reused on the in-server autolaunch path, where stdout
         # is the MCP stdio JSON-RPC channel; a stray line there corrupts the protocol stream.

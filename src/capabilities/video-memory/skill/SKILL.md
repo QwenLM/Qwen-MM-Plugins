@@ -41,7 +41,8 @@ Root (1 per video)
 
 ## Building Graph Memory
 
-If `graph_memory.json` doesn't exist for a video, build it:
+If `graph_memory.json` is missing, run the builder below. It installs missing Python dependencies,
+including `pydantic>=2.11,<3`:
 
 ```bash
 # Build memory for a single video (output: <video_path>.memory/)
@@ -127,7 +128,9 @@ Question arrives
 - Use for: spoken content, dialogue, narration, or other audio/verbal information
 
 **search_by_time** — Find MacroEvents by time range.
-- Params: `start_sec`/`end_sec` (seconds), or `start_time`/`end_time` (`DAY{N} HH:MM:SS`, for EgoLife)
+- Params: `start_sec`/`end_sec` (seconds), or `start_time`/`end_time` (`HH:MM:SS` for ordinary videos;
+  `DAY{N} HH:MM:SS` for EgoLife). Valid strings override the corresponding seconds.
+- Invalid timestamps and reversed ranges return an error.
 - Returns summaries only — follow up with get_subgraph for detail
 
 **enumerate_events** — Enumerate ALL matching event instances in time order — built for COUNTING / "how many times / list every occurrence" questions.

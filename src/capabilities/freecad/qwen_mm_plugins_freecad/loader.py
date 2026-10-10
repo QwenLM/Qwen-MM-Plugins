@@ -11,7 +11,7 @@ import logging
 import threading
 import xmlrpc.client
 
-from shared.env import get_bool_env, get_env, get_int_env
+from shared.env import get_env, get_int_env
 
 log = logging.getLogger("qwen-mm-plugins-freecad")
 
@@ -100,11 +100,6 @@ class FreeCADConnection:
             return None
 
 
-def only_text_feedback() -> bool:
-    """When FREECAD_ONLY_TEXT_FEEDBACK is set, tools skip the attached screenshot."""
-    return get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
-
-
 _autolaunch_tried = False
 
 
@@ -130,8 +125,8 @@ def get_connection() -> FreeCADConnection:
     with _lock:
         if _connection is not None:
             return _connection
-        host = get_env("FREECAD_RPC_HOST", "localhost")
-        port = get_int_env("FREECAD_RPC_PORT", 9875)
+        host = get_env("FREECAD_RPC_HOST")
+        port = get_int_env("FREECAD_RPC_PORT")
         conn = FreeCADConnection(host=host, port=port)
         try:
             ok = conn.ping()
@@ -165,6 +160,6 @@ def probe() -> None:
     call (get_connection, in a worker thread) where a long wait is survivable."""
     from shared.applaunch import startup_probe
 
-    host = get_env("FREECAD_RPC_HOST", "localhost")
-    port = get_int_env("FREECAD_RPC_PORT", 9875)
+    host = get_env("FREECAD_RPC_HOST")
+    port = get_int_env("FREECAD_RPC_PORT")
     startup_probe(host, port, app="FreeCAD", entry="qwen-mm-plugins-freecad")

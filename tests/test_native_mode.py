@@ -84,8 +84,8 @@ def caption_endpoint():
         thread.join(timeout=5)
 
 
-def test_native_mode_passes_images_through_without_resolving_an_endpoint(monkeypatch):
-    monkeypatch.setattr(env, "get_env", lambda _name, default=None: default)
+def test_native_mode_passes_images_through_without_resolving_an_endpoint(monkeypatch, empty_user_config):
+    monkeypatch.delenv("QWEN_MM_NATIVE_MODE", raising=False)
     monkeypatch.setattr(oa, "resolve_openai_endpoint", lambda _arguments: pytest.fail("unexpected API setup"))
     blocks = [{"type": "image", "data": "AAAA", "mimeType": "image/png"}]
 

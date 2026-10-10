@@ -213,8 +213,11 @@ async def _run_handle(handle, arguments: dict):
     def run_and_adapt():
         # Caption fallback may perform network I/O; keep it in the same worker thread as the
         # synchronous handler rather than blocking FastMCP's event loop.
+        from shared.env import get_bool_env
         from shared.native_mode import adapt_content_blocks
 
+        # Validate the response mode before a handler can perform side effects.
+        get_bool_env("QWEN_MM_NATIVE_MODE")
         return adapt_content_blocks(handle(arguments))
 
     raw = await anyio.to_thread.run_sync(run_and_adapt)
@@ -396,11 +399,11 @@ def config_report(entry: str) -> str:
 def _interactive_setup(entry: str) -> None:
     """Prompt for every catalog field, grouped, and merge the answers into the user config file.
 
-    Iterates shared.env.CONFIG_FIELDS (the one declarative list) so new vars need no new prompt
+    Iterates config_catalog(), derived from shared.env.CONFIG_FIELDS so new vars need no new prompt
     code. Per field: blank keeps the current value, `-` clears it (removed, not written empty)."""
     import getpass
 
-    from shared.env import CONFIG_FIELDS, config_file, del_config, get_env, set_config
+    from shared.env import config_catalog, config_file, del_config, get_env, set_config
 
     print(f"{entry} setup → {config_file()}")
     print("Enter a value, blank to keep the current one, or '-' to clear it. Ctrl-C to abort.")
@@ -408,7 +411,7 @@ def _interactive_setup(entry: str) -> None:
     cleared: list[str] = []
     group = None
     try:
-        for key, secret, grp, default, desc in CONFIG_FIELDS:
+        for key, secret, grp, default, desc in config_catalog():
             if grp != group:
                 group = grp
                 print(f"\n— {grp} —")
@@ -520,11 +523,18 @@ def run_main(import_name: str) -> None:
     pkg_on_start = getattr(pkg, "on_start", None)
 
     def _on_start():
+        from shared.env import ConfigurationError
+
         # warn (stderr) about missing system tools, then run any capability on_start
         for w in system_startup_warnings(deps):
             log.warning("system tool missing — %s", w)
         if pkg_on_start is not None:
-            pkg_on_start()
+            try:
+                pkg_on_start()
+            except ConfigurationError as exc:
+                # Keep discovery available. The affected tool re-reads its configuration and
+                # returns the same actionable error over MCP instead of losing the handshake.
+                log.warning("%s", exc)
 
     try:
         serve(

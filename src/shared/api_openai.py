@@ -14,14 +14,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
-from shared.env import DEFAULT_DASHSCOPE_BASE_URL, get_env
+from shared.env import DEFAULT_VL_MODEL, ConfigurationError, get_env, get_int_env
 
 if TYPE_CHECKING:
     from PIL.Image import Image
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "qwen3.7-plus"
+DEFAULT_MODEL = DEFAULT_VL_MODEL
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF = 1.0
 
@@ -31,12 +31,8 @@ def resolve_vl_model(model: str | None = None) -> str:
 
     Precedence: explicit argument → QWEN_MM_API_VL_MODEL → DEFAULT_MODEL.
     """
-    return model or get_env("QWEN_MM_API_VL_MODEL") or DEFAULT_MODEL
+    return model or get_env("QWEN_MM_API_VL_MODEL")
 
-
-# Request timeout (seconds) for a chat call — generous for long vision prompts, but bounded so a
-# hung connection can't pin a tool call for an hour. Overridable via QWEN_MM_CHAT_TIMEOUT.
-DEFAULT_CHAT_TIMEOUT = 600
 
 # A local file can only travel inline as a base64 ``data:`` URL, and DashScope caps the ENCODED
 # string at 10 MB per media item. Over that the item must become a URL instead — an http(s) one from
@@ -62,16 +58,6 @@ def vl_video_max_sec(model: str | None) -> int | None:
         if model.startswith(prefix):
             return cap
     return None
-
-
-def _chat_timeout() -> int:
-    """QWEN_MM_CHAT_TIMEOUT (seconds), read at call time; unset/bad values fall back to the default."""
-    raw = get_env("QWEN_MM_CHAT_TIMEOUT")
-    try:
-        return int(raw) if raw else DEFAULT_CHAT_TIMEOUT
-    except ValueError:
-        log.warning("QWEN_MM_CHAT_TIMEOUT=%r is not a valid integer; using default %d", raw, DEFAULT_CHAT_TIMEOUT)
-        return DEFAULT_CHAT_TIMEOUT
 
 
 # HTTP statuses worth retrying for OpenAI-compatible endpoints.
@@ -105,7 +91,7 @@ def resolve_openai_endpoint(arguments: dict[str, Any]) -> tuple[str, str]:
     api_key wins; otherwise use the host's API key environment variable, then
     DASHSCOPE_API_KEY if the URL has the same origin as DASHSCOPE_BASE_URL, then "EMPTY".
     """
-    configured = get_env("DASHSCOPE_BASE_URL") or DEFAULT_DASHSCOPE_BASE_URL
+    configured = get_env("DASHSCOPE_BASE_URL")
     base_url = arguments.get("base_url") or configured
     key_env = _API_KEY_ENV_BY_HOST.get(urlsplit(base_url).hostname or "")
     api_key = arguments.get("api_key") or (get_env(key_env) if key_env else None)
@@ -176,6 +162,8 @@ def _frame_sampling_would_cap(source: str, max_frames: int) -> bool:
 
     try:
         duration = float(get_video_info(source).get("duration") or 0.0)
+    except ConfigurationError:
+        raise
     except Exception:  # noqa: BLE001 — unreadable locally: let the upload path try
         return True
     return duration > 0 and int(duration * DEFAULT_FPS) > max_frames
@@ -275,7 +263,7 @@ def encode_video_source(
                     if url:
                         return {"type": "video_url", "video_url": {"url": url}}
                 if configured:
-                    url = oss.upload_and_sign(source, key_prefix=get_env("OSS_VIDEO_CLIP_PREFIX", "tmp/video_clips"))
+                    url = oss.upload_and_sign(source, key_prefix=get_env("OSS_VIDEO_CLIP_PREFIX"))
                     return {"type": "video_url", "video_url": {"url": url}}
 
     from shared.env import DEFAULT_FPS, TOKEN_SIZE, VIDEO_MIN_PIXELS
@@ -337,7 +325,7 @@ def call_openai_chat(
 
     if contains_temporary_oss_url(kwargs.get("messages")):
         kwargs["extra_headers"] = {**OSS_RESOLVE_HEADER, **(kwargs.get("extra_headers") or {})}
-    client = OpenAI(api_key=api_key, base_url=base_url, timeout=_chat_timeout())
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=get_int_env("QWEN_MM_CHAT_TIMEOUT"))
 
     def _create(hints: dict[str, Any] | None) -> Any:
         call_kwargs = dict(kwargs)

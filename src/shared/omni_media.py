@@ -35,7 +35,7 @@ from shared.api_omni import (
     omni_frames_part,
     omni_video_part,
 )
-from shared.env import get_env
+from shared.env import ConfigurationError, get_env
 from shared.syscmd import find_tool
 
 log = logging.getLogger(__name__)
@@ -78,6 +78,8 @@ def media_duration(path: str) -> float:
 
     try:
         return float(probe_media(path).get("format", {}).get("duration") or 0.0)
+    except ConfigurationError:
+        raise
     except Exception:  # noqa: BLE001 — callers treat an unreadable duration as unknown
         return 0.0
 
@@ -88,6 +90,8 @@ def has_audio_stream(path: str) -> bool:
 
     try:
         return any(stream.get("codec_type") == "audio" for stream in probe_media(path).get("streams", []))
+    except ConfigurationError:
+        raise
     except Exception:  # noqa: BLE001 — an unprobeable source has no extractable track
         return False
 
@@ -98,6 +102,8 @@ def video_time_base(path: str) -> str | None:
 
     try:
         streams = probe_media(path).get("streams", [])
+    except ConfigurationError:
+        raise
     except Exception:  # noqa: BLE001 — callers fall back to ffmpeg's default time base
         return None
     time_base = next((str(s.get("time_base") or "") for s in streams if s.get("codec_type") == "video"), "")
@@ -452,7 +458,7 @@ def transcode_and_upload(
         duration=duration,
         preserve_timestamps=preserve_timestamps,
     )
-    return oss.upload_and_sign(out_path, key_prefix=get_env("OSS_VIDEO_CLIP_PREFIX", "tmp/video_clips"))
+    return oss.upload_and_sign(out_path, key_prefix=get_env("OSS_VIDEO_CLIP_PREFIX"))
 
 
 def fit_frames(
@@ -625,6 +631,8 @@ def local_video_parts(
                     start_time=start_time,
                     duration=duration,
                 )
+            except ConfigurationError:
+                raise
             except Exception as upload_error:  # noqa: BLE001 — frames remain a local fallback
                 log.warning("OSS upload failed (%s); falling back to frames + audio", upload_error)
             else:
@@ -637,6 +645,8 @@ def local_video_parts(
             start_time=start_time,
             duration=duration,
         )
+    except ConfigurationError:
+        raise
     except Exception as error:  # noqa: BLE001 — preserve the existing small-file fallback
         log.warning("video preprocess failed (%s)", error)
         if start_time > 0 or duration is not None or os.path.getsize(file_path) > max_upload_bytes:
@@ -669,6 +679,8 @@ def audio_format_for(path: str) -> str | None:
         for stream in probe_media(path).get("streams", []):
             if stream.get("codec_type") == "audio":
                 return _AUDIO_CODEC_FORMATS.get(str(stream.get("codec_name", "")).lower())
+    except ConfigurationError:
+        raise
     except Exception:  # noqa: BLE001 — unprobeable: the caller falls back to local delivery
         return None
     return None
@@ -725,6 +737,8 @@ def temporary_oss_parts(
             api_key=api_key,
             model=model,
         )
+    except ConfigurationError:
+        raise
     except Exception as upload_error:  # noqa: BLE001 — preserve the local fallback chain
         log.warning("DashScope temporary OSS upload failed (%s); falling back to local delivery", upload_error)
         return None

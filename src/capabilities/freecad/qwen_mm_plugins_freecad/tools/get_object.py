@@ -28,11 +28,12 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         json_response,
         text_response,
     )
-    from qwen_mm_plugins_freecad.loader import get_connection, only_text_feedback
+    from qwen_mm_plugins_freecad.loader import get_connection
+    from shared.env import get_bool_env
 
     doc_name = arguments.get("doc_name", "")
     obj_name = arguments.get("obj_name", "")
-    only_text = only_text_feedback()
+    only_text = get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
     try:
         conn = get_connection()
         response = json_response(conn.get_object(doc_name, obj_name))

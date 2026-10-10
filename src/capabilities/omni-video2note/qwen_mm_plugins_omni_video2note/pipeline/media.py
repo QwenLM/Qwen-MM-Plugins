@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from shared.env import FFMPEG_TIMEOUT, get_env
+from shared.env import get_env, get_int_env
 from shared.syscmd import find_tool
 from shared.video import probe_media
 
@@ -179,7 +179,10 @@ def extract_frame(
     command.extend(["-pix_fmt", "yuvj420p", "-threads", "1", "-q:v", str(jpeg_quality), "-y", str(temporary)])
     try:
         result = subprocess.run(
-            command, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT if timeout is None else timeout
+            command,
+            capture_output=True,
+            text=True,
+            timeout=get_int_env("QWEN_MM_FFMPEG_TIMEOUT") if timeout is None else timeout,
         )
         if result.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
             raise RuntimeError(f"ffmpeg frame extraction failed: {result.stderr.strip() or 'empty output'}")
@@ -266,7 +269,9 @@ def scene_change_times(
         "null",
         "-",
     ]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=max(FFMPEG_TIMEOUT, 300))
+    result = subprocess.run(
+        command, capture_output=True, text=True, timeout=max(get_int_env("QWEN_MM_FFMPEG_TIMEOUT"), 300)
+    )
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg scene detection failed: {result.stderr.strip() or 'unknown error'}")
     values = sorted({round(float(match.group(1)), 3) for match in _SCENE_TIME.finditer(result.stderr)})
@@ -360,7 +365,7 @@ def _h264_encoder() -> str:
         [find_tool("ffmpeg"), "-hide_banner", "-encoders"],
         capture_output=True,
         text=True,
-        timeout=FFMPEG_TIMEOUT,
+        timeout=get_int_env("QWEN_MM_FFMPEG_TIMEOUT"),
     )
     listing = result.stdout + result.stderr
     for name in ("libx264", "libopenh264"):
@@ -430,7 +435,9 @@ def transcode_chunk(
         str(temporary),
     ]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=max(FFMPEG_TIMEOUT, 300))
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=max(get_int_env("QWEN_MM_FFMPEG_TIMEOUT"), 300)
+        )
         if result.returncode != 0 or not temporary.is_file() or temporary.stat().st_size == 0:
             raise RuntimeError(f"ffmpeg chunk transcode failed: {result.stderr.strip() or 'empty output'}")
         temporary.replace(output)
@@ -503,7 +510,7 @@ def prepare_video_chunks(
             from shared import oss
 
             if oss.is_upload_configured():
-                prefix = get_env("OSS_VIDEO_CLIP_PREFIX", "tmp/video_clips") or "tmp/video_clips"
+                prefix = get_env("OSS_VIDEO_CLIP_PREFIX")
                 url = oss.upload_and_sign(str(path), key_prefix=prefix)
                 return [
                     MediaChunk(

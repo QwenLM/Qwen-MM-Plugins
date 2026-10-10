@@ -115,7 +115,8 @@ Path(os.environ["QWEN_MM_CONFIG"]).write_text(
 print(json.dumps([str(first), str(resolve())]))
 """
     result = subprocess.run(
-        [sys.executable, "-I", "-S", "-c", code, str(runner), str(model_config), str(updated)],
+        # Isolate the checkout while retaining the plugin runtime's Pydantic dependency.
+        [sys.executable, "-I", "-c", code, str(runner), str(model_config), str(updated)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
