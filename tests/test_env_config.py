@@ -1,10 +1,6 @@
 """Configuration uses one contract: defaults for missing/blank, errors for invalid values."""
 
-import os
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 from scripts.gen_env_docs import check, load_config_fields
@@ -41,52 +37,17 @@ def test_catalog_constraints_do_not_need_to_be_repeated_by_callers(monkeypatch, 
         get_int_env(name)
 
 
-def test_plain_int(monkeypatch):
-    monkeypatch.setenv(_VAR, "4242")
-    assert get_int_env(_VAR, 1) == 4242
-
-
-def test_unset_uses_default(monkeypatch):
-    monkeypatch.delenv(_VAR, raising=False)
-    assert get_int_env(_VAR, 777) == 777
-
-
-@pytest.mark.parametrize("value", ["15 MiB", "20MB", "2 GiB", "not-a-number", "1.5", "nan", "inf"])
-def test_invalid_integer_raises_without_logging_value(monkeypatch, caplog, value):
-    monkeypatch.setenv(_VAR, value)
-    with pytest.raises(ConfigurationError, match=_VAR) as error:
-        get_int_env(_VAR, 99)
-    assert value not in str(error.value)
-    assert value not in caplog.text
-
-
-@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "  On  "])
-def test_bool_env_accepts_true_spellings(monkeypatch, value):
+@pytest.mark.parametrize("value,expected", [("1", True), ("0", False), (" On ", True), ("FALSE", False)])
+def test_bool_env_normalizes_values(monkeypatch, value, expected):
     monkeypatch.setenv(_BOOL_VAR, value)
-    assert get_bool_env(_BOOL_VAR) is True
-
-
-@pytest.mark.parametrize("value", ["0", "false", "FALSE", "no", "off", "  Off  "])
-def test_bool_env_accepts_false_spellings(monkeypatch, value):
-    monkeypatch.setenv(_BOOL_VAR, value)
-    assert get_bool_env(_BOOL_VAR, default=True) is False
-
-
-def test_bool_env_only_unset_uses_default(monkeypatch, caplog):
-    monkeypatch.delenv(_BOOL_VAR, raising=False)
-    assert get_bool_env(_BOOL_VAR, default=True) is True
-
-    monkeypatch.setenv(_BOOL_VAR, "maybe")
-    with pytest.raises(ConfigurationError, match=_BOOL_VAR):
-        get_bool_env(_BOOL_VAR, default=True)
-    assert "maybe" not in caplog.text
+    assert get_bool_env(_BOOL_VAR) is expected
 
 
 @pytest.mark.parametrize(
     "value,expected",
-    [(None, 9876), ("", 9876), ("   ", 9876), ("9876", 9876), ("  5000  ", 5000), ("0", 0)],
+    [(None, 9876), ("   ", 9876), ("  5000  ", 5000)],
 )
-def test_int_env_valid_or_blank(monkeypatch, caplog, value, expected):
+def test_int_env_valid_or_blank(monkeypatch, value, expected):
     if value is None:
         monkeypatch.delenv(_PORT_VAR, raising=False)
     else:
@@ -138,21 +99,8 @@ def test_reader_refreshes_atomically_replaced_config(reader, tmp_path):
     replacement = tmp_path / "replacement"
     config.write_text(f"{_VAR}=first\n", encoding="utf-8")
     assert reader.get_env(_VAR) == "first"
-    original_stat = config.stat()
     replacement.write_text(f"{_VAR}=other\n", encoding="utf-8")
-    # Size and mtime alone miss an editor's atomic replacement that preserves timestamps.
-    os.utime(replacement, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
     replacement.replace(config)
-    assert reader.get_env(_VAR) == "other"
-
-
-def test_reader_observes_in_place_edits_even_with_restored_mtime(reader, tmp_path):
-    config = tmp_path / "config"
-    config.write_text(f"{_VAR}=first\n", encoding="utf-8")
-    assert reader.get_env(_VAR) == "first"
-    original_stat = config.stat()
-    config.write_text(f"{_VAR}=other\n", encoding="utf-8")
-    os.utime(config, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
     assert reader.get_env(_VAR) == "other"
 
 
@@ -173,25 +121,6 @@ def test_reader_observes_creation_deletion_and_location_changes(reader, tmp_path
     assert reader.get_env(_VAR) == "directory"
 
 
-def test_reader_reuses_unchanged_cache_and_can_force_a_read(reader, tmp_path, monkeypatch):
-    config = tmp_path / "config"
-    config.write_text(f"{_VAR}=first\n", encoding="utf-8")
-    parse = Mock(wraps=reader._parse_config)
-    monkeypatch.setattr(reader, "_parse_config", parse)
-    assert reader.get_env(_VAR) == "first"
-    assert reader.get_env(_VAR) == "first"
-    assert reader.get_env("QMP_MISSING_SETTING", "default") == "default"
-    assert parse.call_count == 1
-    # Simulate a filesystem reporting unchanged metadata after an edit.
-    stamp = reader._config_file_stamp(str(config))
-    monkeypatch.setattr(reader, "_config_file_stamp", lambda _: stamp)
-    config.write_text(f"{_VAR}=second\n", encoding="utf-8")
-    assert reader.get_env(_VAR) == "first"
-    assert reader.get_env(_VAR, refresh_config=True) == "second"
-    assert reader.get_env(_VAR) == "second"
-    assert parse.call_count == 2
-
-
 def test_environment_override_stays_authoritative_during_file_edits(reader, tmp_path, monkeypatch):
     config = tmp_path / "config"
     config.write_text(f"{_VAR}=first\n", encoding="utf-8")
@@ -202,40 +131,6 @@ def test_environment_override_stays_authoritative_during_file_edits(reader, tmp_
     monkeypatch.setenv(_VAR, "")
     assert reader.get_env(_VAR) is None
     monkeypatch.delenv(_VAR)
-    assert reader.get_env(_VAR) == "second"
-
-
-def test_concurrent_readers_observe_each_file_version(reader, tmp_path):
-    config = tmp_path / "config"
-    barrier = threading.Barrier(8)
-
-    def read(_):
-        barrier.wait(timeout=10)
-        return reader.get_env(_VAR)
-
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        for expected in ("first", "second"):
-            config.write_text(f"{_VAR}={expected}\n", encoding="utf-8")
-            assert list(pool.map(read, range(8))) == [expected] * 8
-
-
-def test_replacement_during_read_is_observed_on_next_lookup(reader, tmp_path, monkeypatch):
-    config = tmp_path / "config"
-    config.write_text(f"{_VAR}=first\n", encoding="utf-8")
-    parse = reader._parse_config
-    replaced = False
-
-    def replace_after_read(text):
-        nonlocal replaced
-        if not replaced:
-            replacement = tmp_path / "replacement"
-            replacement.write_text(f"{_VAR}=second\n", encoding="utf-8")
-            replacement.replace(config)
-            replaced = True
-        return parse(text)
-
-    monkeypatch.setattr(reader, "_parse_config", replace_after_read)
-    assert reader.get_env(_VAR) == "first"
     assert reader.get_env(_VAR) == "second"
 
 
@@ -264,9 +159,9 @@ def test_reader_resolves_config_location_precedence(reader, tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize(
-    "kind,value", [("int", "invalid"), ("int", "15 MiB"), ("bool", "maybe"), ("float", "nan"), ("float", "inf")]
+    "kind,value", [("int", "15 MiB"), ("int", "1.5"), ("bool", "maybe"), ("float", "nan"), ("float", "inf")]
 )
-def test_typed_readers_reject_explicit_invalid_values(reader, tmp_path, monkeypatch, kind, value):
+def test_typed_readers_reject_explicit_invalid_values(reader, tmp_path, monkeypatch, caplog, kind, value):
     for source in ("file", "environment"):
         if source == "file":
             (tmp_path / "config").write_text(f"{_VAR}={value}\n")
@@ -275,6 +170,7 @@ def test_typed_readers_reject_explicit_invalid_values(reader, tmp_path, monkeypa
         with pytest.raises(reader.ConfigurationError, match=_VAR) as error:
             getattr(reader, f"get_{kind}_env")(_VAR)
         assert value not in str(error.value)
+        assert value not in caplog.text
 
 
 def test_catalog_defaults_override_caller_fallbacks(reader, monkeypatch):

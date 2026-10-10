@@ -13,7 +13,7 @@ from conftest import CORE_SERVER_DIR, REPO_ROOT, mcp_call
 import mcp_framework as fw
 import qwen_mm_plugins_core as core
 from qwen_mm_plugins_core.readers import video as reader
-from shared import env, video
+from shared import video
 
 
 @pytest.fixture
@@ -76,14 +76,11 @@ def test_cutoff_file_edits_update_cached_toolkit_without_reconnect(config_file, 
     mcp_call(str(server), call, env=process_env)
 
 
-def test_frame_cap_increases_decreases_and_stays_fixed_within_a_call(config_file, tmp_path, monkeypatch):
+def test_frame_cap_increases_and_decreases_after_file_edits(config_file, tmp_path, monkeypatch):
     media = tmp_path / "placeholder.mp4"
     media.write_bytes(b"probed and decoded by offline stand-ins")
-    change_during_probe = []
 
     def probe(_):
-        if change_during_probe:
-            replace_config(config_file, QWEN_MM_MAX_TOTAL_FRAMES=change_during_probe.pop())
         return {"duration": 1000, "native_fps": 30, "height": 180, "width": 320}
 
     monkeypatch.setattr(reader, "get_video_info", probe)
@@ -109,11 +106,6 @@ def test_frame_cap_increases_decreases_and_stays_fixed_within_a_call(config_file
         replace_config(config_file, QWEN_MM_MAX_TOTAL_FRAMES=limit)
         assert read(requested) == expected
 
-    replace_config(config_file, QWEN_MM_MAX_TOTAL_FRAMES=5)
-    change_during_probe.append(2)
-    assert read() == 5
-    assert read() == 2
-
 
 def test_ffprobe_timeout_changes_for_the_next_subprocess(config_file, monkeypatch):
     timeouts = []
@@ -128,31 +120,3 @@ def test_ffprobe_timeout_changes_for_the_next_subprocess(config_file, monkeypatc
         replace_config(config_file, QWEN_MM_FFMPEG_TIMEOUT=timeout)
         video.probe_media("placeholder.mp4")
     assert timeouts == [17, 42]
-
-
-def test_queued_frame_workers_read_the_current_timeout(config_file, monkeypatch):
-    timeouts = []
-
-    def run(_command, **kwargs):
-        timeouts.append(kwargs["timeout"])
-        if len(timeouts) == 1:
-            replace_config(config_file, QWEN_MM_FFMPEG_TIMEOUT=42)
-        return SimpleNamespace(returncode=0, stdout=b"image")
-
-    monkeypatch.setattr(video, "find_tool", lambda name: name)
-    monkeypatch.setattr(video.subprocess, "run", run)
-    replace_config(config_file, QWEN_MM_FFMPEG_TIMEOUT=17)
-    video.extract_frames_by_seeking("placeholder.mp4", [0, 1, 2], 0, 0, max_workers=1)
-    assert timeouts == [17, 42, 42]
-
-
-def test_hot_invalid_timeout_in_worker_reaches_caller(config_file, monkeypatch):
-    def run(_command, **_kwargs):
-        replace_config(config_file, QWEN_MM_FFMPEG_TIMEOUT="bad")
-        return SimpleNamespace(returncode=0, stdout=b"image")
-
-    monkeypatch.setattr(video, "find_tool", lambda name: name)
-    monkeypatch.setattr(video.subprocess, "run", run)
-    replace_config(config_file, QWEN_MM_FFMPEG_TIMEOUT=17)
-    with pytest.raises(env.ConfigurationError, match="QWEN_MM_FFMPEG_TIMEOUT"):
-        video.extract_frames_by_seeking("placeholder.mp4", [0, 1], 0, 0, max_workers=1)

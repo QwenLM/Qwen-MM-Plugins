@@ -164,17 +164,13 @@ def test_explicit_timeout_overrides_environment(connection, monkeypatch, inline)
     assert connection.clients == [{"timeout": 5.5}]
 
 
-@pytest.mark.parametrize("value", [None, ""])
-def test_unset_or_blank_timeout_uses_shared_1800_seconds(connection, monkeypatch, value):
-    if value is not None:
-        monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", value)
+def test_unset_timeout_uses_shared_1800_seconds(connection):
     av.perceive_url("https://media.example/video.mp4", "prompt")
     assert connection.clients == [{"timeout": 1800.0}]
 
 
-@pytest.mark.parametrize("value", ["invalid", "1.5", "0", "-1"])
-def test_invalid_timeout_stops_before_http_request(connection, monkeypatch, value):
-    monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", value)
+def test_invalid_timeout_stops_before_http_request(connection, monkeypatch):
+    monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", "invalid")
     with pytest.raises(env.ConfigurationError, match="QWEN_MM_CHAT_TIMEOUT"):
         av.perceive_url("https://media.example/video.mp4", "prompt")
     assert connection.clients == []

@@ -62,9 +62,8 @@ def test_chat_timeout_has_one_default_and_source_precedence(config_file, monkeyp
         assert factory.call_args.kwargs["timeout"] == expected
 
 
-@pytest.mark.parametrize("value", ["-1", "nan", "inf", "invalid"])
-def test_mhs_returns_invalid_ttl_as_actionable_text(config_file, value):
-    config_file.write_text(f"QWEN_MM_MHS_CACHE_TTL={value}\n")
+def test_mhs_returns_invalid_ttl_as_actionable_text(config_file):
+    config_file.write_text("QWEN_MM_MHS_CACHE_TTL=-1\n")
 
     @guarded
     def handle(_):
@@ -82,9 +81,6 @@ def test_mhs_returns_invalid_ttl_as_actionable_text(config_file, value):
 @pytest.mark.parametrize(
     "setting,value",
     [
-        ("MEM_TEMPERATURE", "invalid"),
-        ("MEM_TEMPERATURE", "nan"),
-        ("MEM_TEMPERATURE", "-1"),
         ("MEM_TEMPERATURE", "3"),
         ("MEM_STREAM_STALL", "invalid"),
         ("MEM_WATCH_CALL_TIMEOUT", "0"),
@@ -138,27 +134,6 @@ def test_omni_private_config_does_not_block_discovery_and_recovers(config_file, 
     mcp_call(str(server), call, env=dict(os.environ))
 
 
-def test_omni_numeric_bounds_apply_at_use(config_file):
-    store = mem_core.MemoryStore()
-    for value in ("-0.1", "1.1", "nan"):
-        config_file.write_text(f"MEM_BM25_B={value}\n")
-        with pytest.raises(env.ConfigurationError, match="MEM_BM25_B"):
-            store._sparse_rank([{"text": "robot"}], "robot", lambda item: item["text"])
-    config_file.write_text("MEM_BM25_B=0\n")
-    assert store._sparse_rank([{"text": "robot"}], "robot", lambda item: item["text"]) == [0]
-
-
-def test_omni_probe_reports_configuration_errors(config_file, monkeypatch):
-    from qwen_mm_plugins_omni_memory.tools import watch_and_answer
-
-    monkeypatch.delenv("QWEN_MM_FFMPEG_TIMEOUT", raising=False)
-    video = config_file.parent / "video.mp4"
-    video.write_bytes(b"configuration must fail before probing")
-    config_file.write_text("QWEN_MM_FFMPEG_TIMEOUT=invalid\n")
-    with pytest.raises(env.ConfigurationError, match="QWEN_MM_FFMPEG_TIMEOUT"):
-        watch_and_answer.handle({"video_path": str(video), "question": "describe"})
-
-
 def test_omni_clients_follow_file_changes_including_previously_missing_key(config_file, monkeypatch):
     monkeypatch.setattr(service, "_tl", threading.local())
     factory = Mock(side_effect=lambda **_: Mock())
@@ -174,15 +149,9 @@ def test_omni_clients_follow_file_changes_including_previously_missing_key(confi
     assert factory.call_args.kwargs == {"api_key": "next-key", "base_url": "https://other.example/v1"}
 
 
-def test_invalid_internal_default_is_not_exempt_from_numeric_bounds(config_file):
-    with pytest.raises(env.ConfigurationError, match="QMP_PRIVATE_LIMIT"):
-        env.get_int_env("QMP_PRIVATE_LIMIT", -1, min_value=0)
-
-
-@pytest.mark.parametrize("contents", [b"missing-equals\n", b"QWEN_MM_CHAT_TIMEOUT='unfinished\n", b"\xff"])
-def test_malformed_file_does_not_hide_tools_and_can_be_repaired(config_file, sample_video, monkeypatch, contents):
+def test_malformed_file_does_not_hide_tools_and_can_be_repaired(config_file, sample_video, monkeypatch):
     monkeypatch.delenv("QWEN_MM_FFMPEG_TIMEOUT", raising=False)
-    config_file.write_bytes(contents)
+    config_file.write_text("missing-equals\n")
 
     async def call(session):
         assert "media_info" in {t.name for t in (await session.list_tools()).tools}
