@@ -28,7 +28,7 @@ from shared.api_omni import (
     resolve_omni_endpoint,
     resolve_omni_model,
 )
-from shared.env import get_env
+from shared.env import ConfigurationError, get_env, get_int_env
 
 from ._media_utils import ffmpeg_path, ffprobe_path
 
@@ -55,15 +55,7 @@ def _resolve_key() -> str:
 
 
 def _default_chat_timeout() -> float:
-    raw = get_env("QWEN_MM_CHAT_TIMEOUT")
-    try:
-        value = int(raw) if raw else 900
-        if value > 0:
-            return float(value)
-    except (TypeError, ValueError):
-        pass
-    log.warning("invalid QWEN_MM_CHAT_TIMEOUT=%r; using 900 seconds", raw)
-    return 900.0
+    return float(get_int_env("QWEN_MM_CHAT_TIMEOUT"))
 
 
 _PRIVATE_HOST_RE = re.compile(r"^(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)|-internal\.")
@@ -445,7 +437,9 @@ def _oss_upload_and_sign(path: str) -> str | None:
         )
         return None
     try:
-        return oss.upload_and_sign(path, key_prefix=get_env("OSS_VIDEO_CLIP_PREFIX", "tmp/video_clips"))
+        return oss.upload_and_sign(path, key_prefix=get_env("OSS_VIDEO_CLIP_PREFIX"))
+    except ConfigurationError:
+        raise
     except Exception as e:
         log.info("[deliver] OSS 投递失败(%s) → 退回 base64", e)
         return None
@@ -470,7 +464,8 @@ def _sign_oss_uri(uri: str) -> str:
     endpoint = get_env("OSS_ENDPOINT")
     if not endpoint:
         raise RuntimeError("oss:// needs OSS_ENDPOINT and OSS_AK/OSS_SK")
-    url = oss.bucket(endpoint, bucket_name).sign_url("GET", key, oss.url_expiry(), slash_safe=True)
+    expires = oss.url_expiry()
+    url = oss.bucket(endpoint, bucket_name).sign_url("GET", key, expires, slash_safe=True)
     log.info("[deliver] signed oss:// → url host=%s key=%s", url.split("/")[2], key)
     return url.replace("http://", "https://")
 
@@ -494,6 +489,8 @@ def _compress_to_inline(path: str, *, fps: float | None = None) -> str | None:
         if _fits_inline_budget(out):
             keep = True
             return out
+    except ConfigurationError:
+        raise
     except Exception as error:
         log.info("[deliver] shared compression cannot fit media (%s); trying shared fallback", error)
     finally:
@@ -607,6 +604,8 @@ def _deliver_local(
         if delivery_notes is not None:
             delivery_notes.append(_fallback_summary(parts, path, fps))
         return ("parts", parts)
+    except ConfigurationError:
+        raise
     except Exception as error:
         raise RuntimeError(
             f"cannot deliver local file ({size / 1024 / 1024:.0f}MB): original upload and shared "

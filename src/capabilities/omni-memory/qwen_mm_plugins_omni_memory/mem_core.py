@@ -9,19 +9,18 @@ text_match.py.
 """
 
 import math
-import os
 import time
 
+from . import config
 from .omni_core import (
-    ANON_NAMES,
     NAME_STOP,
     RESIDENT_ENTITY_CAP,
     SALIENT_EMO,
     SALIENT_TONE,
     StoreBase,
+    anonymous_names,
     diag,
     embed_texts,
-    env_int,
     get_embed_client,
     normalize_acoustic_events,
 )
@@ -42,9 +41,7 @@ RESIDENT_KEY_CAP = 80  # max semantic keys kept resident
 
 SCENE_RECALL_N = 4  # how many scene items to recall when the plan asks for SCENE_ENV
 
-EP_RERANK = os.environ.get("MEM_EP_RERANK") == "1"  # rerank recalled clips against the original query
-
-EP_TOPN = env_int("MEM_EP_TOPN", 6)  # clips kept after rerank
+EP_TOPN = 6
 
 
 class MemoryStore(StoreBase):
@@ -67,7 +64,7 @@ class MemoryStore(StoreBase):
         be rebound here.
         """
         cands: dict[str, list] = {}
-        if not (ANON_NAMES and self.name_ledger):
+        if not (anonymous_names() and self.name_ledger):
             return cands
         for key, val in self.name_ledger.items():
             key_parts = key.split("|")
@@ -230,6 +227,9 @@ class MemoryStore(StoreBase):
         Statistics come from the collection actually passed in, so the same record scores differently
         depending on what it is ranked against — correct, since idf is a property of the collection.
         """
+        k1 = config.get_float_env("MEM_BM25_K1", BM25_K1, min_value=0)
+        b = config.get_float_env("MEM_BM25_B", BM25_B, min_value=0, max_value=1)
+        boost = config.get_float_env("MEM_BM25_BOOST", BM25_BOOST, min_value=0)
         qterms = kw(query)
         if not qterms or not items:
             return []
@@ -260,14 +260,14 @@ class MemoryStore(StoreBase):
                 for t, w in idf.items():
                     f = tf.get(t, 0)
                     if f:
-                        s += w * f * (BM25_K1 + 1) / (f + BM25_K1 * (1 - BM25_B + BM25_B * dl / avgdl))
+                        s += w * f * (k1 + 1) / (f + k1 * (1 - b + b * dl / avgdl))
                 if s:
                     out[i] = s * weight
             return out
 
         scores = bm25(*field(textfn), 1.0)
         if boostfn:
-            for i, s in enumerate(bm25(*field(boostfn), BM25_BOOST)):
+            for i, s in enumerate(bm25(*field(boostfn), boost)):
                 scores[i] += s
         ranked = [(i, s) for i, s in enumerate(scores) if s > 0]
         return [i for i, _ in sorted(ranked, key=lambda x: -x[1])]
@@ -365,10 +365,12 @@ class MemoryStore(StoreBase):
         order = sorted(fused, key=lambda i: -fused[i])
         return [active[i] for i in order[:k]]
 
-    def rerank_episodic(self, cands, query, k=EP_TOPN, client=None):
+    def rerank_episodic(self, cands, query, k=None, client=None):
         """S2: re-score accumulated candidates against the ORIGINAL question (not the decomposed
         episode_queries) via dense+keyword RRF, keep top-k. Restores cross-subquery comparability
         and trims episodic noise. Returns re-ranked (relevance order)."""
+        if k is None:
+            k = config.get_int_env("MEM_EP_TOPN", EP_TOPN, min_value=1)
         if not cands or len(cands) <= k:
             return cands
         lists = []
@@ -396,7 +398,7 @@ class MemoryStore(StoreBase):
         # guessing keys here would only add facts it chose not to ask for. Matching facts by content
         # is search_semantic, which search_facts exposes as its own tool.
         sem = self.get_triples_by_keys(_keys)
-        if os.environ.get("MEM_PHONETIC_FALLBACK", "1") != "0":  # ③ recover mis-heard names by sound
+        if config.get_bool_env("MEM_PHONETIC_FALLBACK", True):  # ③ recover mis-heard names by sound
             ents, sem = self._augment_phonetic(ents, sem, query)
         _t = time.time()  # P4: frequency/recency instrumentation
         for it in ents + sem:
@@ -423,11 +425,11 @@ class MemoryStore(StoreBase):
                 if o.get("idx") not in seen:
                     seen.add(o.get("idx"))
                     ep.append(o)
-        if EP_RERANK:  # S2: rerank vs original query + trim noise
-            ep = self.rerank_episodic(ep, query, k=EP_TOPN, client=client)
+        if config.get_bool_env("MEM_EP_RERANK"):  # S2: rerank vs original query + trim noise
+            ep = self.rerank_episodic(ep, query, client=client)
         ranked = list(ep)  # relevance/recall order (for replay pick)
         ep.sort(key=lambda o: o.get("win_start", 0))  # chronological order (for answer evidence)
-        replays = self._resolve_replays(plan, ranked, sem, n=REPLAY_N)  # multi-anchor candidates (deferred)
+        replays = self._resolve_replays(plan, ranked, sem)  # multi-anchor candidates (deferred)
         diag(
             f"[MEM] ▸ RUN_PLAN entities={len(ents)} semantic={len(sem)} episodic={len(ep)} "
             f"scene={len(scene)} replays={[c.get('idx') for c in replays]}",
@@ -485,12 +487,14 @@ class MemoryStore(StoreBase):
     def _clip_playable(self, c):
         return bool(c and (c.get("oss_key") or c.get("path")))
 
-    def _resolve_replays(self, plan, ep, sem_hits=None, n=REPLAY_N):
+    def _resolve_replays(self, plan, ep, sem_hits=None, n=None):
         """Pick which clips to re-watch: dense episodic ranking first, time hints only as tiebreaker.
 
         Ordering by time or semantic anchors ahead of the dense ranking was measured to surface worse
         clips, so it is deliberately not done.
         """
+        if n is None:
+            n = config.get_int_env("MEM_REPLAY_N", REPLAY_N, min_value=1)
         order = []
         for o in ep:  # dense relevance order (primary signal)
             order.append(o.get("idx"))

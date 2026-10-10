@@ -35,9 +35,9 @@ _BACKOFF_CAP_SECONDS = 10
 
 def resolve_backend() -> str:
     """Return an explicit backend, or auto-select the first configured key."""
-    from shared.env import get_env
+    from shared.env import get_choice_env, get_env
 
-    selected = (get_env("QWEN_MM_SEARCH_BACKEND") or "").strip().lower()
+    selected = get_choice_env("QWEN_MM_SEARCH_BACKEND")
     if selected and selected != "auto":
         return selected
 

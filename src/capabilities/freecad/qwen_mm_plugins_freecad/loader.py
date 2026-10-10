@@ -130,8 +130,8 @@ def get_connection() -> FreeCADConnection:
     with _lock:
         if _connection is not None:
             return _connection
-        host = get_env("FREECAD_RPC_HOST", "localhost")
-        port = get_int_env("FREECAD_RPC_PORT", 9875)
+        host = get_env("FREECAD_RPC_HOST")
+        port = get_int_env("FREECAD_RPC_PORT")
         conn = FreeCADConnection(host=host, port=port)
         try:
             ok = conn.ping()
@@ -165,6 +165,6 @@ def probe() -> None:
     call (get_connection, in a worker thread) where a long wait is survivable."""
     from shared.applaunch import startup_probe
 
-    host = get_env("FREECAD_RPC_HOST", "localhost")
-    port = get_int_env("FREECAD_RPC_PORT", 9875)
+    host = get_env("FREECAD_RPC_HOST")
+    port = get_int_env("FREECAD_RPC_PORT")
     startup_probe(host, port, app="FreeCAD", entry="qwen-mm-plugins-freecad")

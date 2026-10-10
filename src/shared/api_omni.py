@@ -31,22 +31,20 @@ from urllib.parse import urlsplit
 
 from shared.api_openai import b64_len, expand_video_frames, is_model_url, resolve_openai_endpoint
 from shared.dashscope_upload import OSS_RESOLVE_HEADER, contains_temporary_oss_url
-from shared.env import get_bool_env, get_env
+from shared.env import ConfigurationError, get_bool_env, get_env, get_int_env
 
 log = logging.getLogger(__name__)
 
-DEFAULT_OMNI_MODEL = "qwen3.8-omni-flash"
 DEFAULT_MAX_RETRIES = 4
 DEFAULT_RETRY_BACKOFF = 1.0
-DEFAULT_OMNI_TIMEOUT = 1800  # streaming A/V completions can run long; overridable via QWEN_MM_CHAT_TIMEOUT
 
 
 def resolve_omni_model(model: str | None = None) -> str:
     """Resolve the Omni model at call time.
 
-    Precedence: explicit argument → QWEN_MM_API_OMNI_MODEL → DEFAULT_OMNI_MODEL.
+    Precedence: explicit argument → QWEN_MM_API_OMNI_MODEL → catalog default.
     """
-    return model or get_env("QWEN_MM_API_OMNI_MODEL") or DEFAULT_OMNI_MODEL
+    return model or get_env("QWEN_MM_API_OMNI_MODEL")
 
 
 # Default video sampling knobs (must sit at the content-part TOP level to take effect — see
@@ -114,12 +112,7 @@ def resolve_omni_endpoint(arguments: dict[str, Any]) -> tuple[str, str]:
 
 
 def _omni_timeout() -> int:
-    raw = get_env("QWEN_MM_CHAT_TIMEOUT")
-    try:
-        return int(raw) if raw else DEFAULT_OMNI_TIMEOUT
-    except ValueError:
-        log.warning("QWEN_MM_CHAT_TIMEOUT=%r is not a valid integer; using default %d", raw, DEFAULT_OMNI_TIMEOUT)
-        return DEFAULT_OMNI_TIMEOUT
+    return get_int_env("QWEN_MM_CHAT_TIMEOUT")
 
 
 # ── Content-part builders ────────────────────────────────────────────────────────────────────────
@@ -267,6 +260,8 @@ def has_video_stream(path: str) -> bool:
                 continue  # album art / thumbnail embedded in an audio file
             return True
         return False
+    except ConfigurationError:
+        raise
     except Exception:  # noqa: BLE001 — ffprobe missing/unreadable: fall back to the extension
         return has_video_extension(path)
 

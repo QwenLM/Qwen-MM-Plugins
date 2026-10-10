@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from shared.content import json_text
 
-from .. import omni_core, watch
+from .. import config, omni_core, watch
 from ..service import memory_dir
 
 
@@ -93,15 +93,15 @@ def watch_and_answer(
     # One probe serves both the length guard and the encode decision. Duration is checked first, since
     # it rules out a video that re-encoding would spend minutes on; it is 0 when ffprobe is unavailable,
     # leaving the encoded-size guard as the only backstop.
+    max_minutes = config.get_float_env("MEM_WATCH_MAX_MIN", watch.WATCH_MAX_MIN, min_value=0)
     info = watch.probe_media(str(video))
     duration = info["duration"]
-    if duration and duration / 60 > watch.WATCH_MAX_MIN:
+    if duration and duration / 60 > max_minutes:
         return {
             "video_path": str(video),
             "duration_sec": round(duration, 1),
             "duration_min": round(duration / 60, 1),
-            "error": f"{duration / 60:.1f} min is past the {watch.WATCH_MAX_MIN:.0f} min limit for "
-            "watching in one call",
+            "error": f"{duration / 60:.1f} min is past the {max_minutes:.0f} min limit for watching in one call",
             "fallback": "build_memory",
             "next_step": build_cmd,
             "hint": "too long to watch — build a memory, then query it with plan_and_search",
@@ -136,8 +136,11 @@ def watch_and_answer(
     # per data-uri item" arrives as a 400 that classifies as `reject` and takes the build fallback below.
     # Guessing the ceiling could only refuse requests that would have worked. The encode is still sized
     # against a byte budget, since a target bitrate has to come from somewhere — sizing is not refusing.
+    used_model = model or config.chat_config()[1]
     try:
-        answer = watch.watch_answer(omni_core.get_client(), omni_core.b64_uri(str(src)), question, model_override=model)
+        answer = watch.watch_answer(
+            omni_core.get_client(), omni_core.b64_uri(str(src)), question, model_override=used_model
+        )
     except watch.WatchError as e:
         out = {**common, "error": str(e), "failure": e.kind}
         # Only failures a build would get past are answered with a build: throttling is transient, and
@@ -156,7 +159,7 @@ def watch_and_answer(
         out["hint"] = "direct watching did not get through — build a memory, then query it with plan_and_search"
         return out
 
-    res = {**common, "question": question, "answer": answer, "model": model or omni_core.MODEL}
+    res = {**common, "question": question, "answer": answer, "model": used_model}
     if (memory_dir(video_path=str(video)) / "store.json").is_file():
         res["note"] = "a memory already exists for this video — plan_and_search answers follow-ups without re-uploading"
     return res

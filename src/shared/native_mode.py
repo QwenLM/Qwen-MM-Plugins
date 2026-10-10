@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from shared.env import get_bool_env
+from shared.env import ConfigurationError, get_bool_env
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ The captions array must contain exactly one non-empty string per image, in input
 
 def adapt_content_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Pass images through in native mode, or replace them with generated captions."""
-    if get_bool_env("QWEN_MM_NATIVE_MODE", default=True):
+    if get_bool_env("QWEN_MM_NATIVE_MODE"):
         return blocks
 
     positions = [
@@ -56,6 +56,8 @@ def adapt_content_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     model=model,
                 )
             )
+        except ConfigurationError:
+            raise
         except Exception as exc:  # noqa: BLE001 — tool text remains useful if captioning fails
             status = getattr(exc, "status_code", None)
             suffix = f" HTTP {status}" if isinstance(status, int) else ""

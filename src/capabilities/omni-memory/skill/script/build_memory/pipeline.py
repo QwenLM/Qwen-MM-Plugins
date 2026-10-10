@@ -15,6 +15,7 @@ import clipping
 import omni_core
 import stages
 import storage
+from env_config import get_int_env
 from store_writer import MemoryStore
 
 
@@ -358,7 +359,7 @@ def _build_memory(
     K = max(1, int(rollup_k))
     next_start = len(store.episodic)  # only roll up NEW clips (skip already-ingested)
     # ---- streaming name-alignment (L2) cadence + state ----
-    NAME_ALIGN_EVERY = max(K, int(os.environ.get("MEM_NAME_ALIGN_EVERY", K)))  # default = K (every rollup cycle)
+    NAME_ALIGN_EVERY = get_int_env("MEM_NAME_ALIGN_EVERY", K, min_value=K)  # default = K (every rollup cycle)
     name_fut = None  # pending background infer_roster future
     last_align_at = len(store.episodic)  # #clips at last L2 trigger
     applied_changes = []  # cumulative renames (for finalize semantic propagate)

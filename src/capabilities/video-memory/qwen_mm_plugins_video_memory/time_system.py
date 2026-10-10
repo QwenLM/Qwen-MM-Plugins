@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -10,6 +11,14 @@ if TYPE_CHECKING:
     from .schema import HierarchicalGraphMemory
 
 DAY_OFFSET = 100_000
+
+
+def _finite_seconds(value: int | float) -> float | None:
+    try:
+        seconds = float(value)
+    except OverflowError:
+        return None
+    return seconds if math.isfinite(seconds) and seconds >= 0 else None
 
 
 class TimeSystem(ABC):
@@ -40,12 +49,12 @@ class DefaultTimeSystem(TimeSystem):
 
     def str_to_sec(self, val) -> float | None:
         if isinstance(val, (int, float)):
-            return float(val)
+            return _finite_seconds(val)
         if not isinstance(val, str):
             return None
-        m = re.search(r"(\d{1,2}):(\d{2}):(\d{2})$", val.strip())
+        m = re.fullmatch(r"(\d+):([0-5]\d):([0-5]\d)", val.strip())
         if m:
-            return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+            return _finite_seconds(float(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3)))
         return None
 
 
@@ -72,15 +81,19 @@ class EgoLifeTimeSystem(TimeSystem):
 
     def str_to_sec(self, val) -> float | None:
         if isinstance(val, (int, float)):
-            return float(val)
+            return _finite_seconds(val)
         if not isinstance(val, str):
             return None
         s = val.strip()
-        # "DAY1 11:09:42" or "day1_11:09:42"
-        m = re.match(r"day(\d+)[_ ](\d{1,2}):(\d{2}):(\d{2})$", s, re.IGNORECASE)
+        # Accept the dataset's underscore spelling as well as runs of whitespace.
+        m = re.fullmatch(r"day([1-9]\d*)(?:_|\s+)(\d{1,2}):([0-5]\d):([0-5]\d)", s, re.IGNORECASE)
         if m:
-            day = int(m.group(1))
-            return (day - 1) * DAY_OFFSET + int(m.group(2)) * 3600 + int(m.group(3)) * 60 + int(m.group(4))
+            day = float(m.group(1))
+            if int(m.group(2)) >= 24:
+                return None
+            return _finite_seconds(
+                (day - 1) * DAY_OFFSET + int(m.group(2)) * 3600 + int(m.group(3)) * 60 + int(m.group(4))
+            )
         return None
 
     def _already_offset(self, memory: HierarchicalGraphMemory) -> bool:

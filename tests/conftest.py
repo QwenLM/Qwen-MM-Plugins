@@ -111,6 +111,16 @@ def repo_root() -> str:
     return REPO_ROOT
 
 
+@pytest.fixture
+def empty_user_config(tmp_path, monkeypatch):
+    """Isolate call-time configuration without pinning the production reader's cache."""
+
+    path = tmp_path / "empty-user-config"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("QWEN_MM_CONFIG", str(path))
+    return path
+
+
 @pytest.fixture(scope="session")
 def server_dir() -> str:
     """Path to run the vision MCP server as a subprocess (its __main__ self-registers)."""

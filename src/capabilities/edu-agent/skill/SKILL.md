@@ -28,7 +28,7 @@ This is a **skill-only** capability (no MCP server), so its runtime dependencies
 | **hyperframes CLI** | `init` / `lint` / `validate` / `render` | pulled on demand via `npx hyperframes` (needs npm-registry access at scaffold time; the project then pins a version in `dist/package.json`) |
 | **Headless Chromium + OS libs** | `npx hyperframes render` (puppeteer) + post-render QA gates (`postcheck.py` / `precheck.py` drive headless Chrome) | the browser itself is auto-downloaded by puppeteer on first `npx hyperframes`; on **minimal Linux** you must also `apt install libnss3 libatk-bridge2.0-0 libgbm1 libasound2 libxkbcommon0 libgtk-3-0 fonts-noto-cjk` (else Chrome fails to launch, or CJK/formulas render as tofu boxes). Reuse a system Chrome via `export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`. |
 | **Python 3 + pip** | TTS script | `python3 -m pip --version` |
-| **`dashscope` `soundfile` `numpy` `requests`** | Step 3 TTS synthesis + assembly | `python3 -m pip install dashscope soundfile numpy requests` |
+| **`dashscope` `soundfile` `numpy` `requests` `pydantic`** | TTS synthesis, assembly and shared configuration | `python3 -m pip install dashscope soundfile numpy requests 'pydantic>=2.11,<3'` |
 | **ffmpeg** | loudness normalization (`loudnorm`) + frame extraction for self-check | `brew install ffmpeg` / `apt install ffmpeg` |
 | **`DASHSCOPE_API_KEY`** | Qwen-TTS (`qwen3-tts-flash`) | `export DASHSCOPE_API_KEY="sk-xxx"`, **or** put `DASHSCOPE_API_KEY=sk-xxx` in `~/.qwen-mm-plugins/config` for GUI-launched setups that don't inherit shell exports. `$EDU_SKILL_ROOT/scripts/generate_voice.py` reads it at runtime — **never `cat`/paste the key into the conversation.** |
 

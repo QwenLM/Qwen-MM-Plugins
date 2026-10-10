@@ -13,7 +13,7 @@ DASHSCOPE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
 @pytest.fixture
-def connection(monkeypatch):
+def connection(monkeypatch, empty_user_config):
     for name in (
         "DASHSCOPE_BASE_URL",
         "DASHSCOPE_API_KEY",
@@ -25,7 +25,6 @@ def connection(monkeypatch):
         "OMNI_AV_SOURCE_URL",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(env, "_config_cache", {})
     requests, clients = [], []
     client_type = httpx.Client
 
@@ -126,7 +125,6 @@ def test_handle_reads_config_file_timeout_on_every_delivery_path(connection, mon
     config = tmp_path / "config"
     config.write_text(f"DASHSCOPE_BASE_URL={DASHSCOPE}\nDASHSCOPE_API_KEY=config-key\nQWEN_MM_CHAT_TIMEOUT=17\n")
     monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
-    monkeypatch.setattr(env, "_config_cache", None)
     source = "https://media.example/video.mp4"
     if mode != "remote":
         path = tmp_path / "local.mp4"
@@ -150,7 +148,6 @@ def test_environment_timeout_overrides_file_at_call_time(connection, monkeypatch
     config = tmp_path / "config"
     config.write_text("QWEN_MM_CHAT_TIMEOUT=17\n")
     monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
-    monkeypatch.setattr(env, "_config_cache", None)
     for value in (23, 29):
         monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", str(value))
         av.perceive_url("https://media.example/video.mp4", "prompt")
@@ -167,11 +164,18 @@ def test_explicit_timeout_overrides_environment(connection, monkeypatch, inline)
     assert connection.clients == [{"timeout": 5.5}]
 
 
-@pytest.mark.parametrize("value", [None, "", "invalid", "1.5", "0", "-1"])
-def test_unset_or_invalid_timeout_retains_900_seconds(connection, monkeypatch, caplog, value):
+@pytest.mark.parametrize("value", [None, ""])
+def test_unset_or_blank_timeout_uses_shared_1800_seconds(connection, monkeypatch, value):
     if value is not None:
         monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", value)
     av.perceive_url("https://media.example/video.mp4", "prompt")
-    assert connection.clients == [{"timeout": 900.0}]
-    if value not in (None, ""):
-        assert "invalid QWEN_MM_CHAT_TIMEOUT" in caplog.text
+    assert connection.clients == [{"timeout": 1800.0}]
+
+
+@pytest.mark.parametrize("value", ["invalid", "1.5", "0", "-1"])
+def test_invalid_timeout_stops_before_http_request(connection, monkeypatch, value):
+    monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", value)
+    with pytest.raises(env.ConfigurationError, match="QWEN_MM_CHAT_TIMEOUT"):
+        av.perceive_url("https://media.example/video.mp4", "prompt")
+    assert connection.clients == []
+    assert connection.requests == []

@@ -12,11 +12,11 @@ default at import time.
 """
 
 import json
-import os
 import re
 
 import omni_core
-from omni_core import TEMP_KWARGS, b64_uri, backoff, is_rate_limit, iter_deadline, retry_reset, sleep_note
+from env_config import get_int_env
+from omni_core import b64_uri, backoff, is_rate_limit, iter_deadline, retry_reset, sleep_note, temperature_kwargs
 
 # ----------------------------------------------------------------------------- helpers
 _FENCE = re.compile(r"```json\s*(.*?)```", re.DOTALL)
@@ -36,20 +36,22 @@ def parse_json_block(text):
 
 # Timeouts for video calls (extraction) and text calls (induction, planning, answering). Raise them
 # when the endpoint is queueing, e.g. MEM_CALL_TIMEOUT=1200 MEM_CALL_RETRIES=12 MEM_STREAM_STALL=600.
-CALL_TIMEOUT = int(os.environ.get("MEM_CALL_TIMEOUT", "240") or "240")
+CALL_TIMEOUT = 240
 
-CALL_RETRIES = int(os.environ.get("MEM_CALL_RETRIES", "8") or "8")
+CALL_RETRIES = 8
 
-TEXT_TIMEOUT = int(os.environ.get("MEM_TEXT_TIMEOUT", "600") or "600")
+TEXT_TIMEOUT = 600
 
-TEXT_RETRIES = int(os.environ.get("MEM_TEXT_RETRIES", "8") or "8")
+TEXT_RETRIES = 8
 
 
 def call_model(client, video_path, prompt, max_retries=None, timeout=None):
     """Video call (stage-1). Stream + retry create on 429. Returns {raw,parsed,usage,attempts}.
     max_retries/timeout default to CALL_RETRIES/CALL_TIMEOUT (env-overridable)."""
-    max_retries = CALL_RETRIES if max_retries is None else max_retries
-    timeout = CALL_TIMEOUT if timeout is None else timeout
+    max_retries = get_int_env("MEM_CALL_RETRIES", CALL_RETRIES, min_value=1) if max_retries is None else max_retries
+    timeout = get_int_env("MEM_CALL_TIMEOUT", CALL_TIMEOUT, min_value=1) if timeout is None else timeout
+    temperature = temperature_kwargs()
+    stall = get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     messages = [
         {
             "role": "user",
@@ -68,13 +70,13 @@ def call_model(client, video_path, prompt, max_retries=None, timeout=None):
                 model=omni_core.MODEL,
                 messages=messages,
                 modalities=["text"],
-                **TEMP_KWARGS,
+                **temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 timeout=timeout,
             )
             parts, usage, finish = [], None, None
-            for ch in iter_deadline(stream):
+            for ch in iter_deadline(stream, stall=stall):
                 if ch.choices:
                     c = ch.choices[0]
                     if c.delta is not None and getattr(c.delta, "content", None):
@@ -106,8 +108,10 @@ def _stream_text(client, prompt, model=None, max_retries=None, timeout=None):
     """Text-only call (stage-2 / consolidation / PLAN). Returns {raw,parsed,usage} or {error}.
     model defaults to MODEL (omni-plus); PLAN may pass a faster text model.
     max_retries/timeout default to TEXT_RETRIES/TEXT_TIMEOUT (env-overridable)."""
-    max_retries = TEXT_RETRIES if max_retries is None else max_retries
-    timeout = TEXT_TIMEOUT if timeout is None else timeout
+    max_retries = get_int_env("MEM_TEXT_RETRIES", TEXT_RETRIES, min_value=1) if max_retries is None else max_retries
+    timeout = get_int_env("MEM_TEXT_TIMEOUT", TEXT_TIMEOUT, min_value=1) if timeout is None else timeout
+    temperature = temperature_kwargs()
+    stall = get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     last = None
     mdl = model or omni_core.MODEL
     retry_reset()
@@ -116,13 +120,13 @@ def _stream_text(client, prompt, model=None, max_retries=None, timeout=None):
             st = client.chat.completions.create(
                 model=mdl,
                 messages=[{"role": "user", "content": prompt}],
-                **TEMP_KWARGS,
+                **temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 timeout=timeout,
             )
             parts, usage = [], None
-            for ch in iter_deadline(st):
+            for ch in iter_deadline(st, stall=stall):
                 if ch.choices and ch.choices[0].delta and getattr(ch.choices[0].delta, "content", None):
                     parts.append(ch.choices[0].delta.content)
                 if getattr(ch, "usage", None):

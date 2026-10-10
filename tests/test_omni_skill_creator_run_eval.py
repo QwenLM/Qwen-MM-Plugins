@@ -78,7 +78,6 @@ def test_import_ignores_an_unrelated_top_level_scripts_package(monkeypatch):
 
 
 def test_trigger_evaluator_reads_shared_config_file(monkeypatch, tmp_path):
-    import shared.env as env
 
     config = tmp_path / "config"
     config.write_text(
@@ -88,7 +87,6 @@ def test_trigger_evaluator_reads_shared_config_file(monkeypatch, tmp_path):
     monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
     monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
-    monkeypatch.setattr(env, "_config_cache", None)
 
     evaluator = _load_run_eval().TriggerEvaluator()
 
@@ -97,7 +95,6 @@ def test_trigger_evaluator_reads_shared_config_file(monkeypatch, tmp_path):
 
 
 def test_description_improver_reads_shared_config_file(monkeypatch, tmp_path):
-    import shared.env as env
 
     config = tmp_path / "config"
     config.write_text(
@@ -107,7 +104,6 @@ def test_description_improver_reads_shared_config_file(monkeypatch, tmp_path):
     monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
     monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
-    monkeypatch.setattr(env, "_config_cache", None)
     captured = {}
 
     class FakeCompletions:
@@ -141,10 +137,9 @@ def test_description_improver_reads_shared_config_file(monkeypatch, tmp_path):
         ("https://custom.example/v1", "explicit-key", "explicit-key"),
     ],
 )
-def test_description_scripts_select_key_for_effective_endpoint(monkeypatch, script, base, explicit_key, expected_key):
-    from shared import env
-
-    monkeypatch.setattr(env, "_config_cache", {})
+def test_description_scripts_select_key_for_effective_endpoint(
+    monkeypatch, empty_user_config, script, base, explicit_key, expected_key
+):
     monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-key")
     monkeypatch.setenv("OPENROUTER_API_KEY", "router-key")

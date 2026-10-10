@@ -2,7 +2,7 @@
 """Generate and verify the Markdown configuration catalog from `src/shared/env.py`.
 
 CONFIG_FIELDS in src/shared/env.py is the one declarative catalog of user-settable config vars
-(key, secret, group, default, description). This script renders grouped Markdown tables for
+(Pydantic types, defaults, constraints and descriptions). This script renders grouped Markdown tables for
 the canonical configuration reference. Overview docs intentionally list only common settings.
 
 Usage:
@@ -10,41 +10,27 @@ Usage:
     python3 scripts/gen_env_docs.py --write FILE…   # replace the generated block in each file
     python3 scripts/gen_env_docs.py --check FILE…   # fail if a generated block is stale
 
-Stdlib-only; reads CONFIG_FIELDS via `ast` (no import of shared.env, no side effects).
+Loads only the schema/catalog; does not read the process configuration. Requires the runtime Pydantic dependency.
 """
 
 from __future__ import annotations
 
 import argparse
-import ast
+import runpy
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ENV_PY = REPO_ROOT / "src" / "shared" / "env.py"
-# (key, secret, group, default, description) — mirrors the CONFIG_FIELDS comment in env.py.
+# Display rows derived by shared.env.config_catalog(): key, secret, group, default, description.
 Field = tuple[str, bool, str, str, str]
 BEGIN_MARKER = "<!-- BEGIN GENERATED CONFIG CATALOG -->"
 END_MARKER = "<!-- END GENERATED CONFIG CATALOG -->"
 
 
 def load_config_fields(path: Path = ENV_PY) -> list[Field]:
-    """Extract the literal CONFIG_FIELDS list from env.py without importing it."""
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            targets, value = node.targets, node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            targets, value = [node.target], node.value
-        else:
-            continue
-        for target in targets:
-            if isinstance(target, ast.Name) and target.id == "CONFIG_FIELDS":
-                fields = ast.literal_eval(value)
-                if not isinstance(fields, list):
-                    raise SystemExit(f"error: CONFIG_FIELDS in {path} is not a list literal")
-                return fields
-    raise SystemExit(f"error: CONFIG_FIELDS not found in {path}")
+    """Load Configure/docs rows from the same typed definitions used by runtime readers."""
+    return runpy.run_path(str(path))["config_catalog"]()
 
 
 def render(fields: list[Field]) -> str:

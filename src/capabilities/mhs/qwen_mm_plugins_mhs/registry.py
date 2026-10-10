@@ -15,7 +15,7 @@ import threading
 import time
 from typing import Any
 
-from shared.env import get_env
+from shared.env import get_float_env
 
 from .config import Adapter, load_adapters
 from .http_client import AdapterError, request, segment
@@ -24,11 +24,7 @@ from .protocol import normalize_device_summary, normalize_meta
 
 def cache_ttl() -> float:
     """Seconds to trust cached metadata. 0 disables caching."""
-    raw = get_env("QWEN_MM_MHS_CACHE_TTL", "60")
-    try:
-        return max(0.0, float(raw))
-    except (TypeError, ValueError):
-        return 60.0
+    return get_float_env("QWEN_MM_MHS_CACHE_TTL", 60.0, min_value=0)
 
 
 class _Cache:

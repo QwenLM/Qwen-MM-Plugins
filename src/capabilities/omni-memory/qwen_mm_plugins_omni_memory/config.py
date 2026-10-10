@@ -12,28 +12,15 @@ disagree about the endpoint or model would fail in a way nobody thinks to look f
 
 import os
 
-from shared.env import get_env
+from shared.env import _CONFIG_DEFAULTS, get_env
+from shared.env import get_bool_env as get_bool_env
+from shared.env import get_float_env as get_float_env
+from shared.env import get_int_env as get_int_env
 
 # ══════════════════ IDENTICAL IN env_config.py BELOW THIS LINE ══════════════════
 
-# Mirrors shared.env.DEFAULT_DASHSCOPE_BASE_URL, which the build's copy of this file cannot import.
-DEFAULT_DASHSCOPE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_OMNI_MODEL = "qwen3.8-omni-flash"
+DEFAULT_OMNI_MODEL = _CONFIG_DEFAULTS["QWEN_MM_API_OMNI_MODEL"]
 DEFAULT_EMBED_MODEL = "text-embedding-v4"
-
-
-def _api_key():
-    """The shared DashScope credential."""
-    return get_env("DASHSCOPE_API_KEY") or "EMPTY"
-
-
-def _dashscope_url():
-    """DashScope's OpenAI-compatible endpoint, honouring DASHSCOPE_BASE_URL.
-
-    The same catalogued setting the api and video-memory capabilities read, so an international
-    station or a corporate gateway is configured in one place for all of them.
-    """
-    return get_env("DASHSCOPE_BASE_URL") or DEFAULT_DASHSCOPE_URL
 
 
 def chat_config():
@@ -41,7 +28,7 @@ def chat_config():
 
     Same DashScope endpoint, credential and Omni model setting as the api capability.
     """
-    return (_dashscope_url(), get_env("QWEN_MM_API_OMNI_MODEL") or DEFAULT_OMNI_MODEL, _api_key())
+    return (get_env("DASHSCOPE_BASE_URL"), get_env("QWEN_MM_API_OMNI_MODEL"), get_env("DASHSCOPE_API_KEY", "EMPTY"))
 
 
 def embed_config():
@@ -50,17 +37,17 @@ def embed_config():
     EMBED_BASE_URL points embeddings at their own endpoint, which may want its own credential rather
     than the DashScope key.
 
-    On the DashScope branch a missing key is reported as None rather than _api_key()'s "EMPTY"
+    On the DashScope branch a missing key is reported as None rather than the chat client's "EMPTY"
     placeholder: DashScope has no anonymous mode, so dense retrieval can step aside instead of
     spending two doomed requests per query to find out. The placeholder still stands in behind
     EMBED_BASE_URL, where a self-hosted endpoint may want no credential and the OpenAI client rejects
     both None and "".
     """
-    model = get_env("EMBED_MODEL_NAME") or DEFAULT_EMBED_MODEL
+    model = get_env("EMBED_MODEL_NAME", DEFAULT_EMBED_MODEL)
     base = get_env("EMBED_BASE_URL")
     if base:
-        return (base, model, get_env("EMBED_API_KEY") or _api_key())
-    return (_dashscope_url(), model, get_env("DASHSCOPE_API_KEY"))
+        return (base, model, get_env("EMBED_API_KEY") or get_env("DASHSCOPE_API_KEY", "EMPTY"))
+    return (get_env("DASHSCOPE_BASE_URL"), model, get_env("DASHSCOPE_API_KEY"))
 
 
 def local_dir():

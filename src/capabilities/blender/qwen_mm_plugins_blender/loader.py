@@ -146,8 +146,8 @@ def get_connection() -> BlenderConnection:
     with _lock:
         if _connection is not None:
             return _connection
-        host = get_env("BLENDER_HOST", "localhost")
-        port = get_int_env("BLENDER_PORT", 9876)
+        host = get_env("BLENDER_HOST")
+        port = get_int_env("BLENDER_PORT")
         conn = BlenderConnection(host=host, port=port)
         if not conn.connect():
             if _maybe_autolaunch(host, port):
@@ -188,6 +188,6 @@ def probe() -> None:
     call (get_connection, in a worker thread) where a long wait is survivable."""
     from shared.applaunch import startup_probe
 
-    host = get_env("BLENDER_HOST", "localhost")
-    port = get_int_env("BLENDER_PORT", 9876)
+    host = get_env("BLENDER_HOST")
+    port = get_int_env("BLENDER_PORT")
     startup_probe(host, port, app="Blender", entry="qwen-mm-plugins-blender")

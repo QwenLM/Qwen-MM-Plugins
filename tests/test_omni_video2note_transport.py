@@ -221,15 +221,16 @@ def test_incomplete_sse_bytes_cannot_extend_absolute_deadline(monkeypatch, insid
 def test_config_refreshes_file_model_and_endpoint_when_key_is_in_environment(monkeypatch, tmp_path):
     from shared import env
 
-    key_name = next(name for name, *_ in env.CONFIG_FIELDS if name.endswith("_API_KEY"))
-    model_name = next(name for name, *_ in env.CONFIG_FIELDS if name.endswith("_API_OMNI_MODEL"))
-    base_name = next(name for name, *_ in env.CONFIG_FIELDS if name.endswith("_BASE_URL"))
+    key_name = next(name for name, *_ in env.config_catalog() if name.endswith("_API_KEY"))
+    model_name = next(name for name, *_ in env.config_catalog() if name.endswith("_API_OMNI_MODEL"))
+    base_name = next(name for name, *_ in env.config_catalog() if name.endswith("_BASE_URL"))
     monkeypatch.setenv(key_name, "test-key-from-environment")
     monkeypatch.delenv(model_name, raising=False)
     monkeypatch.delenv(base_name, raising=False)
     config_file = tmp_path / "config"
     monkeypatch.setattr(env, "config_file", lambda: str(config_file))
-    monkeypatch.setattr(env, "_config_cache", {model_name: "stale-model", base_name: "https://stale.invalid"})
+    config_file.write_text(f'{model_name}="stale-model"\n{base_name}="https://stale.invalid"\n')
+    assert env.get_env(model_name) == "stale-model"
     config_file.write_text(f'{model_name}="fresh-omni"\n{base_name}="https://fresh.invalid/v1"\n')
     video = tmp_path / "input.mp4"
     video.write_bytes(b"video")

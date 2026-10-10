@@ -114,13 +114,10 @@ def test_handle_dedups_overlapping_and_keeps_distinct(two_tone_video):
 
 
 @pytest.fixture
-def no_model_env(monkeypatch):
-    """Pin the model var off AND blank the cached config layer, so resolution tests only see
+def no_model_env(monkeypatch, empty_user_config):
+    """Pin the model var off AND isolate the config file, so resolution tests only see
     what the test itself sets (a dev machine's ~/.qwen-mm-plugins/config could set these)."""
     monkeypatch.delenv("QWEN_MM_API_OMNI_MODEL", raising=False)
-    import shared.env
-
-    monkeypatch.setattr(shared.env, "_config_cache", {})
     return monkeypatch
 
 
@@ -139,7 +136,6 @@ def test_config_file_layer_feeds_default_model(no_model_env, tmp_path):
     cfg = tmp_path / "config"
     cfg.write_text("QWEN_MM_API_OMNI_MODEL=config-file-model\n", encoding="utf-8")
     no_model_env.setattr(shared.env, "config_file", lambda: str(cfg))
-    no_model_env.setattr(shared.env, "_config_cache", None)
     assert read_native_av._default_model() == "config-file-model"
 
 
@@ -165,7 +161,6 @@ def test_native_av_connection_reads_shared_config_file(no_model_env, tmp_path):
         encoding="utf-8",
     )
     no_model_env.setattr(shared.env, "config_file", lambda: str(cfg))
-    no_model_env.setattr(shared.env, "_config_cache", None)
 
     assert read_native_av._default_openai_base() == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     assert read_native_av._resolve_key() == "config-key"
@@ -184,11 +179,10 @@ def test_native_av_does_not_fall_back_to_generic_or_legacy_keys(no_model_env):
 
 
 @pytest.fixture
-def oss_delivery(monkeypatch, tmp_path):
+def oss_delivery(monkeypatch, tmp_path, empty_user_config):
     for name in os.environ:
         if name.startswith("OSS_"):
             monkeypatch.delenv(name)
-    monkeypatch.setattr(env, "_config_cache", {})
     monkeypatch.setenv("HOME", str(tmp_path))
     for name, value in {
         "OSS_AK": "test-ak",
@@ -236,7 +230,6 @@ def test_oss_delivery_uses_config_file_and_env_override(oss_delivery, monkeypatc
         encoding="utf-8",
     )
     monkeypatch.setattr(env, "config_file", lambda: str(cfg))
-    monkeypatch.setattr(env, "_config_cache", None)
     monkeypatch.setenv("OSS_BUCKET", "env-bucket")
     path = tmp_path / "video.mp4"
     path.write_bytes(b"video content")
@@ -573,7 +566,7 @@ def test_no_oss_and_failed_compression_reports_delivery_error(oss_delivery, monk
         read_native_av._deliver_local(str(path))
 
 
-@pytest.mark.parametrize("expiry, expected", [(None, 7200), ("1800", 1800), ("invalid", 7200)])
+@pytest.mark.parametrize("expiry, expected", [(None, 7200), ("1800", 1800)])
 def test_oss_uri_uses_shared_signing_without_upload_bucket(oss_delivery, monkeypatch, expiry, expected):
     monkeypatch.delenv("OSS_BUCKET")
     if expiry is not None:
@@ -586,6 +579,18 @@ def test_oss_uri_uses_shared_signing_without_upload_bucket(oss_delivery, monkeyp
     )
     oss_delivery.bucket.sign_url.assert_called_once_with("GET", "folder/video.mp4", expected, slash_safe=True)
     oss_delivery.bucket.put_object.assert_not_called()
+
+
+def test_invalid_oss_expiry_stops_signing_and_upload_fallback(oss_delivery, monkeypatch, tmp_path):
+    monkeypatch.setenv("OSS_URL_EXPIRY", "invalid")
+    with pytest.raises(env.ConfigurationError, match="OSS_URL_EXPIRY"):
+        read_native_av._sign_oss_uri("oss://source-bucket/folder/video.mp4")
+    path = tmp_path / "video.mp4"
+    path.write_bytes(b"large video")
+    with pytest.raises(env.ConfigurationError, match="OSS_URL_EXPIRY"):
+        read_native_av._deliver_local(str(path))
+    oss_delivery.sdk.Bucket.assert_not_called()
+    oss_delivery.compress.assert_not_called()
 
 
 @pytest.mark.parametrize("uri", ["oss://", "oss://bucket", "oss://bucket/", "oss:///key"])

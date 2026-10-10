@@ -184,6 +184,29 @@ def test_bearer_token_is_referenced_by_env_var_not_stored(tmp_path, monkeypatch)
     assert adapter.token() == "abc123"  # resolved at call time, so rotation needs no restart
 
 
+def test_device_registry_path_can_change_in_shared_config(tmp_path, monkeypatch, empty_user_config):
+    monkeypatch.delenv("QWEN_MM_MHS_DEVICES", raising=False)
+    paths = [tmp_path / "first-devices.json", tmp_path / "second-devices.json"]
+    for name, path in zip(("first", "second"), paths):
+        path.write_text(json.dumps({"adapters": [{"name": name, "url": "http://unused.example"}]}))
+        empty_user_config.write_text(f"QWEN_MM_MHS_DEVICES={path}\n")
+        assert [adapter.name for adapter in registry.adapters()] == [name]
+
+
+def test_metadata_cache_uses_current_ttl_from_shared_config(monkeypatch, empty_user_config):
+    monkeypatch.delenv("QWEN_MM_MHS_CACHE_TTL", raising=False)
+    cache = registry._Cache()
+    key = (config.Adapter("mock", "http://unused.example"), "device")
+    monkeypatch.setattr(registry.time, "monotonic", lambda: 100.0)
+    cache.put(key, {"cached": True})
+    monkeypatch.setattr(registry.time, "monotonic", lambda: 110.0)
+    assert registry.cache_ttl() == 60
+    assert cache.get(key) == {"cached": True}
+    for ttl, expected in [(1, None), (120, {"cached": True}), (0, None)]:
+        empty_user_config.write_text(f"QWEN_MM_MHS_CACHE_TTL={ttl}\n")
+        assert cache.get(key) == expected
+
+
 # ── the safety gate, checked before anything reaches the network ──
 def _meta(**overrides):
     meta = {
@@ -450,7 +473,8 @@ def test_unreachable_adapter_is_reported_per_adapter_without_hiding_working_ones
     assert "dead" in report["unreachable_adapters"]
 
 
-def test_wrong_bearer_token_is_reported_per_adapter(tmp_path, monkeypatch):
+@pytest.mark.parametrize("source", ["environment", "config"])
+def test_wrong_bearer_token_is_reported_per_adapter(tmp_path, monkeypatch, empty_user_config, source):
     module = _load_mock_adapter()
     server = module.build_server(port=0, token="right-token")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -470,14 +494,24 @@ def test_wrong_bearer_token_is_reported_per_adapter(tmp_path, monkeypatch):
                 ],
             ),
         )
-        monkeypatch.setenv("MHS_TEST_TOKEN", "wrong-token")
+
+        def change_token(value):
+            if source == "environment":
+                monkeypatch.setenv("MHS_TEST_TOKEN", value)
+            else:
+                monkeypatch.delenv("MHS_TEST_TOKEN", raising=False)
+                staging = empty_user_config.with_suffix(".new")
+                staging.write_text(f"MHS_TEST_TOKEN={value}\n")
+                staging.replace(empty_user_config)
+
+        change_token("wrong-token")
         registry.invalidate()
         # discover degrades per adapter rather than failing outright, so the 401 lands there.
         report = json.loads(_call("mhs_discover")[0]["text"])
         assert report["devices"] == []
         assert "401" in report["unreachable_adapters"]["secure"]
 
-        monkeypatch.setenv("MHS_TEST_TOKEN", "right-token")
+        change_token("right-token")
         registry.invalidate()
         report = json.loads(_call("mhs_discover")[0]["text"])
         assert len(report["devices"]) == 2

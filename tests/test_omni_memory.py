@@ -354,19 +354,16 @@ def _storage_root_for(monkeypatch, video, namespace, config_file):
     """Run build_one far enough to resolve the layout, then bail out before it does any real work.
 
     The layout block is the whole subject here: it decides the directory the memory is written to,
-    and the query side has to arrive at the same one — through two different config readers now, which
-    is exactly why both caches are reset below.
+    and the query side has to arrive at the same one through its own configuration reader.
     """
     monkeypatch.delenv("MEM_LOCAL_DIR", raising=False)
     monkeypatch.setenv("QWEN_MM_CONFIG", str(config_file))
-    monkeypatch.setattr("shared.env._config_cache", None)  # the query side parses the file once
 
     def _stop(*_args, **_kwargs):
         raise _StopAfterLayout
 
     with _build_side_path():
         build = _load_build()
-        monkeypatch.setattr(build.config, "_config_cache", None)  # and so does the build's own env_config
         monkeypatch.setattr(build, "slice_video", _stop)
         with pytest.raises(_StopAfterLayout):
             build.build_one(
@@ -497,7 +494,7 @@ def test_embedding_with_no_key_makes_no_request_and_does_not_back_off(monkeypatc
     slept = []
     monkeypatch.setattr(omni_core, "sleep_note", lambda *a, **k: slept.append(a))
 
-    monkeypatch.setattr(omni_core, "_EMBED_KEY", None)
+    monkeypatch.setattr(config, "embed_config", lambda: ("https://embed.example/v1", "embedding-test", None))
     assert omni_core.get_embed_client() is None
 
     # None is the same signal a failed call gives, which every call site already reads as "no dense
@@ -505,7 +502,7 @@ def test_embedding_with_no_key_makes_no_request_and_does_not_back_off(monkeypatc
     assert omni_core.embed_texts(None, ["anything"]) is None
     assert slept == []
 
-    monkeypatch.setattr(omni_core, "_EMBED_KEY", "sk-real")
+    monkeypatch.setattr(config, "embed_config", lambda: ("https://embed.example/v1", "embedding-test", "sk-real"))
     assert omni_core.get_embed_client() is not None
 
 

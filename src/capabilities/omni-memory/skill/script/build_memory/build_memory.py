@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import importlib.util
 import json
 import os
@@ -46,16 +47,27 @@ _HERE = Path(__file__).resolve()
 
 # The build runs under whatever python3 invoked it. Under a plugin install that is the system
 # interpreter, while the capability's dependencies live in the harness's uvx environment — so they
-# are simply not here. Check before the sibling imports below, which need both, and fail with the
+# are simply not here. Check before the sibling imports below, which need these packages, and fail with the
 # reason rather than a bare ModuleNotFoundError. No index is pinned: whatever pip is configured to
 # use is the right answer on the machine we happen to be on.
-_RUNTIME_PACKAGES = {"numpy": "numpy<3", "openai": "openai"}
-_MISSING = [module for module in _RUNTIME_PACKAGES if importlib.util.find_spec(module) is None]
+_RUNTIME_PACKAGES = {"numpy": "numpy<3", "openai": "openai", "pydantic": "pydantic>=2.11,<3"}
+
+
+def _missing_packages():
+    missing = [module for module in _RUNTIME_PACKAGES if importlib.util.find_spec(module) is None]
+    if "pydantic" not in missing:
+        version = tuple(map(int, importlib.metadata.version("pydantic").split(".")[:2]))
+        if not (2, 11) <= version < (3, 0):
+            missing.append("pydantic")
+    return missing
+
+
+_MISSING = _missing_packages()
 if _MISSING:
     packages = [_RUNTIME_PACKAGES[module] for module in _MISSING]
     print(f"[BUILD] installing missing packages: {' '.join(packages)}", file=sys.stderr, flush=True)
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", *packages], check=False)
-    _STILL = [m for m in _MISSING if importlib.util.find_spec(m) is None]
+    _STILL = _missing_packages()
     if _STILL:
         sys.exit(
             f"[BUILD] cannot run: pip could not install {' '.join(_STILL)}.\n"
@@ -68,16 +80,13 @@ def _environment_tuning_names(environment) -> tuple[str, ...]:
     return tuple(sorted(k for k in environment if k.startswith("MEM_")))
 
 
-# Which MEM_* the ENVIRONMENT brought in, captured before the defaults below land on top of it.
+# Which MEM_* the environment brought in. Defaults live in the shared reader or their owner.
 # The tuning knobs these modules read are deliberately undocumented, so an exported one is more
 # likely to be a name collision than an intention — and it changes retrieval or determinism silently,
 # leaving a build whose numbers moved for no visible reason. Report only names: historical or
-# third-party variables under this broad prefix may contain credentials. The defaults set here are
-# not included because they did not come from the caller's environment.
+# third-party variables under this broad prefix may contain credentials.
 _ENV_TUNING = _environment_tuning_names(os.environ)
 
-os.environ.setdefault("MEM_ANON_ENTITIES", "1")  # extraction never binds names; alignment does
-os.environ.setdefault("MEM_TEMPERATURE", "0")
 
 import clipping  # noqa: E402
 import env_config as config  # noqa: E402
@@ -340,7 +349,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--model",
-        default=omni_core.MODEL,
+        default=config.chat_config()[1],
         help="Omni model for extraction, induction and name alignment. Defaults to "
         f"{omni_core.MODEL!r} ($QWEN_MM_API_OMNI_MODEL if set). All three stages use it.",
     )
@@ -396,7 +405,7 @@ def main() -> int:
         f"mode={a.mode}, j={a.concurrency}" + (f", streaming → '{a.namespace}'" if streaming else "") + " ===",
         flush=True,
     )
-    print(f"=== model: {omni_core.MODEL} @ {omni_core.BASE_URL} ===", flush=True)
+    print(f"=== model: {omni_core.MODEL} @ {config.chat_config()[0]} ===", flush=True)
     print(f"=== log: {log_path} ===", flush=True)
     if _ENV_TUNING:
         print(f"=== environment overrides (values redacted): {' '.join(_ENV_TUNING)} ===", flush=True)

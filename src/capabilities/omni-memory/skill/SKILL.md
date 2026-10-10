@@ -85,7 +85,7 @@ Three properties drive how you retrieve:
 
 `build_memory/` runs through Bash with the system Python, outside the MCP server's `uvx`
 environment. It requires Python 3.10+, `pip`, `ffmpeg`/`ffprobe`, and `DASHSCOPE_API_KEY`; missing
-Python packages (`numpy<3`, `openai`) are installed automatically. Run
+Python packages (`numpy<3`, `openai`, `pydantic>=2.11,<3`) are installed automatically. Run
 `qwen-mm-plugins-omni-memory --check-system` before building.
 
 ```bash

@@ -12,41 +12,39 @@ import os
 import subprocess
 import time
 
+from shared.env import ConfigurationError
 from shared.syscmd import find_tool
 from shared.video import probe_media as ffprobe_json
 
-from . import prompts
+from . import config, prompts
 from .omni_core import (
-    MODEL,
-    TEMP_KWARGS,
     backoff,
     diag,
-    env_float,
-    env_int,
     http_status,
     is_rate_limit,
     iter_deadline,
     retry_reset,
     sleep_note,
+    temperature_kwargs,
 )
 
-REPLAY_N = env_int("MEM_REPLAY_N", 3)  # how many clips a replay re-watches
+REPLAY_N = 3
 
 # watch_and_answer re-encodes the whole video to this profile before sending it, so the payload scales
 # with duration instead of the source's arbitrary bitrate. Same values _clip_one uses, so a direct
 # watch and a built memory show the model the same picture.
-WATCH_ENCODE_TIMEOUT = env_int("MEM_WATCH_ENCODE_TIMEOUT", 1800)
+WATCH_ENCODE_TIMEOUT = 1800
 
 # What the encode AIMS at, in base64 MiB — a bitrate target, not a limit anyone enforces. Whether a
 # request is too large is the endpoint's call, which it makes plainly ("Exceeded limit on max bytes per
 # data-uri item : 20971520"); that classifies as `reject` and answers with the build fallback. A target
 # is still needed because one fixed bitrate cannot serve both a 2-minute and a 20-minute video, and can
 # exceed the source's own bitrate — growing the file while double-compressing it.
-WATCH_MAX_B64_MB = env_float("MEM_WATCH_MAX_B64_MB", 19.0)
+WATCH_MAX_B64_MB = 19.0
 
 # 32 kbps mono AAC. Speech stays intelligible well below this, and stereo buys nothing here — speaker
 # attribution comes from lip movement, not channel separation.
-WATCH_ABITRATE_K = env_int("MEM_WATCH_ABITRATE_K", 32)
+WATCH_ABITRATE_K = 32
 
 # Rungs tried highest-first: (height, minimum video kbps that is still worth looking at at that
 # height). A rung is taken when the budget affords its floor for this video's duration; dropping
@@ -58,9 +56,9 @@ WATCH_LADDER = ((480, 200), (360, 120), (288, 80))
 # over MAX it is not an option at all, since one request cannot hold that much video. Between the two
 # it depends on what the caller wants, so the decision belongs to the agent. Policy constants rather
 # than derived from the payload budget, so the documented bands and the code cannot drift apart.
-WATCH_PREFER_MIN = env_float("MEM_WATCH_PREFER_MIN", 10.0)
+WATCH_PREFER_MIN = 10.0
 
-WATCH_MAX_MIN = env_float("MEM_WATCH_MAX_MIN", 30.0)
+WATCH_MAX_MIN = 30.0
 
 REPLAY_ANSWER_PROMPT = prompts.REPLAY_ANSWER_PROMPT
 
@@ -155,6 +153,8 @@ def probe_media(src):
                 out.update(width=int(s.get("width") or 0), height=int(s.get("height") or 0), v_kbps=kbps)
             elif s.get("codec_type") == "audio" and not out["channels"]:
                 out.update(channels=int(s.get("channels") or 0), a_kbps=kbps)
+    except ConfigurationError:
+        raise
     except Exception as e:
         diag(f"[WATCH] probe_media failed: {str(e)[:120]}", flush=True)
     return out
@@ -172,7 +172,11 @@ def plan_watch_encode(info, budget_b64_mb=None):
     than fixed, since a constant cannot serve both 2 and 20 minutes; and it is capped at what the
     source has, so re-encoding can only shrink.
     """
-    budget_mb = WATCH_MAX_B64_MB if budget_b64_mb is None else budget_b64_mb
+    budget_mb = (
+        config.get_float_env("MEM_WATCH_MAX_B64_MB", WATCH_MAX_B64_MB, min_value=0.001)
+        if budget_b64_mb is None
+        else budget_b64_mb
+    )
     # 8% headroom: -b:v is a target an encoder may overshoot, and planning right up to the limit means
     # paying for a full encode only to have the measured-size backstop reject it.
     budget_bytes = budget_mb * 1048576 * 3 / 4 * 0.92  # base64 carries 4 bytes per 3 of payload
@@ -181,7 +185,8 @@ def plan_watch_encode(info, budget_b64_mb=None):
         return {"error": "cannot read the video's duration"}
     afford_kbps = budget_bytes * 8 / dur / 1000  # total bitrate this duration can afford
     src_h, src_v, src_a = info.get("height") or 0, info.get("v_kbps") or 0, info.get("a_kbps") or 0
-    a_kbps = min(WATCH_ABITRATE_K, src_a) if src_a else WATCH_ABITRATE_K
+    audio_bitrate = config.get_int_env("MEM_WATCH_ABITRATE_K", WATCH_ABITRATE_K, min_value=1)
+    a_kbps = min(audio_bitrate, src_a) if src_a else audio_bitrate
 
     # Small enough and no taller than the top rung — re-encoding could only make it worse.
     top_h = WATCH_LADDER[0][0]
@@ -203,7 +208,7 @@ def plan_watch_encode(info, budget_b64_mb=None):
     }
 
 
-def transcode_whole(src, out_path, height, vbitrate, abitrate=f"{WATCH_ABITRATE_K}k"):
+def transcode_whole(src, out_path, height, vbitrate, abitrate=None):
     """Re-encode a WHOLE video to a profile chosen by plan_watch_encode. Returns out_path.
 
     The profile is passed in because the correct value depends on the video's duration and on what the
@@ -214,6 +219,9 @@ def transcode_whole(src, out_path, height, vbitrate, abitrate=f"{WATCH_ABITRATE_
     read as a cache hit. -f mp4 is explicit because ffmpeg would otherwise infer the container from the
     temp file's ".tmp" extension.
     """
+    timeout = config.get_int_env("MEM_WATCH_ENCODE_TIMEOUT", WATCH_ENCODE_TIMEOUT, min_value=1)
+    if abitrate is None:
+        abitrate = f"{config.get_int_env('MEM_WATCH_ABITRATE_K', WATCH_ABITRATE_K, min_value=1)}k"
     tmp = f"{out_path}.tmp"
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     last_err = ""
@@ -246,7 +254,7 @@ def transcode_whole(src, out_path, height, vbitrate, abitrate=f"{WATCH_ABITRATE_
             tmp,
         ]
         t = time.time()
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=WATCH_ENCODE_TIMEOUT)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
             os.replace(tmp, out_path)
             diag(
@@ -262,7 +270,7 @@ def transcode_whole(src, out_path, height, vbitrate, abitrate=f"{WATCH_ABITRATE_
 
 
 # watch_and_answer sends minutes of video in one request, so it needs longer than a 30s clip does.
-WATCH_CALL_TIMEOUT = int(os.environ.get("MEM_WATCH_CALL_TIMEOUT", "900") or "900")
+WATCH_CALL_TIMEOUT = 900
 
 
 # ============================================================ ANSWER
@@ -309,21 +317,24 @@ def replay_answer_stream(client, video_uris, evidence_text, query, max_retries=5
         }
     )
     messages = [{"role": "user", "content": content}]
+    model = model_override or config.chat_config()[1]
+    temperature = temperature_kwargs()
+    stall = config.get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     diag(f"[MEM] ▸ REPLAY-ANSWER q={query!r} clips={len(video_uris)}", flush=True)
     retry_reset()
     for attempt in range(1, max_retries + 1):
         try:
             stream = client.chat.completions.create(
-                model=(model_override or MODEL),
+                model=model,
                 messages=messages,
                 modalities=["text"],
-                **TEMP_KWARGS,
+                **temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 timeout=600,
             )
             out = ""
-            for ch in iter_deadline(stream):
+            for ch in iter_deadline(stream, stall=stall):
                 if ch.choices and ch.choices[0].delta and getattr(ch.choices[0].delta, "content", None):
                     out += ch.choices[0].delta.content
                     yield out
@@ -355,22 +366,26 @@ def watch_answer(client, video_uri, query, max_retries=4, model_override=None):
         {"type": "video_url", "video_url": {"url": video_uri}, "use_audio_in_video": True},
         {"type": "text", "text": WATCH_ANSWER_PROMPT.replace("{{QUERY}}", query)},
     ]
+    model = model_override or config.chat_config()[1]
+    temperature = temperature_kwargs()
+    timeout = config.get_int_env("MEM_WATCH_CALL_TIMEOUT", WATCH_CALL_TIMEOUT, min_value=1)
+    stall = config.get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     diag(f"[WATCH] ▸ WATCH-ANSWER q={query!r}", flush=True)
     retry_reset()
     last, empties = "", 0
     for attempt in range(1, max_retries + 1):
         try:
             stream = client.chat.completions.create(
-                model=(model_override or MODEL),
+                model=model,
                 messages=[{"role": "user", "content": content}],
                 modalities=["text"],
-                **TEMP_KWARGS,
+                **temperature,
                 stream=True,
                 stream_options={"include_usage": True},
-                timeout=WATCH_CALL_TIMEOUT,
+                timeout=timeout,
             )
             out = ""
-            for ch in iter_deadline(stream):
+            for ch in iter_deadline(stream, stall=stall):
                 if ch.choices and ch.choices[0].delta and getattr(ch.choices[0].delta, "content", None):
                     out += ch.choices[0].delta.content
             if out.strip():

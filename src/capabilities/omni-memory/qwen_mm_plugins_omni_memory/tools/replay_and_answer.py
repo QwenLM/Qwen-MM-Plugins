@@ -7,14 +7,13 @@ from typing import Any
 
 from shared.content import json_text
 
-from .. import watch
+from .. import config, watch
 from ..service import load_store, memory_label
 from . import MemoryRef
 
 # Replay sends clips inline as base64 (~3.5 MB per 30s clip), so an unbounded selection turns into a
 # request the endpoint will reject. Same bound the core uses when it suggests replay candidates. Read
 # by the replay handler to bound each request.
-REPLAY_CAP = max(1, watch.REPLAY_N)
 
 
 class ReplayAndAnswerArgs(MemoryRef):
@@ -53,8 +52,9 @@ def replay_and_answer(
     store = load_store(video_path, namespace)
     by_idx = {c.get("idx"): c for c in (store.clips or [])}
     wanted, dropped = list(idxs or []), []
-    if len(wanted) > REPLAY_CAP:
-        wanted, dropped = wanted[:REPLAY_CAP], wanted[REPLAY_CAP:]
+    replay_cap = config.get_int_env("MEM_REPLAY_N", watch.REPLAY_N, min_value=1)
+    if len(wanted) > replay_cap:
+        wanted, dropped = wanted[:replay_cap], wanted[replay_cap:]
     uris, used, missing, nbytes = [], [], [], 0
     for i in wanted:
         c = by_idx.get(int(i))
@@ -73,7 +73,7 @@ def replay_and_answer(
             "missing_idxs": missing,
             "hint": "get_moment reports clip_path per clip; a memory built elsewhere may have lost them",
         }
-    used_model = model or _mc.MODEL
+    used_model = model or config.chat_config()[1]
     out = ""
     for out in _mc.replay_answer_stream(_mc.get_client(), uris, evidence, question, model_override=model):
         pass
@@ -89,7 +89,7 @@ def replay_and_answer(
         res["missing_idxs"] = missing
     if dropped:
         res["dropped_idxs"] = dropped
-        res["note"] = f"only the first {REPLAY_CAP} clips were sent; call again for the rest if needed"
+        res["note"] = f"only the first {replay_cap} clips were sent; call again for the rest if needed"
     return res
 
 

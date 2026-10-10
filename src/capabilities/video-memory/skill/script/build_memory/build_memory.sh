@@ -9,7 +9,7 @@
 #
 # Options:
 #   --output-dir DIR   Output directory (default: <video_path>.memory/)
-#   --model NAME       Model name (default: qwen3.7-plus)
+#   --model NAME       Model name (default: QWEN_MM_API_VL_MODEL)
 #   --api-key KEY      DashScope API key (default: $DASHSCOPE_API_KEY)
 
 set -euo pipefail
@@ -52,10 +52,6 @@ if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
     VIDEO_PATH="${POSITIONAL[0]}"
 fi
 
-if [[ -z "$MODEL" ]]; then
-    MODEL="qwen3.7-plus"
-fi
-
 # ── ASR CLI flags — computed once so EVERY build path honors --no-asr / --asr-model.
 # ASR runs inside Phase 1 (parallel with segmentation), so these attach to the Phase-1 chunk
 # command and to the directory-mode full build — NOT to Phase 3, which does no ASR.
@@ -69,24 +65,17 @@ fi
 if [[ -n "$API_KEY" ]]; then
     export DASHSCOPE_API_KEY="$API_KEY"
 fi
-# Fall back to ~/.qwen-mm-plugins/config for any vars not already exported (env wins),
-# mirroring shared/env.py so GUI setups without shell exports still find the key.
-while IFS= read -r _kv; do
-    [[ -n "$_kv" ]] && export "$_kv"
-done < <(python "$SCRIPT_DIR/env_config.py" 2>/dev/null || true)
-if [[ -z "${DASHSCOPE_API_KEY:-}" ]]; then
-    echo "ERROR: DASHSCOPE_API_KEY not set. Pass --api-key, export DASHSCOPE_API_KEY, or set it in ~/.qwen-mm-plugins/config."
-    exit 1
-fi
 # ── Install Python dependencies (if missing) ────────────────────────────
 _MISSING_PKGS=()
 python -c "import cv2" 2>/dev/null || _MISSING_PKGS+=(opencv-python-headless)
 python -c "import numpy" 2>/dev/null || _MISSING_PKGS+=('numpy<2')
 python -c "import dashscope" 2>/dev/null || _MISSING_PKGS+=(dashscope)
+_PYDANTIC_CHECK='import pydantic; assert (2, 11) <= tuple(map(int, pydantic.__version__.split(".")[:2])) < (3, 0)'
+python -c "$_PYDANTIC_CHECK" 2>/dev/null || _MISSING_PKGS+=('pydantic>=2.11,<3')
 
 if [[ ${#_MISSING_PKGS[@]} -gt 0 ]]; then
     echo "Installing missing packages: ${_MISSING_PKGS[*]}"
-    pip install -q -i https://mirrors.aliyun.com/pypi/simple/ --timeout 60 "${_MISSING_PKGS[@]}" || {
+    python -m pip install -q -i https://mirrors.aliyun.com/pypi/simple/ --timeout 60 "${_MISSING_PKGS[@]}" || {
         echo "WARNING: pip install failed for: ${_MISSING_PKGS[*]}"
     }
 fi
@@ -104,6 +93,22 @@ export PYTHONUNBUFFERED=1
 # All build files (schema.py, embeddings.py, build_graph.py, ...) live in this one
 # directory, so putting it on PYTHONPATH lets `python -m build_graph` import its siblings.
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
+
+# The portable reader needs Pydantic before reading file-only settings. Keep credentials in
+# the reader instead of exporting config-file contents into a stale environment snapshot.
+if ! python -c "$_PYDANTIC_CHECK" 2>/dev/null; then
+    echo 'ERROR: configuration requires pydantic>=2.11,<3 in the Python environment used for this build.'
+    exit 1
+fi
+python - <<'PYCONFIG'
+import sys
+from env_config import get_env
+if not get_env("DASHSCOPE_API_KEY"):
+    sys.exit("ERROR: DASHSCOPE_API_KEY not set. Pass --api-key, export it, or set it in ~/.qwen-mm-plugins/config.")
+PYCONFIG
+if [[ -z "$MODEL" ]]; then
+    MODEL=$(python -c 'from env_config import get_env; print(get_env("QWEN_MM_API_VL_MODEL"))')
+fi
 
 NODE=$(hostname)
 

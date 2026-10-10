@@ -107,7 +107,7 @@ def launch_app(argv: list[str]) -> int:
     ap.add_argument(
         "--port",
         type=int,
-        default=get_int_env("BLENDER_PORT", 9876),
+        default=get_int_env("BLENDER_PORT"),
         help="TCP port for the addon server (default: $BLENDER_PORT or 9876)",
     )
     ap.add_argument(
@@ -126,7 +126,7 @@ def launch_app(argv: list[str]) -> int:
     ap.add_argument("--wait", type=float, default=90.0, help="seconds to wait for the port after launch (default: 90)")
     args = ap.parse_args(argv)
 
-    host = get_env("BLENDER_HOST", "127.0.0.1")
+    host = get_env("BLENDER_HOST")
     if applaunch.is_port_open(host, args.port):
         # status → stderr: launch_app is reused on the in-server autolaunch path, where stdout
         # is the MCP stdio JSON-RPC channel; a stray line there corrupts the protocol stream.

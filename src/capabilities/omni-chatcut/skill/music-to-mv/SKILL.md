@@ -14,6 +14,8 @@ music/audio → completed caption or music map → validated storyboard → gene
 
 ## Python runtime
 
+The portable configuration reader uses `pydantic>=2.11,<3`, supplied by the plugin runtime below.
+
 Before running local Python scripts, call `get_music2mv_runtime` with `{}`. Replace `python3`
 in this skill and its references with the returned `python_executable` unchanged (do not resolve
 its symlink). For `run_mv_pipeline.py`, also pass `--expected-python-prefix` with the returned

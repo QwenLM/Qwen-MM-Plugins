@@ -174,11 +174,9 @@ def test_to_content_block_malformed_image_falls_back_to_text():
 
 @pytest.fixture
 def cli_config(tmp_path, monkeypatch):
-    from shared import env
 
     config = tmp_path / "config"
     monkeypatch.setenv("QWEN_MM_CONFIG", str(config))
-    monkeypatch.setattr(env, "_config_cache", None)
     monkeypatch.setitem(sys.modules, "test_cli_package", ModuleType("test_cli_package"))
     return config
 
