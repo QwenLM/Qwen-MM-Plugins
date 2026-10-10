@@ -228,14 +228,16 @@ def test_web_isolated_entry_validates_arguments():
         render_isolated({"path": "sample.html", "options": []})
 
 
-def test_subtitle_utf8_non_ascii_and_bom(tmp_path):
-    """Subtitle text must be read as UTF-8 regardless of the host locale.
-
-    Regression for #97: on Windows with a non-UTF-8 default encoding (e.g.
-    cp1252/cp936), opening the file without an explicit encoding corrupted
-    non-ASCII captions. utf-8-sig also tolerates a leading BOM.
-    """
+@pytest.mark.parametrize("default_encoding", ["cp1252", "cp936"])
+def test_subtitle_utf8_non_ascii_and_bom(tmp_path, monkeypatch, default_encoding):
+    """Reproduce Windows locale decoding even when the test host defaults to UTF-8."""
     from qwen_mm_plugins_core.renderers import subtitle
+
+    def open_with_default_encoding(path, mode="r", *, encoding=None, **kwargs):
+        return open(path, mode, encoding=encoding or default_encoding, **kwargs)
+
+    # Patch only this renderer's file reads; fixture writes and pytest keep their defaults.
+    monkeypatch.setattr(subtitle, "open", open_with_default_encoding, raising=False)
 
     non_ascii = "Café 東京"
     cases = {
@@ -244,15 +246,11 @@ def test_subtitle_utf8_non_ascii_and_bom(tmp_path):
     }
     for filename, content in cases.items():
         file = tmp_path / filename
-        file.write_bytes(content.encode("utf-8"))
-        text = subtitle.render(str(file))[0]["text"]
-        assert non_ascii in text, f"{filename}: non-ASCII caption lost ({text!r})"
-
-    # BOM-prefixed files must also decode cleanly.
-    bom_file = tmp_path / "sample_bom.srt"
-    bom_file.write_bytes(b"\xef\xbb\xbf" + f"1\n00:00:00,000 --> 00:00:01,000\n{non_ascii}\n\n".encode("utf-8"))
-    text = subtitle.render(str(bom_file))[0]["text"]
-    assert non_ascii in text, f"BOM SRT: non-ASCII caption lost ({text!r})"
+        for bom in (b"", b"\xef\xbb\xbf"):
+            file.write_bytes(bom + content.encode("utf-8"))
+            text = subtitle.render(str(file))[0]["text"]
+            assert non_ascii in text, f"{filename}, {bom=}: non-ASCII caption lost ({text!r})"
+            assert "\ufeff" not in text
 
 
 @pytest.mark.parametrize(
