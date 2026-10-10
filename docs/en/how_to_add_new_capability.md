@@ -155,22 +155,12 @@ stable installation.
 
 There is already a shared library `src/shared/`:
 
-Read configuration inside the operation that uses it, not in module-level assignments or tool-schema
-defaults. Use `get_env`, `get_int_env`, `get_float_env`, `get_bool_env`, or `get_choice_env` from
-`shared.env`. `CONFIG_FIELDS` groups ordinary settings as `(Pydantic type, Field(...))` entries:
-declare the default, bounds/choices and description there once. Typed readers use those declarations,
-so ordinary callers pass only the name; only capability-private fields supply a local default or bounds.
-`config_catalog()` derives installer/documentation rows from that same schema. Missing/blank means
-default, while an invalid explicit value raises `ConfigurationError`.
-Resolve request settings before entering provider retries or fallback blocks, then reuse those
-values for that request. This keeps configuration failures out of network-error handling.
-Do not catch that exception to warn, clamp, retry a provider, or substitute a default. Let it reach
-the SDK or return its message with the existing `text_error` helper; no special error flag is required.
-Standalone scripts raise it directly. When a tool argument has a dynamic
-configuration default, advertise `None` and resolve it in the handler. See
-[configuration and migration rules](configuration.md#upgrading-to-20). Portable Skill readers use
-the same Pydantic implementation; ensure `pydantic>=2.11,<3` is available in their interpreter, then
-run `scripts/sync_env_readers.py --write` after changing the reader.
+Read settings inside the operation with `shared.env` readers, before provider retries or fallbacks.
+Declare shared defaults and constraints in `CONFIG_FIELDS`; keep private defaults in the owning capability.
+Let `ConfigurationError` reach the SDK, or return its message with `text_error`. For tool arguments
+whose defaults come from configuration, advertise `None` and resolve them in the handler.
+After changing the shared reader, run `scripts/sync_env_readers.py --write`. Standalone scripts need
+`pydantic>=2.11,<3` in their interpreter. See [configuration rules](configuration.md#runtime-configuration).
 
 - `shared.env` — config/constants + `get_env` (the single call-time entry for reading env vars; precedence: environment > `~/.qwen-mm-plugins/config` > default) (`TOKEN_SIZE`, `DEFAULT_*`, `IMAGE_BUDGET_TOKENS`/`VIDEO_BUDGET_TOKENS`, `MAX_RESPONSE_BYTES`…)
 - `shared.content` — input guards + error blocks (`text_error` / `require_file` / `require_dep` / `default_output_path`)

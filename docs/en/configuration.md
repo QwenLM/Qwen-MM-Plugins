@@ -4,23 +4,9 @@ For most setups, open **Configure** in `install.sh`. It stores shared settings i
 `~/.qwen-mm-plugins/config` as `KEY=VALUE` lines with mode `600`. Qwen-MM-Plugins components launched
 by any harness read that file. A process environment variable overrides the same key in the file.
 
-Call-time settings pick up edits to this file automatically, including atomic replacements,
-creation, and deletion. Each lookup checks the file's path and metadata; unchanged files reuse
-the parsed cache. Programmatic callers can still use `get_env(..., refresh_config=True)` to force
-a re-read when a filesystem does not report changed metadata. Use an atomic save (as the Configure
-command does) to keep concurrent readers from seeing a partially written file.
-
-Media helpers using `QWEN_MM_FFMPEG_TIMEOUT` read it when each ffmpeg/ffprobe subprocess starts;
-running subprocesses keep their existing timeout and per-operation minimum budgets still apply.
-Each `read_video` call takes one snapshot of
-`QWEN_MM_MAX_TOTAL_FRAMES`: omitting `max_frames` uses that current limit, and an explicit value is
-capped by it. Raising or lowering the limit affects the next call, including increases above 600.
-MHS bearer tokens, `QWEN_MM_MHS_DEVICES`, and `QWEN_MM_MHS_CACHE_TTL` also pick up config-file edits
-on subsequent lookups; MHS device metadata retains its separate cache (60 seconds by default).
-
-Changes to a launcher's environment require reconnecting its MCP server: an existing process
-cannot inherit later shell exports. Settings captured by a running operation or an established
-application connection remain in effect until that operation or connection ends.
+Config-file changes apply on the next operation. Running operations and established application
+connections keep their current settings. After changing the launcher's environment, restart its
+MCP server.
 
 Use `QWEN_MM_CONFIG=/path/to/file` to select another file, or `QWEN_MM_CONFIG_DIR=/path/to/dir` to
 change the directory containing the default `config` file. These bootstrap variables must be set
@@ -44,64 +30,23 @@ Installed MCP entry points also support `--set KEY=VALUE` and `--unset KEY`, for
 with exit status 2 before writing any entries. To remove an override and restore its default, use
 `qwen-mm-plugins-blender --unset BLENDER_PORT`.
 
-## Invalid runtime configuration
+## Runtime configuration
 
-Unset or blank settings use their defaults. Surrounding whitespace is stripped. A blank environment
-variable still overrides the file: it selects the default, not the file's value. Ordinary defaults
-and validation constraints are defined once in the Pydantic-based `CONFIG_FIELDS` catalog and shared
-by installed plugins and standalone skill scripts. Configure and this document use the same definitions.
-Explicit invalid overrides for timeouts, frame limits, ports, output mode, search selection,
-video-memory's cutoff, MHS cache TTL, and Omni Memory numeric/boolean tuning return a clear error message
-when the affected operation is called. The error identifies the setting and accepted values;
-it does not echo the configured value. Startup and tool discovery remain available, so a harness
-can receive the error instead of losing its connection. Correct the config file and retry the call.
-If an environment variable overrides the file, correct that variable in the launcher and reconnect
-the MCP server before retrying.
+Unset or blank values use the defaults below. Surrounding whitespace is removed. A blank environment
+variable selects the default even when the config file contains a value.
 
-- `QWEN_MM_FFMPEG_TIMEOUT`, `QWEN_MM_CHAT_TIMEOUT`, `QWEN_MM_MAX_TOTAL_FRAMES`, and
-  `OSS_URL_EXPIRY` must be positive integers.
-- `BLENDER_PORT` and `FREECAD_RPC_PORT` must be integers from 1 through 65535.
-- `CUTOFF_SEC` must be finite, non-negative seconds, such as `90` or `90.5`. Unset or blank
-  means no cutoff; invalid values do not silently disable the cutoff.
-- Boolean switches accept `1/0`, `true/false`, `yes/no`, and `on/off`, ignoring case and
-  surrounding whitespace.
-- `QWEN_MM_MHS_CACHE_TTL` must be finite non-negative seconds; `0` disables metadata caching.
-- A missing config file means no overrides. An unreadable/non-UTF-8 file, malformed `KEY=VALUE`
-  line, or unclosed quoted value is an error. Syntax errors identify the line without echoing its value.
+Tools report invalid values and malformed config files. Correct the setting or file and retry.
+Tool discovery remains available.
 
-Service logs still go to stderr for diagnostics. Configuration failures are also returned in tool
-responses; seeing them does not require access to the harness's server logs. Existing handlers may
-return error text, while uncaught exceptions use the MCP SDK's normal error response. The plugin does
-not force an `isError` flag on text responses. Standalone scripts
-raise the same configuration exceptions. Both paths require `pydantic>=2.11,<3`; standalone scripts
-need it in their own interpreter, even when the MCP server already has it installed. There is no
-warning-and-default or permissive-reader mode.
+- Timeouts, frame limits and `OSS_URL_EXPIRY` require positive integers, such as `120`, without units.
+- Ports must be integers from 1 to 65535.
+- `CUTOFF_SEC` accepts finite, non-negative seconds (`90` or `90.5`); blank means no cutoff.
+- Booleans accept `1/0`, `true/false`, `yes/no` and `on/off`, ignoring case.
+- `QWEN_MM_MHS_CACHE_TTL` accepts finite, non-negative seconds; `0` disables metadata caching.
 
-## Configuration migration
-
-When updating existing configurations:
-
-- Fix invalid overrides instead of relying on warnings, clamping, or silent fallback. Integers must
-  be plain integers: for example, use `120` for a timeout, not `120s`, `1.5`, or `15 MiB`.
-- `QWEN_MM_CHAT_TIMEOUT` now defaults to **1800 seconds in every consumer**. This preserves the
-  previous Omni and video-memory builder timeout; the general chat default was 600 and
-  `read_native_av` used 900. Set it explicitly to choose a different timeout.
-  Explicit tool/request arguments still take precedence over configuration.
-- Blank strings now select defaults consistently. To disable a boolean setting, use `0` or `false`.
-- Config-file edits are detected automatically, including creation, deletion and atomic saves.
-  Correct a bad file value and retry in the same MCP session. Changing the launcher's environment
-  still requires restarting/reconnecting the server.
-- `read_video` resolves an omitted `max_frames` at call time. Its advertised schema no longer fixes
-  that argument to 600. Both configuration and explicit frame limits can be as small as 1.
-- Video-memory accepts `HH:MM:SS` for ordinary videos and `dayN_HH:MM:SS` / `dayN HH:MM:SS` for
-  EgoLife. Provided string bounds override numeric bounds. Invalid times and reversed intervals
-  are errors instead of being ignored; invalid `CUTOFF_SEC` does not disable the cutoff.
-
-The ordinary catalog covers shared settings. Capability-private fields keep their defaults in the
-owning capability and use the same readers. Omni Memory's `MEM_*` numeric/boolean settings now
-honor file-only configuration and are read when used, rather than during module import.
-Video-memory's builder also reads its VL model, endpoint, timeout and OSS credentials at use time;
-embedding requests resolve the current endpoint when called.
+The shared chat timeout is now **1800 seconds**. Set `QWEN_MM_CHAT_TIMEOUT` to keep a different value.
+`read_video` uses the current `QWEN_MM_MAX_TOTAL_FRAMES` limit (default 600) when `max_frames` is omitted,
+and caps explicit values at that limit.
 
 ## Model output mode
 
