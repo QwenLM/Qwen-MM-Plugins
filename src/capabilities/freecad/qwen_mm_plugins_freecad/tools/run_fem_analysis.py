@@ -41,12 +41,13 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         timeout: Seconds to wait for the solver (default 600).
     """
     from qwen_mm_plugins_freecad._responses import add_screenshot_if_available, json_response, text_response
-    from qwen_mm_plugins_freecad.loader import get_connection, only_text_feedback
+    from qwen_mm_plugins_freecad.loader import get_connection
+    from shared.env import get_bool_env
 
     doc_name = arguments.get("doc_name", "")
     analysis_name = arguments.get("analysis_name", "")
     timeout = arguments.get("timeout", 600)
-    only_text = only_text_feedback()
+    only_text = get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
     try:
         conn = get_connection()
         res = conn.run_fem_analysis(doc_name, analysis_name, timeout)

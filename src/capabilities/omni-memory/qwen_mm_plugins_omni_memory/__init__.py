@@ -47,10 +47,10 @@ USAGE_NOTE = (
 
 
 def on_start() -> None:
-    from . import service
+    from . import config, service
 
     log.info("Starting omni-memory MCP server (query-only; build lives in skill/script)")
-    log.info("  MEM_LOCAL_DIR=%s", service.memory_root() or "<input video directory>")
+    log.info("  MEM_LOCAL_DIR=%s", config.local_dir() or "<input video directory>")
     if service.ENV_TUNING:
         # Uncatalogued MEM_* knobs change retrieval or determinism without surfacing anywhere else.
         log.info("  environment overrides (values redacted): %s", " ".join(service.ENV_TUNING))

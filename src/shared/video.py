@@ -10,7 +10,7 @@ import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-from shared.env import ConfigurationError, get_ffmpeg_timeout
+from shared.env import ConfigurationError, get_int_env
 from shared.syscmd import find_tool
 
 SEEK_MAX_WORKERS = 16
@@ -59,7 +59,7 @@ def probe_media(path: str) -> dict:
     (video/audio/subtitle/data), and chapters. Returns the parsed ffprobe JSON:
     ``{"format": {...}, "streams": [...], "chapters": [...]}``.
     """
-    timeout = get_ffmpeg_timeout()
+    timeout = get_int_env("QWEN_MM_FFMPEG_TIMEOUT")
     result = subprocess.run(
         [
             find_tool("ffprobe"),
@@ -107,7 +107,7 @@ def get_video_info(video_path: str) -> dict:
     swapped on a quarter turn) — ffmpeg autorotates on decode, so that is what a ``-vf`` filter and
     the extracted frames actually see. Use ``probe_media`` / ``media_info`` for the stored geometry.
     """
-    timeout = get_ffmpeg_timeout()
+    timeout = get_int_env("QWEN_MM_FFMPEG_TIMEOUT")
     result = subprocess.run(
         [
             find_tool("ffprobe"),
@@ -214,7 +214,7 @@ def extract_frames_by_seeking(
         if vf:
             cmd += ["-vf", vf]
         cmd += ["-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", str(quality), "pipe:1"]
-        proc = subprocess.run(cmd, capture_output=True, timeout=get_ffmpeg_timeout())
+        proc = subprocess.run(cmd, capture_output=True, timeout=get_int_env("QWEN_MM_FFMPEG_TIMEOUT"))
         if proc.returncode == 0 and proc.stdout:
             return (round(ts, 1), base64.b64encode(proc.stdout).decode("ascii"))
         return None

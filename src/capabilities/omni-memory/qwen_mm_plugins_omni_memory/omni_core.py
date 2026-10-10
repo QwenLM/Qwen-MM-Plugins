@@ -50,19 +50,10 @@ EMBED_MODEL = config.DEFAULT_EMBED_MODEL
 RESIDENT_ENTITY_CAP = 40  # over cap, people with low frequency×recency are evicted
 
 
-def temperature_kwargs():
-    """Resolve generation temperature when a request starts, including file-only overrides."""
-    return {"temperature": config.get_float_env("MEM_TEMPERATURE", 0.0, min_value=0, max_value=2)}
-
-
-def anonymous_names():
-    return config.get_bool_env("MEM_ANON_ENTITIES", True)
-
-
 def get_client():
     """Client for the CHAT / omni model (endpoint per config.chat_config())."""
     base, _, key = config.chat_config()
-    return OpenAI(api_key=key or "EMPTY", base_url=base)
+    return OpenAI(api_key=key, base_url=base)
 
 
 def set_chat_model(name):

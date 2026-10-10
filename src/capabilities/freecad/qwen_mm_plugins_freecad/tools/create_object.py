@@ -136,14 +136,15 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         ```
     """
     from qwen_mm_plugins_freecad._responses import add_screenshot_if_available, text_response
-    from qwen_mm_plugins_freecad.loader import get_connection, only_text_feedback
+    from qwen_mm_plugins_freecad.loader import get_connection
+    from shared.env import get_bool_env
 
     doc_name = arguments.get("doc_name")
     obj_type = arguments.get("obj_type")
     obj_name = arguments.get("obj_name")
     analysis_name = arguments.get("analysis_name")
     obj_properties = arguments.get("obj_properties")
-    only_text = only_text_feedback()
+    only_text = get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
     try:
         conn = get_connection()
         obj_data = {

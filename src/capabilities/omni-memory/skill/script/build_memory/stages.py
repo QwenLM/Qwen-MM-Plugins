@@ -25,7 +25,6 @@ from omni_core import (
     RESIDENT_ENTITY_CAP,
     SALIENT_EMO,
     SALIENT_TONE,
-    anonymous_names,
     diag,
     normalize_acoustic_events,
 )
@@ -112,6 +111,7 @@ def update_state(state, parsed, win_end, caption_fallback=""):
     vis = (parsed or {}).get("visual", {}) if isinstance(parsed, dict) else {}
     assign = {"scene_id": None, "entity_map": [], "active_event_id": None, "name_candidates": []}
     _verify_prior = get_bool_env("MEM_PRIOR_VERIFY")
+    anonymous = get_bool_env("MEM_ANON_ENTITIES", True)
 
     # ----- scene (freeze summary at creation; accumulate env; Q2) -----
     cont = (vis.get("scene_continuity") or "uncertain").strip()
@@ -150,7 +150,7 @@ def update_state(state, parsed, win_end, caption_fallback=""):
         ne = (ent.get("name_evidence") or "").strip()
         nm_first = None if (_verify_prior and ne == "prior") else nm
 
-        if anonymous_names():
+        if anonymous:
             # Anonymous mode: record name candidate but do NOT write to entity
             if nm:
                 assign["name_candidates"].append(
@@ -173,7 +173,7 @@ def update_state(state, parsed, win_end, caption_fallback=""):
             r = reg[pid]
             r["last_location"] = ent.get("location") or r.get("last_location")
             r["last_action"] = ent.get("state") or r.get("last_action")
-            if not anonymous_names() and not r.get("name") and bind_name:
+            if not anonymous and not r.get("name") and bind_name:
                 r["name"] = bind_name
             if (ent.get("attribute_change") or "") == "new_detail" and ent.get("attributes"):
                 extra = ent["attributes"]
@@ -193,7 +193,7 @@ def update_state(state, parsed, win_end, caption_fallback=""):
             }
             state["known_entities"].append(rec)
             reg[npid] = rec
-            if anonymous_names() and nm:
+            if anonymous and nm:
                 assign["name_candidates"][-1]["person_id"] = npid
             assign["entity_map"].append({"ref": ref, "resolved": npid, "status": "new_assigned", "name": bind_name})
         else:
@@ -895,7 +895,7 @@ def apply_roster(store, roster, *, respect_lock=True, allow_override=True, propa
     # ANON mode already prevents stage-1 wrong binding, making veto redundant double-insurance that
     # does more harm than good). In non-ANON mode, use weakened count-based veto.
     led = getattr(store, "name_ledger", None) or {}
-    if led and not anonymous_names():
+    if led and not get_bool_env("MEM_ANON_ENTITIES", True):
         for pid in list(want):
             nm = want[pid]["name"]
             support, oppose = _name_evidence(led, pid, nm)

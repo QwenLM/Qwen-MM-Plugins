@@ -111,10 +111,6 @@ def resolve_omni_endpoint(arguments: dict[str, Any]) -> tuple[str, str]:
     return resolve_openai_endpoint(arguments)
 
 
-def _omni_timeout() -> int:
-    return get_int_env("QWEN_MM_CHAT_TIMEOUT")
-
-
 # ── Content-part builders ────────────────────────────────────────────────────────────────────────
 def _source_suffix(source: str) -> str:
     """Read the suffix from a local filename or a URL path, excluding host/query/fragment."""
@@ -328,7 +324,7 @@ def call_omni(
             isinstance(e, openai.APIStatusError) and getattr(e, "status_code", None) in _RETRYABLE_STATUS
         )
 
-    client = OpenAI(api_key=api_key, base_url=base_url, timeout=_omni_timeout())
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=get_int_env("QWEN_MM_CHAT_TIMEOUT"))
 
     def _once() -> tuple[str, Any]:
         request: dict[str, Any] = {}

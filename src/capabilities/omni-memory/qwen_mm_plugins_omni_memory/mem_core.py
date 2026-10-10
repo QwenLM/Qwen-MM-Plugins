@@ -18,7 +18,6 @@ from .omni_core import (
     SALIENT_EMO,
     SALIENT_TONE,
     StoreBase,
-    anonymous_names,
     diag,
     embed_texts,
     get_embed_client,
@@ -64,7 +63,7 @@ class MemoryStore(StoreBase):
         be rebound here.
         """
         cands: dict[str, list] = {}
-        if not (anonymous_names() and self.name_ledger):
+        if not (config.get_bool_env("MEM_ANON_ENTITIES", True) and self.name_ledger):
             return cands
         for key, val in self.name_ledger.items():
             key_parts = key.split("|")

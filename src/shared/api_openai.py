@@ -60,11 +60,6 @@ def vl_video_max_sec(model: str | None) -> int | None:
     return None
 
 
-def _chat_timeout() -> int:
-    """Positive QWEN_MM_CHAT_TIMEOUT seconds; invalid overrides are tool errors."""
-    return get_int_env("QWEN_MM_CHAT_TIMEOUT")
-
-
 # HTTP statuses worth retrying for OpenAI-compatible endpoints.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 # Request-validation statuses that may mean a best-effort provider hint is unsupported. They are
@@ -330,7 +325,7 @@ def call_openai_chat(
 
     if contains_temporary_oss_url(kwargs.get("messages")):
         kwargs["extra_headers"] = {**OSS_RESOLVE_HEADER, **(kwargs.get("extra_headers") or {})}
-    client = OpenAI(api_key=api_key, base_url=base_url, timeout=_chat_timeout())
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=get_int_env("QWEN_MM_CHAT_TIMEOUT"))
 
     def _create(hints: dict[str, Any] | None) -> Any:
         call_kwargs = dict(kwargs)

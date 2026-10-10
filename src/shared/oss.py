@@ -41,11 +41,6 @@ def bucket(endpoint: str, bucket_name: str):
     return oss2.Bucket(oss2.Auth(ak, sk), to_public_endpoint(endpoint), bucket_name)
 
 
-def url_expiry() -> int:
-    """Signed-URL TTL in seconds (OSS_URL_EXPIRY, default 7200)."""
-    return get_int_env("OSS_URL_EXPIRY")
-
-
 def is_upload_configured() -> bool:
     """True when uploading is actually possible: creds + endpoint + OSS_BUCKET **and** oss2 installed.
 
@@ -76,7 +71,7 @@ def upload_and_sign(path: str, *, key_prefix: str = "", expires: int | None = No
         raise RuntimeError("OSS upload needs OSS_ENDPOINT + OSS_BUCKET (plus OSS_AK/OSS_SK)")
 
     # Reject a bad TTL before uploading anything.
-    expires = expires if expires is not None else url_expiry()
+    expires = expires if expires is not None else get_int_env("OSS_URL_EXPIRY")
     digest = hashlib.md5()  # noqa: S324 — a content address, not a security digest
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(_MD5_CHUNK), b""):

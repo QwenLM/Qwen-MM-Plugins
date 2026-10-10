@@ -7,7 +7,7 @@ from typing import Any
 from shared.content import json_text
 
 from .. import config, watch
-from ..service import library_namespaces, memory_dir, memory_label, memory_root
+from ..service import library_namespaces, memory_dir, memory_label
 from . import MemoryRef
 
 
@@ -111,7 +111,7 @@ def memory_status(video_path: str | None = None, namespace: str | None = None) -
         others = library_namespaces()
         if others:
             out["available_in_library"] = others[:40]
-            out["library_root"] = memory_root()
+            out["library_root"] = config.local_dir()
         return out
     info = _quick_info(mdir)
     # Two independent baselines for "how many clips should there be":

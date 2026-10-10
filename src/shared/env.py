@@ -436,16 +436,6 @@ MAX_RESPONSE_BYTES = 15 * 1024 * 1024
 STREAM_THRESHOLD = 1024 * 1024
 
 
-def get_ffmpeg_timeout() -> int:
-    """Timeout for the next ffmpeg/ffprobe operation, in positive seconds."""
-    return get_int_env("QWEN_MM_FFMPEG_TIMEOUT")
-
-
-def get_max_total_frames() -> int:
-    """Positive frame cap, validated when read_video is called rather than during discovery."""
-    return get_int_env("QWEN_MM_MAX_TOTAL_FRAMES")
-
-
 # OpenAI-compatible DashScope endpoint — the default when DASHSCOPE_BASE_URL is unset. Credentials
 # (DASHSCOPE_API_KEY, OSS_*, …) are read at call time via get_env — there are no per-var accessors.
 DEFAULT_DASHSCOPE_BASE_URL = _CONFIG_DEFAULTS["DASHSCOPE_BASE_URL"]

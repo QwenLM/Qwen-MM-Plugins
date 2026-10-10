@@ -15,7 +15,6 @@ import mcp_framework
 from qwen_mm_plugins_mhs import registry
 from qwen_mm_plugins_mhs.errors import guarded
 from qwen_mm_plugins_omni_memory import mem_core, omni_core, service, watch
-from qwen_mm_plugins_omni_skill_creator.tools.read_native_av import _default_chat_timeout
 from shared import api_omni, api_openai, env
 
 
@@ -41,16 +40,26 @@ def config_file(empty_user_config, monkeypatch):
     return empty_user_config
 
 
-@pytest.mark.parametrize("reader", [api_openai._chat_timeout, api_omni._omni_timeout, _default_chat_timeout])
-def test_chat_timeout_has_one_default_and_source_precedence(config_file, monkeypatch, reader):
-    assert reader() == 1800
-    config_file.write_text("QWEN_MM_CHAT_TIMEOUT=777\n")
-    assert reader() == 777
-    monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", "888")
-    assert reader() == 888
-    # A blank environment override chooses the default, not the lower-priority file value.
-    monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", "   ")
-    assert reader() == 1800
+@pytest.mark.parametrize("consumer", ["vl", "omni"])
+def test_chat_timeout_has_one_default_and_source_precedence(config_file, monkeypatch, consumer):
+    import openai
+
+    factory = Mock(side_effect=RuntimeError("client intercepted"))
+    monkeypatch.setattr(openai, "OpenAI", factory)
+    for source, value, expected in [
+        ("config", "", 1800),
+        ("config", "777", 777),
+        ("environment", "888", 888),
+        ("environment", "   ", 1800),
+    ]:
+        if source == "config":
+            config_file.write_text(f"QWEN_MM_CHAT_TIMEOUT={value}\n")
+        else:
+            monkeypatch.setenv("QWEN_MM_CHAT_TIMEOUT", value)
+        with pytest.raises(RuntimeError, match="client intercepted"):
+            call = api_openai.call_openai_chat if consumer == "vl" else api_omni.call_omni
+            call(base_url="https://test.example/v1", api_key="key", model="model", messages=[])
+        assert factory.call_args.kwargs["timeout"] == expected
 
 
 @pytest.mark.parametrize("value", ["-1", "nan", "inf", "invalid"])
@@ -59,7 +68,7 @@ def test_mhs_returns_invalid_ttl_as_actionable_text(config_file, value):
 
     @guarded
     def handle(_):
-        registry.cache_ttl()
+        registry._cache.get((registry.Adapter("mock", "http://unused.example"), "device"))
         return []
 
     result = anyio.run(mcp_framework._run_handle, handle, {})
@@ -92,8 +101,12 @@ def test_omni_config_errors_precede_requests_and_retries(config_file, monkeypatc
     create.assert_not_called()
     sleep.assert_not_called()
     config_file.write_text("MEM_TEMPERATURE=0.25\nMEM_ANON_ENTITIES=off\n")
-    assert omni_core.temperature_kwargs() == {"temperature": 0.25}
-    assert omni_core.anonymous_names() is False
+    create.return_value = [SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="ok"))])]
+    assert watch.watch_answer(client, "data:video/mp4;base64,eA==", "describe") == "ok"
+    assert create.call_args.kwargs["temperature"] == 0.25
+    store = mem_core.MemoryStore()
+    store.name_ledger = {"Alice|P1|voice|clip": {"count": 2}}
+    assert store._ledger_candidates() == {}
 
 
 def test_omni_private_config_does_not_block_discovery_and_recovers(config_file, tmp_path):

@@ -15,8 +15,8 @@ import json
 import re
 
 import omni_core
-from env_config import get_int_env
-from omni_core import b64_uri, backoff, is_rate_limit, iter_deadline, retry_reset, sleep_note, temperature_kwargs
+from env_config import get_float_env, get_int_env
+from omni_core import b64_uri, backoff, is_rate_limit, iter_deadline, retry_reset, sleep_note
 
 # ----------------------------------------------------------------------------- helpers
 _FENCE = re.compile(r"```json\s*(.*?)```", re.DOTALL)
@@ -50,7 +50,7 @@ def call_model(client, video_path, prompt, max_retries=None, timeout=None):
     max_retries/timeout default to CALL_RETRIES/CALL_TIMEOUT (env-overridable)."""
     max_retries = get_int_env("MEM_CALL_RETRIES", CALL_RETRIES, min_value=1) if max_retries is None else max_retries
     timeout = get_int_env("MEM_CALL_TIMEOUT", CALL_TIMEOUT, min_value=1) if timeout is None else timeout
-    temperature = temperature_kwargs()
+    temperature = get_float_env("MEM_TEMPERATURE", 0.0, min_value=0, max_value=2)
     stall = get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     messages = [
         {
@@ -70,7 +70,7 @@ def call_model(client, video_path, prompt, max_retries=None, timeout=None):
                 model=omni_core.MODEL,
                 messages=messages,
                 modalities=["text"],
-                **temperature,
+                temperature=temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 timeout=timeout,
@@ -110,7 +110,7 @@ def _stream_text(client, prompt, model=None, max_retries=None, timeout=None):
     max_retries/timeout default to TEXT_RETRIES/TEXT_TIMEOUT (env-overridable)."""
     max_retries = get_int_env("MEM_TEXT_RETRIES", TEXT_RETRIES, min_value=1) if max_retries is None else max_retries
     timeout = get_int_env("MEM_TEXT_TIMEOUT", TEXT_TIMEOUT, min_value=1) if timeout is None else timeout
-    temperature = temperature_kwargs()
+    temperature = get_float_env("MEM_TEMPERATURE", 0.0, min_value=0, max_value=2)
     stall = get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     last = None
     mdl = model or omni_core.MODEL
@@ -120,7 +120,7 @@ def _stream_text(client, prompt, model=None, max_retries=None, timeout=None):
             st = client.chat.completions.create(
                 model=mdl,
                 messages=[{"role": "user", "content": prompt}],
-                **temperature,
+                temperature=temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 timeout=timeout,

@@ -22,11 +22,6 @@ from .http_client import AdapterError, request, segment
 from .protocol import normalize_device_summary, normalize_meta
 
 
-def cache_ttl() -> float:
-    """Seconds to trust cached metadata. 0 disables caching."""
-    return get_float_env("QWEN_MM_MHS_CACHE_TTL", 60.0, min_value=0)
-
-
 class _Cache:
     """Tiny TTL cache. Handlers run on the framework's worker threads, hence the lock."""
 
@@ -35,7 +30,7 @@ class _Cache:
         self._lock = threading.Lock()
 
     def get(self, key: tuple[Adapter, str]) -> Any | None:
-        ttl = cache_ttl()
+        ttl = get_float_env("QWEN_MM_MHS_CACHE_TTL", 60.0, min_value=0)
         if ttl <= 0:
             return None
         with self._lock:

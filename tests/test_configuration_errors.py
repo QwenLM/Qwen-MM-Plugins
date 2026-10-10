@@ -9,8 +9,7 @@ import pytest
 from conftest import CORE_SERVER_DIR, REPO_ROOT, mcp_call
 
 import mcp_framework as fw
-from qwen_mm_plugins_omni_skill_creator.tools.read_native_av import _default_chat_timeout
-from shared import api_omni, api_openai, env, oss
+from shared import env
 from shared.content import text_error
 
 
@@ -22,45 +21,11 @@ def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setenv("QWEN_MM_NATIVE_MODE", "1")
 
 
-@pytest.mark.parametrize(
-    "name,reader",
-    [
-        ("QWEN_MM_FFMPEG_TIMEOUT", env.get_ffmpeg_timeout),
-        ("QWEN_MM_MAX_TOTAL_FRAMES", env.get_max_total_frames),
-        ("QWEN_MM_CHAT_TIMEOUT", api_openai._chat_timeout),
-        ("QWEN_MM_CHAT_TIMEOUT", api_omni._omni_timeout),
-        ("QWEN_MM_CHAT_TIMEOUT", _default_chat_timeout),
-        ("OSS_URL_EXPIRY", oss.url_expiry),
-    ],
-)
-@pytest.mark.parametrize("value", ["not-a-number", "0", "-1", "nan", "inf", "1.5", "15 MiB"])
-@pytest.mark.parametrize("source", ["environment", "config"])
-def test_runtime_numbers_reject_invalid_overrides(monkeypatch, name, reader, value, source):
-    if source == "environment":
-        monkeypatch.setenv(name, value)
-    else:
-        monkeypatch.delenv(name, raising=False)
-        Path(os.environ["QWEN_MM_CONFIG"]).write_text(f"{name}={value}\n", encoding="utf-8")
-    with pytest.raises(env.ConfigurationError, match=name) as exc:
-        reader()
-    assert "unset" in str(exc.value)
-    assert "not-a-number" not in str(exc.value)
-
-
 @pytest.mark.parametrize("value", ["90s", "1:30", "-1", "nan", "inf", "1e999"])
 def test_cutoff_rejects_invalid_and_nonfinite_values(monkeypatch, value):
     monkeypatch.setenv("CUTOFF_SEC", value)
     with pytest.raises(env.ConfigurationError, match="CUTOFF_SEC"):
         env.get_float_env("CUTOFF_SEC", min_value=0)
-
-
-def test_runtime_settings_are_read_after_import(monkeypatch):
-    monkeypatch.setenv("QWEN_MM_FFMPEG_TIMEOUT", "42")
-    assert env.get_ffmpeg_timeout() == 42
-    monkeypatch.setenv("QWEN_MM_FFMPEG_TIMEOUT", "900")
-    assert env.get_ffmpeg_timeout() == 900
-    monkeypatch.setenv("QWEN_MM_FFMPEG_TIMEOUT", "   ")
-    assert env.get_ffmpeg_timeout() == 120
 
 
 @pytest.mark.parametrize("limit,requested,expected", [(1, None, 1), (3, None, 3), (3, 1, 1), (3, 10, 3)])
@@ -82,11 +47,11 @@ def test_cutoff_accepts_blank_zero_and_fractional_seconds(monkeypatch, value, ex
 
 
 def test_boolean_switches_reject_invalid_overrides(monkeypatch):
-    from qwen_mm_plugins_freecad.loader import only_text_feedback
+    from qwen_mm_plugins_freecad.tools import execute_code
     from shared.applaunch import auto_install_enabled, autolaunch_enabled
 
     for name, reader in [
-        ("FREECAD_ONLY_TEXT_FEEDBACK", only_text_feedback),
+        ("FREECAD_ONLY_TEXT_FEEDBACK", lambda: execute_code.handle({"code": "pass"})),
         ("QWEN_MM_NO_AUTO_INSTALL", auto_install_enabled),
         ("QWEN_MM_AUTOLAUNCH", autolaunch_enabled),
     ]:

@@ -114,71 +114,6 @@ def test_handle_dedups_overlapping_and_keeps_distinct(two_tone_video):
 
 
 @pytest.fixture
-def no_model_env(monkeypatch, empty_user_config):
-    """Pin the model var off AND isolate the config file, so resolution tests only see
-    what the test itself sets (a dev machine's ~/.qwen-mm-plugins/config could set these)."""
-    monkeypatch.delenv("QWEN_MM_API_OMNI_MODEL", raising=False)
-    return monkeypatch
-
-
-def test_default_model_reads_repo_wide_var(no_model_env):
-    no_model_env.setenv("QWEN_MM_API_OMNI_MODEL", "repo-omni-model")
-    assert read_native_av._default_model() == "repo-omni-model"
-
-
-def test_default_model_hard_default(no_model_env):
-    assert read_native_av._default_model() == "qwen3.8-omni-flash"
-
-
-def test_config_file_layer_feeds_default_model(no_model_env, tmp_path):
-    import shared.env
-
-    cfg = tmp_path / "config"
-    cfg.write_text("QWEN_MM_API_OMNI_MODEL=config-file-model\n", encoding="utf-8")
-    no_model_env.setattr(shared.env, "config_file", lambda: str(cfg))
-    assert read_native_av._default_model() == "config-file-model"
-
-
-def test_native_av_connection_uses_only_shared_dashscope_fields(no_model_env):
-    no_model_env.setenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    no_model_env.setenv("DASHSCOPE_API_KEY", "shared-key")
-    no_model_env.setenv("OMNI_AV_OPENAI_BASE_URL", "https://legacy.example/v1")
-    no_model_env.setenv("OMNI_API_KEY", "legacy-omni-key")
-    no_model_env.setenv("API_KEY", "unrelated-generic-key")
-
-    assert read_native_av._default_openai_base() == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    assert read_native_av._resolve_key() == "shared-key"
-
-
-def test_native_av_connection_reads_shared_config_file(no_model_env, tmp_path):
-    import shared.env
-
-    for name in ("DASHSCOPE_BASE_URL", "DASHSCOPE_API_KEY"):
-        no_model_env.delenv(name, raising=False)
-    cfg = tmp_path / "config"
-    cfg.write_text(
-        "DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1\nDASHSCOPE_API_KEY=config-key\n",
-        encoding="utf-8",
-    )
-    no_model_env.setattr(shared.env, "config_file", lambda: str(cfg))
-
-    assert read_native_av._default_openai_base() == "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-    assert read_native_av._resolve_key() == "config-key"
-
-
-def test_native_av_does_not_fall_back_to_generic_or_legacy_keys(no_model_env):
-    for name in ("DASHSCOPE_BASE_URL", "DASHSCOPE_API_KEY"):
-        no_model_env.delenv(name, raising=False)
-    no_model_env.setenv("OMNI_AV_OPENAI_BASE_URL", "https://legacy.example/v1")
-    no_model_env.setenv("OMNI_API_KEY", "legacy-omni-key")
-    no_model_env.setenv("API_KEY", "unrelated-generic-key")
-
-    assert read_native_av._default_openai_base() == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    with pytest.raises(RuntimeError, match="DASHSCOPE_API_KEY"):
-        read_native_av._resolve_key()
-
-
-@pytest.fixture
 def oss_delivery(monkeypatch, tmp_path, empty_user_config):
     for name in os.environ:
         if name.startswith("OSS_"):
@@ -384,7 +319,7 @@ def test_temporary_oss_request_adds_resource_resolve_header(monkeypatch):
             return Response()
 
     monkeypatch.setattr(read_native_av.httpx, "Client", Client)
-    monkeypatch.setattr(read_native_av, "_openai_key", lambda: "key")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "key")
 
     result = read_native_av._openai_call(
         "qwen3.8-omni-flash",
@@ -422,8 +357,8 @@ def test_compression_notice_is_in_summary_not_model_event_log(monkeypatch, tmp_p
 
     monkeypatch.setattr(read_native_av, "_deliver_local", deliver)
     monkeypatch.setattr(read_native_av, "perceive_inline", perceive)
-    monkeypatch.setattr(read_native_av, "_default_openai_base", lambda: "https://gateway/v1")
-    monkeypatch.setattr(read_native_av, "_openai_key", lambda: "key")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://gateway/v1")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "key")
 
     text = read_native_av.handle({"video_path": str(path), "prompt": "same prompt"})[0]["text"]
 

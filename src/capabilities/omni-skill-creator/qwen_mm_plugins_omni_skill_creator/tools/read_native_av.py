@@ -32,30 +32,7 @@ from shared.env import ConfigurationError, get_env, get_int_env
 
 from ._media_utils import ffmpeg_path, ffprobe_path
 
-
-def _default_model() -> str:
-    return resolve_omni_model()
-
-
-def _default_openai_base() -> str:
-    return resolve_omni_endpoint({})[0].rstrip("/")
-
-
 log = logging.getLogger("read_native_av")
-
-
-def _resolve_key() -> str:
-    key = resolve_omni_endpoint({})[1]
-    if key and key != "EMPTY":
-        return key
-    raise RuntimeError(
-        "no matching provider key: configure DASHSCOPE_API_KEY / ORCAROUTER_API_KEY / "
-        "OPENROUTER_API_KEY, or pass api_key explicitly"
-    )
-
-
-def _default_chat_timeout() -> float:
-    return float(get_int_env("QWEN_MM_CHAT_TIMEOUT"))
 
 
 _PRIVATE_HOST_RE = re.compile(r"^(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)|-internal\.")
@@ -93,13 +70,6 @@ def _openai_url(base: str) -> str:
     if "/v1" not in base:
         base = f"{base}/v1"
     return f"{base}/chat/completions"
-
-
-def _openai_key() -> str:
-    try:
-        return _resolve_key()
-    except RuntimeError:
-        return "EMPTY"
 
 
 def _audio_format(mime_type: str) -> str:
@@ -236,14 +206,14 @@ def _openai_call(
     max_output_tokens: int = 32768,
     timeout: float | None = None,
     max_retries: int = 3,
-    base: str = "",
+    base: str | None = None,
     media_parts: list[dict] | None = None,
     api_key: str | None = None,
 ) -> AVResult:
     resolved_base, resolved_key = resolve_omni_endpoint({"base_url": base or None, "api_key": api_key})
     url = _openai_url(resolved_base)
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {resolved_key}"}
-    request_timeout = timeout if timeout is not None else _default_chat_timeout()
+    request_timeout = timeout if timeout is not None else get_int_env("QWEN_MM_CHAT_TIMEOUT")
     if contains_temporary_oss_url(media_parts if media_parts is not None else media_url):
         headers.update(dashscope_upload.OSS_RESOLVE_HEADER)
     content: list[dict] = list(media_parts) if media_parts is not None else []
@@ -334,8 +304,7 @@ def perceive_url(
         raise ValueError(f"video_url 必须是 http(s)、data URI 或临时 oss:// 资源，得到: {video_url[:80]}")
     if fps is not None and not (0.0 < fps <= 24.0):
         raise ValueError(f"fps 必须在 (0, 24]，得到: {fps}")
-    model = model or _default_model()
-    base = base or _default_openai_base()
+    model = resolve_omni_model(model)
     _warn_if_not_public(video_url)
     return _openai_call(
         model,
@@ -398,8 +367,7 @@ def perceive_inline(
 ) -> AVResult:
     if fps is not None and not (0.0 < fps <= 24.0):
         raise ValueError(f"fps 必须在 (0, 24]，得到: {fps}")
-    model = model or _default_model()
-    base = base or _default_openai_base()
+    model = resolve_omni_model(model)
     return _openai_call(
         model,
         f"data:{mime_type};base64,{data_b64}",
@@ -464,7 +432,7 @@ def _sign_oss_uri(uri: str) -> str:
     endpoint = get_env("OSS_ENDPOINT")
     if not endpoint:
         raise RuntimeError("oss:// needs OSS_ENDPOINT and OSS_AK/OSS_SK")
-    expires = oss.url_expiry()
+    expires = get_int_env("OSS_URL_EXPIRY")
     url = oss.bucket(endpoint, bucket_name).sign_url("GET", key, expires, slash_safe=True)
     log.info("[deliver] signed oss:// → url host=%s key=%s", url.split("/")[2], key)
     return url.replace("http://", "https://")
@@ -590,7 +558,7 @@ def _deliver_local(
             omni_media.cleanup_files([small])
     pending = cleanup if cleanup is not None else []
     try:
-        selected_model = model or _default_model()
+        selected_model = resolve_omni_model(model)
         parts = omni_media.build_media_parts(
             path,
             "audio" if _looks_audio(path) else "video",
@@ -882,7 +850,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     )
     mime = _guess_media_mime(video_path)
 
-    kw = dict(model=_default_model(), max_output_tokens=32768)
+    kw = dict(model=resolve_omni_model(), max_output_tokens=32768)
     _clip_tmp = None
     _clip_true_start = None
     _delivery_notes: list[str] = []
@@ -909,11 +877,12 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
                 _clip_tmp, _clip_true_start = prepare_clip(video_path, start_sec, end_sec)
                 local_src = _clip_tmp
             tag = "clip " if _has_range else ""
+            base_url, api_key = resolve_omni_endpoint({})
             mode, *payload = _deliver_local(
                 local_src,
                 model=kw["model"],
-                base_url=_default_openai_base(),
-                api_key=_openai_key(),
+                base_url=base_url,
+                api_key=api_key,
                 delivery_notes=_delivery_notes,
                 fps=fps,
                 cleanup=_media_tmp,

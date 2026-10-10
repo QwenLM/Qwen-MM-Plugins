@@ -11,7 +11,7 @@ import logging
 import threading
 import xmlrpc.client
 
-from shared.env import get_bool_env, get_env, get_int_env
+from shared.env import get_env, get_int_env
 
 log = logging.getLogger("qwen-mm-plugins-freecad")
 
@@ -98,11 +98,6 @@ class FreeCADConnection:
         except Exception as e:
             log.error("Error getting screenshot: %s", e)
             return None
-
-
-def only_text_feedback() -> bool:
-    """When FREECAD_ONLY_TEXT_FEEDBACK is set, tools skip the attached screenshot."""
-    return get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
 
 
 _autolaunch_tried = False

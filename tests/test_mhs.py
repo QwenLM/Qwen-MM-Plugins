@@ -200,7 +200,6 @@ def test_metadata_cache_uses_current_ttl_from_shared_config(monkeypatch, empty_u
     monkeypatch.setattr(registry.time, "monotonic", lambda: 100.0)
     cache.put(key, {"cached": True})
     monkeypatch.setattr(registry.time, "monotonic", lambda: 110.0)
-    assert registry.cache_ttl() == 60
     assert cache.get(key) == {"cached": True}
     for ttl, expected in [(1, None), (120, {"cached": True}), (0, None)]:
         empty_user_config.write_text(f"QWEN_MM_MHS_CACHE_TTL={ttl}\n")

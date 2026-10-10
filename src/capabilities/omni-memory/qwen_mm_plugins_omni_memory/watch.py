@@ -25,7 +25,6 @@ from .omni_core import (
     iter_deadline,
     retry_reset,
     sleep_note,
-    temperature_kwargs,
 )
 
 REPLAY_N = 3
@@ -318,7 +317,7 @@ def replay_answer_stream(client, video_uris, evidence_text, query, max_retries=5
     )
     messages = [{"role": "user", "content": content}]
     model = model_override or config.chat_config()[1]
-    temperature = temperature_kwargs()
+    temperature = config.get_float_env("MEM_TEMPERATURE", 0.0, min_value=0, max_value=2)
     stall = config.get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     diag(f"[MEM] ▸ REPLAY-ANSWER q={query!r} clips={len(video_uris)}", flush=True)
     retry_reset()
@@ -328,7 +327,7 @@ def replay_answer_stream(client, video_uris, evidence_text, query, max_retries=5
                 model=model,
                 messages=messages,
                 modalities=["text"],
-                **temperature,
+                temperature=temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 timeout=600,
@@ -367,7 +366,7 @@ def watch_answer(client, video_uri, query, max_retries=4, model_override=None):
         {"type": "text", "text": WATCH_ANSWER_PROMPT.replace("{{QUERY}}", query)},
     ]
     model = model_override or config.chat_config()[1]
-    temperature = temperature_kwargs()
+    temperature = config.get_float_env("MEM_TEMPERATURE", 0.0, min_value=0, max_value=2)
     timeout = config.get_int_env("MEM_WATCH_CALL_TIMEOUT", WATCH_CALL_TIMEOUT, min_value=1)
     stall = config.get_int_env("MEM_STREAM_STALL", 150, min_value=1)
     diag(f"[WATCH] ▸ WATCH-ANSWER q={query!r}", flush=True)
@@ -379,7 +378,7 @@ def watch_answer(client, video_uri, query, max_retries=4, model_override=None):
                 model=model,
                 messages=[{"role": "user", "content": content}],
                 modalities=["text"],
-                **temperature,
+                temperature=temperature,
                 stream=True,
                 stream_options={"include_usage": True},
                 timeout=timeout,

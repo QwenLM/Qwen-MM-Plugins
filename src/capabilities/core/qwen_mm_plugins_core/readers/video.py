@@ -18,7 +18,7 @@ from shared.env import (
     MAX_RESPONSE_BYTES,
     VIDEO_BUDGET_TOKENS,
     VIDEO_MIN_PIXELS,
-    get_max_total_frames,
+    get_int_env,
 )
 from shared.image import budget_to_pixels, smart_resize
 from shared.video import (
@@ -71,7 +71,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     budget = arguments.get("budget", DEFAULT_BUDGET)
     max_pixels = budget_to_pixels(budget, VIDEO_BUDGET_TOKENS)
     min_pixels = VIDEO_MIN_PIXELS
-    frame_limit = get_max_total_frames()
+    frame_limit = get_int_env("QWEN_MM_MAX_TOTAL_FRAMES")
     requested_limit = arguments.get("max_frames")
     max_frames = frame_limit if requested_limit is None else min(requested_limit, frame_limit)
     requested_fps = arguments.get("fps", 0)

@@ -76,7 +76,7 @@ def test_om_server_startup_never_logs_mem_environment_values(monkeypatch, caplog
     assert secret not in repr(names)
 
     monkeypatch.setattr(service, "ENV_TUNING", names)
-    monkeypatch.setattr(service, "memory_root", lambda: "")
+    monkeypatch.setattr(config, "local_dir", lambda: "")
     monkeypatch.setattr(service, "preload", lambda: None)
     with caplog.at_level(logging.INFO, logger="qwen-mm-plugins-omni-memory"):
         on_start()

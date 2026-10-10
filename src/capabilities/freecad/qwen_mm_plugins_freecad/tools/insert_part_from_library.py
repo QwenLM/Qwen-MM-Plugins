@@ -22,10 +22,11 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         relative_path: The relative path of the part to insert.
     """
     from qwen_mm_plugins_freecad._responses import add_screenshot_if_available, text_response
-    from qwen_mm_plugins_freecad.loader import get_connection, only_text_feedback
+    from qwen_mm_plugins_freecad.loader import get_connection
+    from shared.env import get_bool_env
 
     relative_path = arguments.get("relative_path", "")
-    only_text = only_text_feedback()
+    only_text = get_bool_env("FREECAD_ONLY_TEXT_FEEDBACK")
     try:
         conn = get_connection()
         res = conn.insert_part_from_library(relative_path)
