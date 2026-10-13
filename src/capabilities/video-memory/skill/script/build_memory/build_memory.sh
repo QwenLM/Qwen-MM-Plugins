@@ -57,8 +57,10 @@ if [[ "$RETRIEVAL_BACKEND" != "npz" && "$RETRIEVAL_BACKEND" != "zvec" ]]; then
 fi
 if [[ "$RETRIEVAL_BACKEND" == "zvec" ]]; then
     RETRIEVAL_ARTIFACT="retrieval.zvec"
+    INACTIVE_RETRIEVAL_ARTIFACT="embeddings.npz"
 else
     RETRIEVAL_ARTIFACT="embeddings.npz"
+    INACTIVE_RETRIEVAL_ARTIFACT="retrieval.zvec"
 fi
 
 if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
@@ -110,6 +112,18 @@ export PYTHONUNBUFFERED=1
 # directory, so putting it on PYTHONPATH lets `python -m build_graph` import its siblings.
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
 
+_remove_inactive_retrieval_if_needed() {
+    local memory_dir="$1"
+    if [[ -e "$memory_dir/$INACTIVE_RETRIEVAL_ARTIFACT" ]]; then
+        python - "$memory_dir" "$RETRIEVAL_BACKEND" <<'PY'
+import sys
+from embeddings import activate_retrieval_backend
+
+activate_retrieval_backend(sys.argv[1], sys.argv[2])
+PY
+    fi
+}
+
 # The portable reader needs Pydantic before reading file-only settings. Keep credentials in
 # the reader instead of exporting config-file contents into a stale environment snapshot.
 if ! python -c "$_PYDANTIC_CHECK" 2>/dev/null; then
@@ -146,6 +160,7 @@ if [[ -n "$VIDEO_PATH" ]]; then
     ulimit -n 65536 2>/dev/null || true
 
     if [[ -f "$OUTPUT_DIR/graph_memory.json" && -e "$OUTPUT_DIR/$RETRIEVAL_ARTIFACT" ]]; then
+        _remove_inactive_retrieval_if_needed "$OUTPUT_DIR"
         echo "graph_memory.json and $RETRIEVAL_ARTIFACT already exist, skipping"
         exit 0
     fi
@@ -347,6 +362,7 @@ if [[ -n "$VIDEO_DIR" ]]; then
         fi
 
         if [[ -f "$VIDEO_OUT/graph_memory.json" && -e "$VIDEO_OUT/$RETRIEVAL_ARTIFACT" ]]; then
+            _remove_inactive_retrieval_if_needed "$VIDEO_OUT"
             echo "[skip] $VIDEO_STEM — graph_memory.json and $RETRIEVAL_ARTIFACT already exist"
             DONE=$((DONE + 1))
             continue

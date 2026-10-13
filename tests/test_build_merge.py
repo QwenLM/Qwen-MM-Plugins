@@ -99,8 +99,9 @@ def _write_zvec_memory(root, mm, key, text, vector):
         "super_relations": [],
     }
     (memory_dir / "graph_memory.json").write_text(json.dumps(graph))
-    mm.save_zvec_index(
-        mm.retrieval_index_path(str(memory_dir), "zvec"),
+    mm.save_retrieval_index(
+        str(memory_dir),
+        "zvec",
         [{"node_id": "duplicate:id", "node_type": "event", "macro_id": "macro_0000", "text": text}],
         mm.np.asarray([vector], dtype=mm.np.float32),
     )
@@ -110,11 +111,14 @@ def test_merge_directory_can_write_one_zvec_memory(merge_memories, tmp_path):
     _write_zvec_memory(tmp_path, merge_memories, "P001", "orange cat", [1.0, 0.0])
     _write_zvec_memory(tmp_path, merge_memories, "P002", "blue car", [0.0, 1.0])
     output = tmp_path / "merged"
+    output.mkdir()
+    (output / "embeddings.npz").write_bytes(b"stale")
 
     merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="zvec")
 
     index_path = output / "retrieval.zvec"
     assert index_path.is_dir()
+    assert not (output / "embeddings.npz").exists()
     nodes, matrix = merge_memories.export_retrieval_index(str(index_path))
     assert sorted(node["node_id"] for node in nodes) == ["P001_duplicate:id", "P002_duplicate:id"]
     assert sorted(node["macro_id"] for node in nodes) == ["P001_macro_0000", "P002_macro_0000"]

@@ -355,12 +355,63 @@ def test_zvec_roundtrip_persists_vectors_metadata_and_fts(embeddings, tmp_path, 
         loaded.close()
 
 
-def test_detect_retrieval_index_prefers_zvec(embeddings, tmp_path):
+def test_detect_retrieval_index_rejects_two_backends(embeddings, tmp_path):
     (tmp_path / embeddings.NPZ_INDEX_FILENAME).write_bytes(b"legacy")
     zvec_path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
     zvec_path.mkdir()
 
-    assert embeddings.detect_retrieval_index(str(tmp_path)) == str(zvec_path.resolve())
+    with pytest.raises(RuntimeError, match="exactly one retrieval artifact"):
+        embeddings.detect_retrieval_index(str(tmp_path))
+
+
+def test_save_retrieval_index_keeps_exactly_one_backend(embeddings, tmp_path):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+    assert os.path.isfile(npz_path)
+    assert not (tmp_path / embeddings.ZVEC_INDEX_DIRNAME).exists()
+    assert embeddings.detect_retrieval_index(str(tmp_path)) == str((tmp_path / "embeddings.npz").resolve())
+
+    zvec_path = embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+    assert os.path.isdir(zvec_path)
+    assert not (tmp_path / embeddings.NPZ_INDEX_FILENAME).exists()
+    assert embeddings.detect_retrieval_index(str(tmp_path)) == str((tmp_path / "retrieval.zvec").resolve())
+
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+    assert os.path.isfile(npz_path)
+    assert not (tmp_path / embeddings.ZVEC_INDEX_DIRNAME).exists()
+
+
+def test_activate_existing_backend_cleans_historical_duplicate(embeddings, tmp_path):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+    embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+    embeddings.save_zvec_index(str(tmp_path / "retrieval.zvec"), nodes, matrix)
+    assert (tmp_path / "embeddings.npz").exists() and (tmp_path / "retrieval.zvec").exists()
+
+    embeddings.activate_retrieval_backend(str(tmp_path), "zvec")
+
+    assert not (tmp_path / "embeddings.npz").exists()
+    assert (tmp_path / "retrieval.zvec").is_dir()
+
+
+def test_failed_backend_switch_keeps_existing_index(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+
+    monkeypatch.setattr(embeddings, "save_zvec_index", lambda *_args: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError, match="boom"):
+        embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+
+    assert os.path.isfile(npz_path)
 
 
 def test_build_save_embeddings_can_select_zvec(build_graph, embeddings, tmp_path, monkeypatch):
@@ -374,10 +425,12 @@ def test_build_save_embeddings_can_select_zvec(build_graph, embeddings, tmp_path
         index._build_sparse_index()
 
     monkeypatch.setattr(build_graph.EmbeddingIndex, "build", build_locally)
+    (tmp_path / "embeddings.npz").write_bytes(b"stale")
     path = build_graph._build_save_embeddings(memory, str(tmp_path), retrieval_backend="zvec")
 
     assert path == str(tmp_path / "retrieval.zvec")
     assert (tmp_path / "retrieval.zvec").is_dir()
+    assert not (tmp_path / "embeddings.npz").exists()
     nodes, matrix = embeddings.export_retrieval_index(path)
     assert len(nodes) == matrix.shape[0] > 0
 

@@ -434,15 +434,28 @@ def retrieval_index_path(memory_dir: str, backend: str) -> str:
 
 
 def detect_retrieval_index(memory_dir: str, configured: str | None = None) -> str:
-    """Resolve an explicit index path or prefer zvec over the legacy NPZ artifact."""
+    """Resolve the one retrieval artifact in ``memory_dir``.
+
+    An explicit existing path wins. Auto-detection otherwise rejects a directory that contains
+    both backends: without a manifest there is no reliable way to know which artifact matches the
+    current graph.
+    """
     if configured:
         configured = os.path.realpath(configured)
         if os.path.exists(configured):
             return configured
-    for backend in ("zvec", "npz"):
-        candidate = os.path.realpath(retrieval_index_path(memory_dir, backend))
-        if os.path.exists(candidate):
-            return candidate
+    candidates = [
+        os.path.realpath(retrieval_index_path(memory_dir, backend))
+        for backend in ("zvec", "npz")
+        if os.path.exists(retrieval_index_path(memory_dir, backend))
+    ]
+    if len(candidates) > 1:
+        raise RuntimeError(
+            f"Memory directory contains both {ZVEC_INDEX_DIRNAME}/ and {NPZ_INDEX_FILENAME}: {memory_dir}. "
+            "A memory must contain exactly one retrieval artifact; remove the inactive backend."
+        )
+    if candidates:
+        return candidates[0]
     return os.path.realpath(configured) if configured else ""
 
 
@@ -711,3 +724,80 @@ def export_retrieval_index(path: str) -> tuple[list[dict], np.ndarray]:
     finally:
         if isinstance(index, ZvecEmbeddingIndex):
             index.close()
+
+
+def _validate_retrieval_index(
+    path: str,
+    expected_count: int | None = None,
+    expected_dimension: int | None = None,
+) -> None:
+    """Reopen a freshly-written artifact before making it the only active backend."""
+    index = load_retrieval_index(path)
+    try:
+        if isinstance(index, ZvecEmbeddingIndex):
+            actual_count = index._doc_count
+            actual_dimension = index._dimension
+        else:
+            actual_count = len(index.nodes)
+            actual_dimension = index.embeddings.shape[1] if index.embeddings is not None else 0
+        if (expected_count is not None and actual_count != expected_count) or (
+            expected_dimension is not None and actual_dimension != expected_dimension
+        ):
+            raise RuntimeError(
+                f"retrieval index validation failed for {path}: "
+                f"expected ({expected_count}, {expected_dimension}), "
+                f"got ({actual_count}, {actual_dimension})"
+            )
+    finally:
+        if isinstance(index, ZvecEmbeddingIndex):
+            index.close()
+
+
+def _remove_retrieval_artifact(path: str) -> None:
+    if os.path.islink(path) or os.path.isfile(path):
+        os.unlink(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
+
+
+def activate_retrieval_backend(memory_dir: str, backend: str) -> str:
+    """Validate ``backend`` and remove the inactive retrieval artifact.
+
+    This enforces the storage invariant that one memory directory contains exactly one retrieval
+    backend. Cleanup happens only after the selected artifact has been reopened successfully.
+    """
+    active_path = os.path.realpath(retrieval_index_path(memory_dir, backend))
+    _validate_retrieval_index(active_path)
+
+    inactive_backend = "npz" if backend == "zvec" else "zvec"
+    inactive_path = os.path.realpath(retrieval_index_path(memory_dir, inactive_backend))
+    _remove_retrieval_artifact(inactive_path)
+    return active_path
+
+
+def save_retrieval_index(
+    memory_dir: str,
+    backend: str,
+    nodes: list[dict],
+    embeddings: np.ndarray,
+) -> str:
+    """Persist, validate, and activate exactly one retrieval backend for a memory."""
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    if embeddings.ndim != 2 or embeddings.shape[0] != len(nodes) or embeddings.shape[1] == 0:
+        raise ValueError("embeddings must be a non-empty 2-D matrix aligned with nodes")
+
+    path = retrieval_index_path(memory_dir, backend)
+    if backend == "zvec":
+        save_zvec_index(path, nodes, embeddings)
+    elif backend == "npz":
+        index = EmbeddingIndex()
+        index.nodes = nodes
+        index._set_embeddings(embeddings)
+        index.save(path)
+    else:
+        raise ValueError(f"unsupported retrieval backend: {backend!r}; expected one of {RETRIEVAL_BACKENDS}")
+
+    _validate_retrieval_index(path, len(nodes), int(embeddings.shape[1]))
+    inactive_backend = "npz" if backend == "zvec" else "zvec"
+    _remove_retrieval_artifact(retrieval_index_path(memory_dir, inactive_backend))
+    return path

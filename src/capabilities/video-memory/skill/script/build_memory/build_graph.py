@@ -22,7 +22,7 @@ try:
 except ImportError:
     oss2 = None
 
-from embeddings import RETRIEVAL_BACKENDS, EmbeddingIndex, retrieval_index_path, save_zvec_index
+from embeddings import RETRIEVAL_BACKENDS, EmbeddingIndex, save_retrieval_index
 from env_config import ConfigurationError, get_env, get_int_env
 from llm_client import call_vlm_curl, extract_json
 from prompts import (
@@ -1323,11 +1323,7 @@ def _build_save_embeddings(memory: HierarchicalGraphMemory, output_dir: str, ret
         raise RuntimeError("graph contains no nodes; cannot build embeddings")
     index.build(nodes)
 
-    index_path = retrieval_index_path(output_dir, retrieval_backend)
-    if retrieval_backend == "zvec":
-        save_zvec_index(index_path, index.nodes, index.embeddings)
-    else:
-        index.save(index_path)
+    index_path = save_retrieval_index(output_dir, retrieval_backend, index.nodes, index.embeddings)
     print(f"Retrieval index saved to: {index_path} ({len(nodes)} nodes)")
     return index_path
 

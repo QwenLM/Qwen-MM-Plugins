@@ -28,8 +28,7 @@ from embeddings import (
     EmbeddingIndex,
     detect_retrieval_index,
     export_retrieval_index,
-    retrieval_index_path,
-    save_zvec_index,
+    save_retrieval_index,
 )
 
 
@@ -237,14 +236,7 @@ def merge_directory(
 
     if all_embs:
         merged_embs = np.vstack(all_embs).astype(np.float32)
-        index_out = retrieval_index_path(out, retrieval_backend)
-        if retrieval_backend == "zvec":
-            save_zvec_index(index_out, all_nodes, merged_embs)
-        else:
-            index = EmbeddingIndex()
-            index.nodes = all_nodes
-            index._set_embeddings(merged_embs)
-            index.save(index_out)
+        index_out = save_retrieval_index(out, retrieval_backend, all_nodes, merged_embs)
         print(f"  Saved {index_out}: {len(all_nodes)} nodes, shape {merged_embs.shape} in {time.time() - t0:.1f}s")
     else:
         print("  WARNING: No embeddings to merge")
