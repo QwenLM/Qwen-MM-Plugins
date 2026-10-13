@@ -25,6 +25,19 @@ def build_graph():
     return bg
 
 
+@pytest.fixture(scope="module")
+def merge_memories():
+    pytest.importorskip("numpy")
+    pytest.importorskip("zvec")
+    if _BUILD_DIR not in sys.path:
+        sys.path.insert(0, _BUILD_DIR)
+    try:
+        import merge_memories as mm
+    except Exception as e:  # noqa: BLE001 — optional build-only deps may be absent
+        pytest.skip(f"merge_memories not importable: {e}")
+    return mm
+
+
 def _write_chunk(root, name, macros):
     d = root / name
     (d / "subgraphs").mkdir(parents=True)
@@ -71,3 +84,41 @@ def test_merge_chunks_resorts_remaps_and_renames(build_graph, tmp_path):
         assert sg["macro_id"] == nid
     # exactly one subgraph file per merged macro — no stale/leftover chunk-local names
     assert sorted(p.name for p in (out / "subgraphs").iterdir()) == [f"macro_{i:04d}.json" for i in range(3)]
+
+
+def _write_zvec_memory(root, mm, key, text, vector):
+    memory_dir = root / f"{key}.mp4.memory"
+    memory_dir.mkdir()
+    graph = {
+        "video_key": key,
+        "video_path": str(root / f"{key}.mp4"),
+        "root": {"title": key, "description": "", "themes": [], "key_entities": [], "emotional_tone": ""},
+        "super_events": [],
+        "macro_events": [{"macro_id": "macro_0000", "label": text, "time_range": [0, 1]}],
+        "macro_relations": [],
+        "super_relations": [],
+    }
+    (memory_dir / "graph_memory.json").write_text(json.dumps(graph))
+    mm.save_zvec_index(
+        mm.retrieval_index_path(str(memory_dir), "zvec"),
+        [{"node_id": "duplicate:id", "node_type": "event", "macro_id": "macro_0000", "text": text}],
+        mm.np.asarray([vector], dtype=mm.np.float32),
+    )
+
+
+def test_merge_directory_can_write_one_zvec_memory(merge_memories, tmp_path):
+    _write_zvec_memory(tmp_path, merge_memories, "P001", "orange cat", [1.0, 0.0])
+    _write_zvec_memory(tmp_path, merge_memories, "P002", "blue car", [0.0, 1.0])
+    output = tmp_path / "merged"
+
+    merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="zvec")
+
+    index_path = output / "retrieval.zvec"
+    assert index_path.is_dir()
+    nodes, matrix = merge_memories.export_retrieval_index(str(index_path))
+    assert sorted(node["node_id"] for node in nodes) == ["P001_duplicate:id", "P002_duplicate:id"]
+    assert sorted(node["macro_id"] for node in nodes) == ["P001_macro_0000", "P002_macro_0000"]
+    assert matrix.shape == (2, 2)
+
+    graph = json.loads((output / "graph_memory.json").read_text())
+    assert [video["prefix"] for video in graph["source_videos"]] == ["P001", "P002"]

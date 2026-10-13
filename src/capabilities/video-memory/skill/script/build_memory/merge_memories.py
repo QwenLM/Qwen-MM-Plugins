@@ -4,12 +4,13 @@
 Usage:
     python merge_memories.py /path/to/video_dir
     python merge_memories.py /path/to/video_dir --output-dir /path/to/output
+    python merge_memories.py /path/to/video_dir --retrieval-backend zvec
     python merge_memories.py /path/to/video_dir --skip-embeddings
 
 Scans for *.mp4.memory/graph_memory.json, prefixes all IDs with a short
-video key, concatenates everything, merges embeddings by concatenating
-existing npz files (rebuilds corrupt ones), and writes graph_memory.json +
-embeddings.npz in the video directory (or --output-dir).
+video key, concatenates everything, merges existing retrieval records without
+re-embedding, and writes graph_memory.json plus the selected retrieval backend
+in the video directory (or --output-dir).
 """
 
 from __future__ import annotations
@@ -22,6 +23,14 @@ import sys
 import time
 
 import numpy as np
+from embeddings import (
+    RETRIEVAL_BACKENDS,
+    EmbeddingIndex,
+    detect_retrieval_index,
+    export_retrieval_index,
+    retrieval_index_path,
+    save_zvec_index,
+)
 
 
 def _short_key(video_key: str) -> str:
@@ -68,12 +77,11 @@ def prefix_ids(data: dict, prefix: str):
         sr["target"] = p + str(sr["target"])
 
 
-def _rebuild_embeddings_for_memory(gm_path: str, emb_path: str):
+def _rebuild_embeddings_for_memory(gm_path: str):
     """Rebuild embeddings for a single video memory from its graph_memory.json."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     if script_dir not in sys.path:
         sys.path.insert(0, script_dir)
-    from embeddings import EmbeddingIndex
     from schema import HierarchicalGraphMemory
 
     memory = HierarchicalGraphMemory.load(gm_path)
@@ -83,11 +91,15 @@ def _rebuild_embeddings_for_memory(gm_path: str, emb_path: str):
 
     index = EmbeddingIndex()
     index.build(nodes)
-    index.save(emb_path)
     return index.nodes, index.embeddings
 
 
-def merge_directory(video_dir: str, output_dir: str | None = None, skip_embeddings: bool = False):
+def merge_directory(
+    video_dir: str,
+    output_dir: str | None = None,
+    skip_embeddings: bool = False,
+    retrieval_backend: str = "npz",
+):
     out = output_dir or video_dir
     os.makedirs(out, exist_ok=True)
 
@@ -173,8 +185,8 @@ def merge_directory(video_dir: str, output_dir: str | None = None, skip_embeddin
         print("Skipping embedding merge (--skip-embeddings)")
         return
 
-    # Merge embeddings: concatenate existing npz, rebuild corrupt/missing ones
-    print("\nMerging embeddings...")
+    # Merge retrieval records: reuse vectors from zvec or NPZ and rebuild only missing/corrupt inputs.
+    print(f"\nMerging retrieval records into {retrieval_backend}...")
     t0 = time.time()
     all_nodes = []
     all_embs = []
@@ -182,21 +194,19 @@ def merge_directory(video_dir: str, output_dir: str | None = None, skip_embeddin
 
     for entry, gm_path in memory_files:
         mem_dir = os.path.join(video_dir, entry)
-        emb_path = os.path.join(mem_dir, "embeddings.npz")
+        index_path = detect_retrieval_index(mem_dir)
         prefix = prefix_map[entry]
         p = f"{prefix}_"
 
-        if not os.path.exists(emb_path):
-            to_rebuild.append((entry, gm_path, emb_path, prefix))
+        if not index_path:
+            to_rebuild.append((entry, gm_path, prefix))
             continue
 
         try:
-            with np.load(emb_path, allow_pickle=False) as data:
-                embs = data["embeddings"]
-                nodes_json = json.loads(str(data["nodes"]))
+            nodes_json, embs = export_retrieval_index(index_path)
         except Exception as e:
-            print(f"  {prefix}: embeddings corrupt ({e}), will rebuild")
-            to_rebuild.append((entry, gm_path, emb_path, prefix))
+            print(f"  {prefix}: retrieval index unreadable ({e}), will rebuild")
+            to_rebuild.append((entry, gm_path, prefix))
             continue
 
         for node in nodes_json:
@@ -209,11 +219,11 @@ def merge_directory(video_dir: str, output_dir: str | None = None, skip_embeddin
 
     # Rebuild corrupt/missing embeddings
     if to_rebuild:
-        print(f"  Rebuilding {len(to_rebuild)} corrupt/missing embeddings...")
-        for entry, gm_path, emb_path, prefix in to_rebuild:
+        print(f"  Rebuilding {len(to_rebuild)} corrupt/missing retrieval indexes...")
+        for entry, gm_path, prefix in to_rebuild:
             p = f"{prefix}_"
             try:
-                nodes, embs = _rebuild_embeddings_for_memory(gm_path, emb_path)
+                nodes, embs = _rebuild_embeddings_for_memory(gm_path)
                 for node in nodes:
                     node["node_id"] = p + str(node.get("node_id", ""))
                     if node.get("macro_id"):
@@ -227,9 +237,15 @@ def merge_directory(video_dir: str, output_dir: str | None = None, skip_embeddin
 
     if all_embs:
         merged_embs = np.vstack(all_embs).astype(np.float32)
-        emb_out = os.path.join(out, "embeddings.npz")
-        np.savez(emb_out, embeddings=merged_embs, nodes=json.dumps(all_nodes, ensure_ascii=False))
-        print(f"  Saved {emb_out}: {len(all_nodes)} nodes, shape {merged_embs.shape} in {time.time() - t0:.1f}s")
+        index_out = retrieval_index_path(out, retrieval_backend)
+        if retrieval_backend == "zvec":
+            save_zvec_index(index_out, all_nodes, merged_embs)
+        else:
+            index = EmbeddingIndex()
+            index.nodes = all_nodes
+            index._set_embeddings(merged_embs)
+            index.save(index_out)
+        print(f"  Saved {index_out}: {len(all_nodes)} nodes, shape {merged_embs.shape} in {time.time() - t0:.1f}s")
     else:
         print("  WARNING: No embeddings to merge")
 
@@ -239,6 +255,12 @@ if __name__ == "__main__":
     parser.add_argument("video_dir", help="Directory containing *.mp4 files with .memory/ subdirs")
     parser.add_argument("--output-dir", default=None, help="Output directory (default: same as video_dir)")
     parser.add_argument("--skip-embeddings", action="store_true", help="Skip embedding merge")
+    parser.add_argument(
+        "--retrieval-backend",
+        choices=RETRIEVAL_BACKENDS,
+        default="npz",
+        help="Output retrieval backend (default: npz)",
+    )
     args = parser.parse_args()
 
-    merge_directory(args.video_dir, args.output_dir, args.skip_embeddings)
+    merge_directory(args.video_dir, args.output_dir, args.skip_embeddings, args.retrieval_backend)

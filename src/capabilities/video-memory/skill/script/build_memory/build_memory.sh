@@ -11,6 +11,7 @@
 #   --output-dir DIR   Output directory (default: <video_path>.memory/)
 #   --model NAME       Model name (default: QWEN_MM_API_VL_MODEL)
 #   --api-key KEY      DashScope API key (default: $DASHSCOPE_API_KEY)
+#   --retrieval-backend BACKEND  npz (default) or zvec
 
 set -euo pipefail
 
@@ -26,6 +27,7 @@ P2_WORKERS=10
 CHUNK_SEC=3600
 ENABLE_ASR=1
 ASR_MODEL="qwen3-asr-flash"
+RETRIEVAL_BACKEND="npz"
 
 # ── Parse args ────────────────────────────────────────────────────────────
 POSITIONAL=()
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
         --api-key)     API_KEY="$2"; shift 2 ;;
         --p2-workers)  P2_WORKERS="$2"; shift 2 ;;
         --chunk-sec)   CHUNK_SEC="$2"; shift 2 ;;
+        --retrieval-backend) RETRIEVAL_BACKEND="$2"; shift 2 ;;
         --no-asr)          ENABLE_ASR=0; shift ;;
         --asr-model)       ASR_MODEL="$2"; shift 2 ;;
         -*)
@@ -47,6 +50,16 @@ while [[ $# -gt 0 ]]; do
         *)  POSITIONAL+=("$1"); shift ;;
     esac
 done
+
+if [[ "$RETRIEVAL_BACKEND" != "npz" && "$RETRIEVAL_BACKEND" != "zvec" ]]; then
+    echo "ERROR: --retrieval-backend must be 'npz' or 'zvec'"
+    exit 1
+fi
+if [[ "$RETRIEVAL_BACKEND" == "zvec" ]]; then
+    RETRIEVAL_ARTIFACT="retrieval.zvec"
+else
+    RETRIEVAL_ARTIFACT="embeddings.npz"
+fi
 
 if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
     VIDEO_PATH="${POSITIONAL[0]}"
@@ -70,6 +83,9 @@ _MISSING_PKGS=()
 python -c "import cv2" 2>/dev/null || _MISSING_PKGS+=(opencv-python-headless)
 python -c "import numpy" 2>/dev/null || _MISSING_PKGS+=('numpy<2')
 python -c "import dashscope" 2>/dev/null || _MISSING_PKGS+=(dashscope)
+if [[ "$RETRIEVAL_BACKEND" == "zvec" ]]; then
+    python -c "import zvec; assert tuple(map(int, zvec.__version__.split('.')[:2])) >= (0, 7)" 2>/dev/null || _MISSING_PKGS+=('zvec>=0.7,<1')
+fi
 _PYDANTIC_CHECK='import pydantic; assert (2, 11) <= tuple(map(int, pydantic.__version__.split(".")[:2])) < (3, 0)'
 python -c "$_PYDANTIC_CHECK" 2>/dev/null || _MISSING_PKGS+=('pydantic>=2.11,<3')
 
@@ -129,13 +145,14 @@ if [[ -n "$VIDEO_PATH" ]]; then
     # Raise fd limit to avoid "Too many open files"
     ulimit -n 65536 2>/dev/null || true
 
-    if [[ -f "$OUTPUT_DIR/graph_memory.json" && -f "$OUTPUT_DIR/embeddings.npz" ]]; then
-        echo "graph_memory.json and embeddings.npz already exist, skipping"
+    if [[ -f "$OUTPUT_DIR/graph_memory.json" && -e "$OUTPUT_DIR/$RETRIEVAL_ARTIFACT" ]]; then
+        echo "graph_memory.json and $RETRIEVAL_ARTIFACT already exist, skipping"
         exit 0
     fi
     if [[ -f "$OUTPUT_DIR/graph_memory.json" ]]; then
-        echo "graph_memory.json exists but embeddings.npz is missing; rebuilding embeddings"
-        python -u -m build_graph "$VIDEO_PATH" --output-dir "$OUTPUT_DIR" --embeddings-only
+        echo "graph_memory.json exists but $RETRIEVAL_ARTIFACT is missing; rebuilding retrieval index"
+        python -u -m build_graph "$VIDEO_PATH" --output-dir "$OUTPUT_DIR" --embeddings-only \
+            --retrieval-backend "$RETRIEVAL_BACKEND"
         exit 0
     fi
 
@@ -168,6 +185,7 @@ print(int(get_video_duration('$VIDEO_PATH')))
     echo "  Chunks:     $N_CHUNKS × ${CHUNK_SEC}s"
     echo "  P2 Workers: $P2_WORKERS total ($WORKERS_PER_CHUNK per chunk)"
     echo "  ASR:        $([ $ENABLE_ASR -eq 1 ] && echo 'ON ('$ASR_MODEL')' || echo 'OFF')"
+    echo "  Retrieval:  $RETRIEVAL_BACKEND"
     echo "  Node:       $NODE"
     echo "============================================================"
 
@@ -276,7 +294,8 @@ print(int(get_video_duration('$VIDEO_PATH')))
         "$VIDEO_PATH" \
         --output-dir "$OUTPUT_DIR" \
         --model "$MODEL" \
-        --phase3-only
+        --phase3-only \
+        --retrieval-backend "$RETRIEVAL_BACKEND"
 
     echo ""
     echo "============================================================"
@@ -313,6 +332,7 @@ if [[ -n "$VIDEO_DIR" ]]; then
     echo "  Videos:     ${#VIDEOS[@]}"
     echo "  Output:     $OUTPUT_DIR"
     echo "  Model:      $MODEL"
+    echo "  Retrieval:  $RETRIEVAL_BACKEND"
     echo "  Node:       $NODE"
     echo "============================================================"
 
@@ -326,18 +346,19 @@ if [[ -n "$VIDEO_DIR" ]]; then
             VIDEO_OUT="$OUTPUT_DIR/$VIDEO_STEM"
         fi
 
-        if [[ -f "$VIDEO_OUT/graph_memory.json" && -f "$VIDEO_OUT/embeddings.npz" ]]; then
-            echo "[skip] $VIDEO_STEM — graph_memory.json and embeddings.npz already exist"
+        if [[ -f "$VIDEO_OUT/graph_memory.json" && -e "$VIDEO_OUT/$RETRIEVAL_ARTIFACT" ]]; then
+            echo "[skip] $VIDEO_STEM — graph_memory.json and $RETRIEVAL_ARTIFACT already exist"
             DONE=$((DONE + 1))
             continue
         fi
 
         if [[ -f "$VIDEO_OUT/graph_memory.json" ]]; then
-            echo "[recover] $VIDEO_STEM — rebuilding missing embeddings.npz"
+            echo "[recover] $VIDEO_STEM — rebuilding missing $RETRIEVAL_ARTIFACT"
             if python -u -m build_graph \
                 "$v" \
                 --output-dir "$VIDEO_OUT" \
                 --embeddings-only \
+                --retrieval-backend "$RETRIEVAL_BACKEND" \
                 2>&1 | tee "$VIDEO_OUT/build_${TIMESTAMP}.log"; then
                 DONE=$((DONE + 1))
                 echo "[done] $VIDEO_STEM"
@@ -356,6 +377,7 @@ if [[ -n "$VIDEO_DIR" ]]; then
             "$v" \
             --output-dir "$VIDEO_OUT" \
             --model "$MODEL" \
+            --retrieval-backend "$RETRIEVAL_BACKEND" \
             $ASR_FLAGS \
             2>&1 | tee "$VIDEO_OUT/build_${TIMESTAMP}.log"; then
             DONE=$((DONE + 1))

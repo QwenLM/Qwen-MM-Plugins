@@ -8,7 +8,7 @@ import threading
 
 from shared.env import get_env, get_float_env
 
-from .embeddings import EmbeddingIndex
+from .embeddings import NPZ_INDEX_FILENAME, detect_retrieval_index, load_retrieval_index
 from .schema import HierarchicalGraphMemory
 from .time_system import detect_time_system
 from .toolkit import MemoryToolkit
@@ -29,18 +29,28 @@ def _path_stamp(path: str) -> _PathStamp:
     path = os.path.realpath(path)
     try:
         stat = os.stat(path)
+        if os.path.isdir(path):
+            latest_mtime = stat.st_mtime_ns
+            total_size = 0
+            for root, _dirs, files in os.walk(path):
+                for name in files:
+                    try:
+                        child = os.stat(os.path.join(root, name))
+                    except OSError:
+                        continue
+                    latest_mtime = max(latest_mtime, child.st_mtime_ns)
+                    total_size += child.st_size
+            return path, latest_mtime, total_size
         return path, stat.st_mtime_ns, stat.st_size
     except OSError:
         return path, 0, 0
 
 
 def _resolve_embed_path(memory_dir: str, configured: str | None) -> str:
-    if configured:
-        configured = os.path.realpath(configured)
-        if os.path.exists(configured):
-            return configured
-    default = os.path.realpath(os.path.join(memory_dir, "embeddings.npz"))
-    return default if os.path.exists(default) or not configured else configured
+    resolved = detect_retrieval_index(memory_dir, configured)
+    if resolved:
+        return resolved
+    return os.path.realpath(os.path.join(memory_dir, NPZ_INDEX_FILENAME))
 
 
 def get_toolkit(video_path: str | None = None) -> MemoryToolkit:
@@ -105,7 +115,8 @@ def load_toolkit(
     """Build a MemoryToolkit from a memory dir (uncached), applying the SAME time-system
     rebasing and embedding-index loading the server uses — so the CLI and the MCP
     tools resolve identical answers for the same memory. `graph_path` defaults to
-    `<memory_dir>/graph_memory.json`; `embed_path` to `<memory_dir>/embeddings.npz`."""
+    `<memory_dir>/graph_memory.json`; `embed_path` may point to either a zvec collection
+    directory or a legacy `<memory_dir>/embeddings.npz` file."""
     graph_path = graph_path or os.path.join(memory_dir, "graph_memory.json")
     if not os.path.exists(graph_path):
         raise RuntimeError(
@@ -121,21 +132,19 @@ def load_toolkit(
         log.info("Auto-detected %s data, patched %d macros", ts.mode_name, patched)
 
     if not embed_path or not os.path.exists(embed_path):
-        default = os.path.join(memory_dir, "embeddings.npz")
-        embed_path = default if os.path.exists(default) else ""
+        embed_path = detect_retrieval_index(memory_dir)
 
     index = None
     if embed_path:
-        log.info("Loading embedding index from %s", embed_path)
-        index = EmbeddingIndex()
-        index.load(embed_path)
+        log.info("Loading retrieval index from %s", embed_path)
+        index = load_retrieval_index(embed_path)
         try:
             index.check_dimension_compatibility()
         except Exception as e:
             index._dense_disabled = True
             log.warning("Embedding dimension check failed, dense search disabled (BM25-only fallback): %s", e)
     else:
-        log.warning("No embeddings found, search_nodes will be unavailable")
+        log.warning("No retrieval index found, search_nodes will be unavailable")
 
     toolkit = MemoryToolkit(memory, index, egolife_mode=(ts.mode_name == "egolife"))
     if cutoff is not None:

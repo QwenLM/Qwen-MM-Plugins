@@ -143,7 +143,7 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 | Variable | Default | Purpose |
 |---|---|---|
 | `GRAPH_MEMORY_PATH` | — | graph_memory.json path (overrides a passed video path) |
-| `EMBEDDINGS_PATH` | — | embeddings.npz path |
+| `EMBEDDINGS_PATH` | — | Retrieval index path (embeddings.npz or retrieval.zvec/) |
 | `CUTOFF_SEC` | — | time cutoff (seconds) for retrieval |
 
 ### Omni-memory

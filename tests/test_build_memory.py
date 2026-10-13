@@ -314,6 +314,74 @@ def test_npz_save_load_roundtrip(embeddings, tmp_path):
     assert loaded._inv_index, "sparse BM25 index must be rebuilt on load"
 
 
+def test_zvec_roundtrip_persists_vectors_metadata_and_fts(embeddings, tmp_path, monkeypatch):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [
+        {"node_id": "same:id", "node_type": "entity", "macro_id": "macro_0", "text": "orange cat on mat"},
+        {"node_id": "same:id", "node_type": "event", "macro_id": "macro_1", "text": "blue car driving"},
+        {
+            "node_id": "ocr/2",
+            "node_type": "on_screen_text",
+            "macro_id": "macro_1",
+            "text": "FINAL SCORE",
+        },
+    ]
+    matrix = np.asarray([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]], dtype=np.float32)
+    path = str(tmp_path / embeddings.ZVEC_INDEX_DIRNAME)
+
+    embeddings.save_zvec_index(path, nodes, matrix)
+    loaded = embeddings.load_retrieval_index(path)
+    try:
+        monkeypatch.setattr(
+            loaded,
+            "_embed_batch",
+            lambda _texts: np.asarray([[1.0, 0.0]], dtype=np.float32),
+        )
+        results = loaded.search("orange", top_k=3)
+        assert results[0]["node_id"] == "same:id"
+        assert results[0]["macro_id"] == "macro_0"
+        assert results[0]["cosine"] == pytest.approx(1.0)
+
+        loaded._dense_disabled = True
+        assert [result["macro_id"] for result in loaded.search("orange", top_k=10)] == ["macro_0"]
+        assert [result["macro_id"] for result in loaded.search("car", node_types=["event"])] == ["macro_1"]
+
+        exported_nodes, exported_matrix = loaded.export_records()
+        assert len(exported_nodes) == 3
+        assert sorted(node["node_id"] for node in exported_nodes) == ["ocr/2", "same:id", "same:id"]
+        assert exported_matrix.shape == matrix.shape
+    finally:
+        loaded.close()
+
+
+def test_detect_retrieval_index_prefers_zvec(embeddings, tmp_path):
+    (tmp_path / embeddings.NPZ_INDEX_FILENAME).write_bytes(b"legacy")
+    zvec_path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
+    zvec_path.mkdir()
+
+    assert embeddings.detect_retrieval_index(str(tmp_path)) == str(zvec_path.resolve())
+
+
+def test_build_save_embeddings_can_select_zvec(build_graph, embeddings, tmp_path, monkeypatch):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    memory = _make_memory(build_graph)
+
+    def build_locally(index, nodes):
+        index.nodes = nodes
+        index._set_embeddings(np.eye(len(nodes), dtype=np.float32))
+        index._build_sparse_index()
+
+    monkeypatch.setattr(build_graph.EmbeddingIndex, "build", build_locally)
+    path = build_graph._build_save_embeddings(memory, str(tmp_path), retrieval_backend="zvec")
+
+    assert path == str(tmp_path / "retrieval.zvec")
+    assert (tmp_path / "retrieval.zvec").is_dir()
+    nodes, matrix = embeddings.export_retrieval_index(path)
+    assert len(nodes) == matrix.shape[0] > 0
+
+
 # ── build_graph: pure helpers (no ffmpeg / LLM / OSS) ────────────────
 
 

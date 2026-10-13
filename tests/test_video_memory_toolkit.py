@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from qwen_mm_plugins_video_memory.embeddings import ZvecEmbeddingIndex, save_zvec_index
 from qwen_mm_plugins_video_memory.loader import load_toolkit
 from qwen_mm_plugins_video_memory.schema import HierarchicalGraphMemory, MacroEvent
 from qwen_mm_plugins_video_memory.time_system import DefaultTimeSystem
@@ -96,3 +97,25 @@ def test_egolife_rejects_invalid_clock_times(timestamp):
 
 def test_normal_videos_can_exceed_twenty_four_hours():
     assert DefaultTimeSystem().str_to_sec("100:00:01") == 360001
+
+
+def test_loader_auto_detects_persistent_zvec_index(tmp_path, monkeypatch):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    memory = HierarchicalGraphMemory(macro_events=[MacroEvent("opening", "Opening", [0, 60])])
+    memory.save(str(tmp_path / "graph_memory.json"))
+    save_zvec_index(
+        str(tmp_path / "retrieval.zvec"),
+        [{"node_id": "evt:1", "node_type": "event", "macro_id": "opening", "text": "orange cat jumps"}],
+        np.asarray([[1.0, 0.0]], dtype=np.float32),
+    )
+    monkeypatch.setattr(ZvecEmbeddingIndex, "check_dimension_compatibility", lambda _self: None)
+
+    loaded = load_toolkit(str(tmp_path))
+    try:
+        assert isinstance(loaded.index, ZvecEmbeddingIndex)
+        loaded.index._dense_disabled = True
+        result = json.loads(loaded.search_nodes("orange"))
+        assert result["results"][0]["parent_macro"]["macro_id"] == "opening"
+    finally:
+        loaded.index.close()

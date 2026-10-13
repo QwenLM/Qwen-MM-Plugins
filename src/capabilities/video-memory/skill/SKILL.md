@@ -51,6 +51,12 @@ bash script/build_memory/build_memory.sh /path/to/video.mp4
 # Build with custom options
 bash script/build_memory/build_memory.sh /path/to/video.mp4 \
     --output-dir /path/to/output --model qwen3.7-plus --api-key "$DASHSCOPE_API_KEY"
+
+# Build a persistent zvec vector/scalar/full-text collection
+bash script/build_memory/build_memory.sh /path/to/video.mp4 --retrieval-backend zvec
+
+# Merge per-video memories in one directory into one memory and one zvec collection
+python script/build_memory/merge_memories.py /path/to/video-dir --retrieval-backend zvec
 ```
 
 
@@ -156,7 +162,16 @@ Graph memory is stored next to the video, in `<video_path>.memory/` (e.g.
 `/data/clip.mp4` → `/data/clip.mp4.memory/`). The server auto-loads it from there
 when you pass `video_path`, or set `GRAPH_MEMORY_PATH` to point at one explicitly.
 
-Contents: `graph_memory.json`, `embeddings.npz`, `01_macros.json`, `subgraphs/`
+By default the retrieval artifact is `embeddings.npz`. With
+`--retrieval-backend zvec`, it is the persistent `retrieval.zvec/` collection,
+which stores vectors, node metadata, and the full-text index together. The
+server detects either format automatically and prefers zvec when both exist.
+The collection boundary follows the generated memory: normally one video, or
+one explicitly merged directory memory. Existing prefixed node and macro IDs
+identify records in a merged memory, so no separate `video_id` field is added.
+
+Contents: `graph_memory.json`, `embeddings.npz` or `retrieval.zvec/`,
+`01_macros.json`, `subgraphs/`
 
 ## Efficiency Rules
 
