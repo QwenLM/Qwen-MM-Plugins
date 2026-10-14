@@ -47,9 +47,3 @@ Match tests to the capability's components:
 
 Never require credentials, a GUI application, GPU hardware, or public-network reachability in the
 default offline suite.
-
-## Video-memory backend benchmark
-
-Video-memory tests and its benchmark live in [`tests/video-memory/`](../../tests/video-memory/README.md).
-See that directory's README for offline NPZ/zvec comparisons of first access, warm hybrid/FTS
-retrieval, storage, result parity and optional cost diagnostics.
