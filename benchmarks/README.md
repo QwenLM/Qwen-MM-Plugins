@@ -27,7 +27,9 @@ builds both backends in temporary directories and removes those directories on c
   uses two rare tokens from a source node; its stored vector is reused as the query vector. This
   isolates backend behavior and is not a relevance or end-to-end quality evaluation.
 - **Diagnostics** run separately after headline timings. They measure NPZ's BM25 rebuild, zvec's
-  extra dependency initialization, build calls, query routes and Python result conversion. Conversion
+  extra dependency initialization, build calls, query routes, native query calls, RRF selection and
+  Python result conversion. The native boundary includes result transfer through the binding, not
+  just distance computation. Conversion
   is included in route timings; fetch conversion is included in the separately reported metadata
   fetch. Do not add these nested costs again. Instrumented timings include wrapper overhead and
   are attribution evidence, not replacement latency numbers.
@@ -37,6 +39,46 @@ graph loading, MCP transport and remote query embedding are excluded. Default re
 and five fresh-process repetitions per backend/mode; these are descriptive samples, not confidence
 intervals. `--scale-nodes` repeats source text and slightly perturbs copied vectors with a fixed seed.
 It tests a synthetic size trend, not a representative multi-video corpus, and disables parity output.
+
+## Exact fusion pruning and NumPy query vectors, 2026-10-14
+
+The adapter now passes contiguous float32 NumPy query vectors directly to zvec, avoiding the previous
+NumPy → Python list → NumPy conversion. It also avoids constructing full dense-rank/cosine maps and
+sorting dense-only candidates below rank K. Such a candidate is strictly outranked by at least the
+first K dense candidates, whose sparse contributions cannot be negative. All sparse matches remain
+eligible, with ranks taken from the **complete** dense and FTS results. Relative insertion order and
+the existing score arithmetic are preserved. Single-route searches use their already-sorted prefix.
+
+With the same fixture and settings below, the new zvec warm hybrid p50 values are:
+
+- 81 real nodes: 0.21 ms, previously 0.29 ms after deferred fetch.
+- 1,000 synthetic nodes: 0.67 ms, previously 0.82 ms (18% lower).
+- 5,000 synthetic nodes: 2.87 ms, previously 3.26 ms (12% lower), and 5.06 ms before either
+  optimization (43% lower overall). Its p95 is 4.16 ms; the same rerun measured NPZ at 1.65/2.10 ms.
+  Warm FTS is now 0.43/0.76 ms vs NPZ 0.42/0.57 ms. Load + first hybrid query still favors zvec:
+  28.00 ms vs NPZ 48.15 ms. These are descriptive reruns, not confidence intervals or universal gains.
+
+**The remaining bottleneck is full-ranking query execution and transfer, not RRF sorting.** In a
+separate 20-query diagnostic at 5,000 nodes, zvec took 57.55 ms total: native query/binding calls
+27.26 ms, candidate conversion 13.23 ms, RRF selection 1.62 ms, and metadata fetch 2.15 ms. Query
+vector setup was only 0.07 ms. Other time includes SDK dispatch, list handling and instrumentation
+overhead; do not interpret this as a pure native CPU profile. The engine still returns 41,686
+ID/score candidates across these queries. NPZ instead computes over an already-loaded normalized
+NumPy matrix and in-process BM25 structures, without constructing SDK documents for all candidates.
+
+Before/after verification against `dcc9765` matched all 5,616 full-result comparisons described
+below. A further 1,200 randomized ranking/K combinations matched exhaustive Python fusion exactly.
+The existing NPZ/zvec parity metrics remain unchanged.
+
+Native RRF is not a drop-in equivalent with this zvec 0.7.0 SDK: public multi-query `topk` also
+controls each route's candidate count, and the native reranker replaces the original distance score.
+Even after correcting the rank constant from 60 to 59 for its one-based formula, two disjoint
+40-document rankings produced a different Top-20 order: the Python result starts `d0, s0, d1, s1`,
+while native RRF starts `d0, s0, s1, d1`. This is a different tie policy, not an equivalent replacement.
+Further reductions
+in transfer therefore need separately controlled candidate/output limits and verified tie-breaking
+and per-route score preservation. This implementation keeps exhaustive retrieval and does not use
+private native query APIs in production.
 
 ## Deferred metadata fetching, 2026-10-14
 

@@ -643,6 +643,34 @@ class ZvecEmbeddingIndex:
             include_vector=False,
         )
 
+    @staticmethod
+    def _select_fused(dense_docs, sparse_docs, top_k: int) -> list[tuple[str, float, float]]:
+        """Select exact RRF Top-K without sorting candidates that cannot reach it."""
+        rrf_k = 60
+        if not dense_docs:
+            return [(doc.id, 1.0 / (rrf_k + rank), 0.0) for rank, doc in enumerate(sparse_docs[:top_k])]
+        if not sparse_docs:
+            return [
+                (doc.id, 1.0 / (rrf_k + rank), 1.0 - float(doc.score)) for rank, doc in enumerate(dense_docs[:top_k])
+            ]
+
+        sparse_rank = {doc.id: rank for rank, doc in enumerate(sparse_docs)}
+        fused = []
+        for rank, doc in enumerate(dense_docs):
+            sparse_position = sparse_rank.pop(doc.id, None)
+            # A dense-only item below rank K is strictly outranked by the first K
+            # dense items, even after their nonnegative sparse contributions.
+            # Keep EVERY sparse match, using its rank in the complete dense list.
+            if rank < top_k or sparse_position is not None:
+                score = 0.0 if sparse_position is None else 1.0 / (rrf_k + sparse_position)
+                score += 1.0 / (rrf_k + rank)
+                fused.append((doc.id, score, 1.0 - float(doc.score)))
+        # Unmatched sparse entries retain their original insertion order, after
+        # dense entries, preserving the existing stable tie-breaking.
+        fused.extend((doc_id, 1.0 / (rrf_k + rank), 0.0) for doc_id, rank in sparse_rank.items())
+        fused.sort(key=lambda item: item[1], reverse=True)
+        return fused[:top_k]
+
     def search(
         self,
         query: str,
@@ -658,7 +686,7 @@ class ZvecEmbeddingIndex:
         dense_docs = []
         if not self._dense_disabled:
             try:
-                q_emb = self._embed_batch([query])[0].astype(np.float32)
+                q_emb = np.ascontiguousarray(self._embed_batch([query])[0], dtype=np.float32)
                 if q_emb.shape[0] != self._dimension:
                     print(
                         f"[embed] dimension mismatch (stored={self._dimension}, query={q_emb.shape[0]}); "
@@ -668,7 +696,7 @@ class ZvecEmbeddingIndex:
                     self._dense_disabled = True
                 else:
                     dense_docs = self._query(
-                        zvec.Query(field_name="embedding", vector=q_emb.tolist()),
+                        zvec.Query(field_name="embedding", vector=q_emb),
                         filter_expr=filter_expr,
                     )
             except Exception as e:
@@ -686,28 +714,10 @@ class ZvecEmbeddingIndex:
             except Exception as e:
                 print(f"[fts] zvec full-text search failed ({e})", file=sys.stderr)
 
-        dense_rank = {doc.id: rank for rank, doc in enumerate(dense_docs)}
-        sparse_rank = {doc.id: rank for rank, doc in enumerate(sparse_docs)}
-        if not dense_rank and not sparse_rank:
+        selected = self._select_fused(dense_docs, sparse_docs, top_k)
+        if not selected:
             return []
 
-        # Preserve dense-first insertion order for stable RRF tie-breaking.
-        candidate_ids = dict.fromkeys(dense_rank)
-        candidate_ids.update(dict.fromkeys(sparse_rank))
-        cosine_by_id = {doc.id: 1.0 - float(doc.score) for doc in dense_docs}
-        rrf_k = 60
-        fused = []
-        for doc_id in candidate_ids:
-            score = 0.0
-            if doc_id in sparse_rank:
-                score += 1.0 / (rrf_k + sparse_rank[doc_id])
-            if doc_id in dense_rank:
-                score += 1.0 / (rrf_k + dense_rank[doc_id])
-            if score:
-                fused.append((doc_id, score, cosine_by_id.get(doc_id, 0.0)))
-        fused.sort(key=lambda item: item[1], reverse=True)
-
-        selected = fused[:top_k]
         docs = self._collection.fetch(
             [doc_id for doc_id, _, _ in selected],
             output_fields=self._OUTPUT_FIELDS,

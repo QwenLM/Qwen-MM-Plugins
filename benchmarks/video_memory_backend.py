@@ -249,6 +249,15 @@ def _diagnose_worker(index_path: str, query_pack: str, top_k: int) -> dict:
 
                     stack.enter_context(mock.patch.object(index, "_query", measured_query))
                     stack.enter_context(
+                        _observe_call(type(index._collection._obj), "Query", measurements, "native_query")
+                    )
+                    stack.enter_context(_observe_call(index, "_select_fused", measurements, "rrf_selection"))
+                    stack.enter_context(
+                        _observe_call(
+                            query_executor.QueryExecutor, "set_query_vector", measurements, "query_vector_setup"
+                        )
+                    )
+                    stack.enter_context(
                         _observe_call(query_executor, "convert_to_py_doc", measurements, "result_conversion")
                     )
                     stack.enter_context(_observe_call(index._collection, "fetch", measurements, "metadata_fetch"))
@@ -527,6 +536,7 @@ def _print_report(report: dict) -> None:
                     print(f"  Mean candidates returned per query: {breakdown['mean_returned_candidates']}")
         print("Result conversion is INCLUDED in embedding/text route times, not an additive component.")
         print("Fetch result conversion is INCLUDED in metadata_fetch, which occurs after fusion.")
+        print("Native query (including binding transfer) and vector setup are INCLUDED in route times.")
 
 
 def _parser() -> argparse.ArgumentParser:

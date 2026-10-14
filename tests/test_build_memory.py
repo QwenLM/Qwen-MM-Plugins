@@ -337,7 +337,8 @@ def test_zvec_roundtrip_persists_vectors_metadata_and_fts(embeddings, tmp_path, 
         monkeypatch.setattr(
             loaded,
             "_embed_batch",
-            lambda _texts: np.asarray([[1.0, 0.0]], dtype=np.float32),
+            # A strided embedding must be made contiguous before the native query.
+            lambda _texts: np.asarray([[1.0, 99.0, 0.0, 99.0]], dtype=np.float32)[:, ::2],
         )
         results = loaded.search("orange", top_k=3)
         assert results[0]["node_id"] == "same:id"
@@ -571,6 +572,33 @@ def test_zvec_candidate_projection_returns_no_fields_or_vectors(embeddings, tmp_
         assert index.search("orange", top_k=0) == []
     finally:
         index.close()
+
+
+def test_zvec_fusion_pruning_matches_exhaustive_rrf(embeddings):
+    np = pytest.importorskip("numpy")
+    rng = np.random.default_rng(42)
+    for _ in range(200):
+        ids = [str(i) for i in range(200)]
+        dense = [
+            SimpleNamespace(id=key, score=float(rng.uniform(0, 2)))
+            for key in rng.permutation(ids)[: int(rng.integers(0, 201))]
+        ]
+        sparse = [SimpleNamespace(id=key, score=1.0) for key in rng.permutation(ids)[: int(rng.integers(0, 201))]]
+        # Reference: exhaustive fusion before the optimization, including stable ties.
+        dense_rank = {doc.id: rank for rank, doc in enumerate(dense)}
+        sparse_rank = {doc.id: rank for rank, doc in enumerate(sparse)}
+        cosine = {doc.id: 1.0 - float(doc.score) for doc in dense}
+        reference = []
+        for key in dict.fromkeys([*dense_rank, *sparse_rank]):
+            score = 0.0
+            if key in sparse_rank:
+                score += 1.0 / (60 + sparse_rank[key])
+            if key in dense_rank:
+                score += 1.0 / (60 + dense_rank[key])
+            reference.append((key, score, cosine.get(key, 0.0)))
+        reference.sort(key=lambda item: item[1], reverse=True)
+        for k in (1, 2, 10, 20, 100, 300):
+            assert embeddings.ZvecEmbeddingIndex._select_fused(dense, sparse, k) == reference[:k]
 
 
 def test_detect_retrieval_index_rejects_two_backends(embeddings, tmp_path):

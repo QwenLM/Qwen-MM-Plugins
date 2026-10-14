@@ -96,3 +96,6 @@ def test_diagnostics_observe_bm25_rebuild_only_for_npz(tmp_path, backend):
         assert hybrid["calls"]["result_conversion"]["calls"] == 2
         assert hybrid["calls"]["metadata_fetch"]["calls"] == 1
         assert hybrid["calls"]["fetch_result_conversion"]["calls"] == 1
+        assert hybrid["calls"]["native_query"]["calls"] == 2
+        assert hybrid["calls"]["rrf_selection"]["calls"] == 1
+        assert hybrid["calls"]["query_vector_setup"]["calls"] == 1
