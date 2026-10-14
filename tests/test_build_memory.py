@@ -355,6 +355,30 @@ def test_zvec_roundtrip_persists_vectors_metadata_and_fts(embeddings, tmp_path, 
         loaded.close()
 
 
+def test_zvec_query_bounds_rrf_candidates(embeddings):
+    calls = []
+
+    class Collection:
+        def query(self, query, **kwargs):
+            calls.append((query, kwargs))
+            return []
+
+    index = embeddings.ZvecEmbeddingIndex()
+    index._collection = Collection()
+    index._doc_count = 10_000
+
+    index._query(object(), filter_expr="node_type IN ('event')", top_k=5)
+    assert calls[-1][1]["topk"] == 100
+    assert calls[-1][1]["filter"] == "node_type IN ('event')"
+
+    index._query(object(), filter_expr=None, top_k=50)
+    assert calls[-1][1]["topk"] == 500
+
+    index._doc_count = 20
+    index._query(object(), filter_expr=None, top_k=5)
+    assert calls[-1][1]["topk"] == 20
+
+
 def test_detect_retrieval_index_rejects_two_backends(embeddings, tmp_path):
     (tmp_path / embeddings.NPZ_INDEX_FILENAME).write_bytes(b"legacy")
     zvec_path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
@@ -412,6 +436,32 @@ def test_failed_backend_switch_keeps_existing_index(embeddings, tmp_path, monkey
         embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
 
     assert os.path.isfile(npz_path)
+
+
+def test_validation_failure_leaves_only_previous_backend(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+    previous = open(npz_path, "rb").read()
+
+    def fake_save_zvec(path, *_args):
+        os.makedirs(path)
+        open(os.path.join(path, "incomplete"), "wb").close()
+
+    monkeypatch.setattr(embeddings, "save_zvec_index", fake_save_zvec)
+    monkeypatch.setattr(
+        embeddings,
+        "_validate_retrieval_index",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("validation failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="validation failed"):
+        embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+
+    assert open(npz_path, "rb").read() == previous
+    assert not (tmp_path / embeddings.ZVEC_INDEX_DIRNAME).exists()
+    assert not list(tmp_path.glob(".retrieval-index-*"))
 
 
 def test_build_save_embeddings_can_select_zvec(build_graph, embeddings, tmp_path, monkeypatch):

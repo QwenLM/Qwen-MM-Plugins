@@ -26,6 +26,8 @@ _RETRY_BASE_DELAY = 1.0
 NPZ_INDEX_FILENAME = "embeddings.npz"
 ZVEC_INDEX_DIRNAME = "retrieval.zvec"
 RETRIEVAL_BACKENDS = ("npz", "zvec")
+_ZVEC_RRF_MIN_CANDIDATES = 100
+_ZVEC_RRF_CANDIDATE_MULTIPLIER = 10
 
 
 # DashScope native multimodal-embedding endpoint.
@@ -610,12 +612,16 @@ class ZvecEmbeddingIndex:
         quoted = ", ".join("'" + value.replace("'", "''") + "'" for value in values)
         return f"node_type IN ({quoted})"
 
-    def _query(self, query, *, filter_expr: str | None):
+    def _query(self, query, *, filter_expr: str | None, top_k: int):
         if self._collection is None:
             return []
+        candidate_count = min(
+            self._doc_count,
+            max(_ZVEC_RRF_MIN_CANDIDATES, top_k * _ZVEC_RRF_CANDIDATE_MULTIPLIER),
+        )
         return self._collection.query(
             query,
-            topk=max(1, self._doc_count),
+            topk=max(1, candidate_count),
             filter=filter_expr,
             output_fields=self._OUTPUT_FIELDS,
         )
@@ -626,7 +632,7 @@ class ZvecEmbeddingIndex:
         top_k: int = 10,
         node_types: list[str] | None = None,
     ) -> list[dict]:
-        """Run exact cosine and persisted FTS routes, then preserve the existing RRF behavior."""
+        """Run exact cosine and persisted FTS routes, then fuse bounded candidates with RRF."""
         if self._collection is None or self._doc_count == 0 or top_k <= 0:
             return []
         zvec = _require_zvec()
@@ -645,7 +651,9 @@ class ZvecEmbeddingIndex:
                     self._dense_disabled = True
                 else:
                     dense_docs = self._query(
-                        zvec.Query(field_name="embedding", vector=q_emb.tolist()), filter_expr=filter_expr
+                        zvec.Query(field_name="embedding", vector=q_emb.tolist()),
+                        filter_expr=filter_expr,
+                        top_k=top_k,
                     )
             except Exception as e:
                 print(f"[embed] dense backend failed ({e}); falling back to FTS-only search", file=sys.stderr)
@@ -656,7 +664,9 @@ class ZvecEmbeddingIndex:
         if sparse_query:
             try:
                 sparse_docs = self._query(
-                    zvec.Query(field_name="text", fts=zvec.Fts(match_string=sparse_query)), filter_expr=filter_expr
+                    zvec.Query(field_name="text", fts=zvec.Fts(match_string=sparse_query)),
+                    filter_expr=filter_expr,
+                    top_k=top_k,
                 )
             except Exception as e:
                 print(f"[fts] zvec full-text search failed ({e})", file=sys.stderr)
@@ -781,23 +791,51 @@ def save_retrieval_index(
     nodes: list[dict],
     embeddings: np.ndarray,
 ) -> str:
-    """Persist, validate, and activate exactly one retrieval backend for a memory."""
+    """Stage, validate, and publish exactly one retrieval backend for a memory."""
     embeddings = np.asarray(embeddings, dtype=np.float32)
     if embeddings.ndim != 2 or embeddings.shape[0] != len(nodes) or embeddings.shape[1] == 0:
         raise ValueError("embeddings must be a non-empty 2-D matrix aligned with nodes")
 
-    path = retrieval_index_path(memory_dir, backend)
-    if backend == "zvec":
-        save_zvec_index(path, nodes, embeddings)
-    elif backend == "npz":
-        index = EmbeddingIndex()
-        index.nodes = nodes
-        index._set_embeddings(embeddings)
-        index.save(path)
-    else:
+    if backend not in RETRIEVAL_BACKENDS:
         raise ValueError(f"unsupported retrieval backend: {backend!r}; expected one of {RETRIEVAL_BACKENDS}")
 
-    _validate_retrieval_index(path, len(nodes), int(embeddings.shape[1]))
+    os.makedirs(memory_dir, exist_ok=True)
+    path = retrieval_index_path(memory_dir, backend)
     inactive_backend = "npz" if backend == "zvec" else "zvec"
-    _remove_retrieval_artifact(retrieval_index_path(memory_dir, inactive_backend))
+    inactive_path = retrieval_index_path(memory_dir, inactive_backend)
+    stage_root = tempfile.mkdtemp(prefix=".retrieval-index-", dir=memory_dir)
+    stage_path = os.path.join(stage_root, os.path.basename(path))
+    active_backup = os.path.join(stage_root, "previous-active")
+    inactive_backup = os.path.join(stage_root, "previous-inactive")
+    active_moved = False
+    inactive_moved = False
+
+    try:
+        if backend == "zvec":
+            save_zvec_index(stage_path, nodes, embeddings)
+        else:
+            index = EmbeddingIndex()
+            index.nodes = nodes
+            index._set_embeddings(embeddings)
+            index.save(stage_path)
+
+        _validate_retrieval_index(stage_path, len(nodes), int(embeddings.shape[1]))
+
+        try:
+            if os.path.exists(path):
+                os.replace(path, active_backup)
+                active_moved = True
+            if os.path.exists(inactive_path):
+                os.replace(inactive_path, inactive_backup)
+                inactive_moved = True
+            os.replace(stage_path, path)
+        except Exception:
+            if inactive_moved and os.path.exists(inactive_backup):
+                os.replace(inactive_backup, inactive_path)
+            if active_moved and os.path.exists(active_backup):
+                os.replace(active_backup, path)
+            raise
+    finally:
+        shutil.rmtree(stage_root, ignore_errors=True)
+
     return path

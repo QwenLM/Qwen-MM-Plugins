@@ -86,7 +86,7 @@ python -c "import cv2" 2>/dev/null || _MISSING_PKGS+=(opencv-python-headless)
 python -c "import numpy" 2>/dev/null || _MISSING_PKGS+=('numpy<2')
 python -c "import dashscope" 2>/dev/null || _MISSING_PKGS+=(dashscope)
 if [[ "$RETRIEVAL_BACKEND" == "zvec" ]]; then
-    python -c "import zvec; assert tuple(map(int, zvec.__version__.split('.')[:2])) >= (0, 7)" 2>/dev/null || _MISSING_PKGS+=('zvec>=0.7,<1')
+    python -c "import zvec; version = tuple(map(int, zvec.__version__.split('.')[:2])); assert (0, 7) <= version < (1, 0)" 2>/dev/null || _MISSING_PKGS+=('zvec>=0.7,<1')
 fi
 _PYDANTIC_CHECK='import pydantic; assert (2, 11) <= tuple(map(int, pydantic.__version__.split(".")[:2])) < (3, 0)'
 python -c "$_PYDANTIC_CHECK" 2>/dev/null || _MISSING_PKGS+=('pydantic>=2.11,<3')

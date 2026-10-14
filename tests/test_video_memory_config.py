@@ -154,6 +154,57 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *args])
     assert ("Video file not found" if install_succeeds else "configuration requires pydantic") in output
 
 
+@pytest.mark.parametrize(
+    "zvec_version,expects_install",
+    [("0.6.9", True), ("0.7.0", False), ("0.9.4", False), ("1.0.0", True)],
+)
+def test_launcher_enforces_supported_zvec_version_range(tmp_path, zvec_version, expects_install):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log = tmp_path / "pip-args"
+    python = fake_bin / "python"
+    python.write_text(f"""#!{sys.executable}
+import os, sys
+from pathlib import Path
+args = sys.argv[1:]
+if args[:2] == ["-m", "pip"]:
+    Path({str(log)!r}).write_text("\\n".join(args[2:]))
+    sys.exit(0)
+if args[0] == "-c":
+    if "zvec.__version__" in args[1]:
+        version = tuple(map(int, {zvec_version!r}.split(".")[:2]))
+        sys.exit(0 if (0, 7) <= version < (1, 0) else 1)
+    if args[1] in ("import cv2", "import numpy", "import dashscope") or "pydantic.__version__" in args[1]:
+        sys.exit(0)
+os.execv({sys.executable!r}, [{sys.executable!r}, *args])
+""")
+    python.chmod(0o755)
+    config = tmp_path / "config"
+    config.write_text("DASHSCOPE_API_KEY=test-key\n")
+    process_env = {**os.environ, "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"], "QWEN_MM_CONFIG": str(config)}
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(_BUILD_DIR / "build_memory.sh"),
+            str(tmp_path / "missing.mp4"),
+            "--no-asr",
+            "--retrieval-backend",
+            "zvec",
+        ],
+        env=process_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    assert log.exists() is expects_install
+    if expects_install:
+        assert "zvec>=0.7,<1" in log.read_text()
+    assert "Video file not found" in result.stdout + result.stderr
+
+
 def test_builder_chat_settings_refresh_and_invalid_timeout_never_retries(tmp_path):
     outcome = _run_probe(
         tmp_path,
