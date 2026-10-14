@@ -24,6 +24,7 @@ import time
 
 import numpy as np
 from embeddings import (
+    NPZ_INDEX_FILENAME,
     RETRIEVAL_BACKENDS,
     EmbeddingIndex,
     detect_retrieval_index,
@@ -76,7 +77,7 @@ def prefix_ids(data: dict, prefix: str):
         sr["target"] = p + str(sr["target"])
 
 
-def _rebuild_embeddings_for_memory(gm_path: str):
+def _rebuild_embeddings_for_memory(gm_path: str, emb_path: str | None):
     """Rebuild embeddings for a single video memory from its graph_memory.json."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     if script_dir not in sys.path:
@@ -90,6 +91,9 @@ def _rebuild_embeddings_for_memory(gm_path: str):
 
     index = EmbeddingIndex()
     index.build(nodes)
+    # Retain legacy NPZ repair write-back; zvec sources remain read-only.
+    if emb_path is not None:
+        index.save(emb_path)
     return index.nodes, index.embeddings
 
 
@@ -196,18 +200,20 @@ def merge_directory(
     for entry, gm_path in memory_files:
         mem_dir = os.path.join(video_dir, entry)
         index_path = detect_retrieval_index(mem_dir)
+        npz_path = os.path.join(mem_dir, NPZ_INDEX_FILENAME)
         prefix = prefix_map[entry]
         p = f"{prefix}_"
 
         if not index_path:
-            to_rebuild.append((entry, gm_path, prefix))
+            to_rebuild.append((entry, gm_path, npz_path, prefix))
             continue
 
         try:
             nodes_json, embs = export_retrieval_index(index_path)
         except Exception as e:
             print(f"  {prefix}: retrieval index unreadable ({e}), will rebuild")
-            to_rebuild.append((entry, gm_path, prefix))
+            repair_path = npz_path if index_path == os.path.realpath(npz_path) else None
+            to_rebuild.append((entry, gm_path, repair_path, prefix))
             continue
 
         for node in nodes_json:
@@ -221,10 +227,10 @@ def merge_directory(
     # Rebuild corrupt/missing embeddings
     if to_rebuild:
         print(f"  Rebuilding {len(to_rebuild)} corrupt/missing retrieval indexes...")
-        for entry, gm_path, prefix in to_rebuild:
+        for entry, gm_path, emb_path, prefix in to_rebuild:
             p = f"{prefix}_"
             try:
-                nodes, embs = _rebuild_embeddings_for_memory(gm_path)
+                nodes, embs = _rebuild_embeddings_for_memory(gm_path, emb_path)
                 for node in nodes:
                     node["node_id"] = p + str(node.get("node_id", ""))
                     if node.get("macro_id"):
