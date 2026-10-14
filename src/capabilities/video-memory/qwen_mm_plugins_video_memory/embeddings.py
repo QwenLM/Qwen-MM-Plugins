@@ -639,7 +639,8 @@ class ZvecEmbeddingIndex:
             query,
             topk=max(1, self._doc_count),
             filter=filter_expr,
-            output_fields=self._OUTPUT_FIELDS,
+            output_fields=[],
+            include_vector=False,
         )
 
     def search(
@@ -690,23 +691,33 @@ class ZvecEmbeddingIndex:
         if not dense_rank and not sparse_rank:
             return []
 
-        docs_by_id = {doc.id: doc for doc in dense_docs}
-        docs_by_id.update({doc.id: doc for doc in sparse_docs})
+        # Preserve dense-first insertion order for stable RRF tie-breaking.
+        candidate_ids = dict.fromkeys(dense_rank)
+        candidate_ids.update(dict.fromkeys(sparse_rank))
         cosine_by_id = {doc.id: 1.0 - float(doc.score) for doc in dense_docs}
         rrf_k = 60
         fused = []
-        for doc_id, doc in docs_by_id.items():
+        for doc_id in candidate_ids:
             score = 0.0
             if doc_id in sparse_rank:
                 score += 1.0 / (rrf_k + sparse_rank[doc_id])
             if doc_id in dense_rank:
                 score += 1.0 / (rrf_k + dense_rank[doc_id])
             if score:
-                fused.append((doc, score, cosine_by_id.get(doc_id, 0.0)))
+                fused.append((doc_id, score, cosine_by_id.get(doc_id, 0.0)))
         fused.sort(key=lambda item: item[1], reverse=True)
 
+        selected = fused[:top_k]
+        docs = self._collection.fetch(
+            [doc_id for doc_id, _, _ in selected],
+            output_fields=self._OUTPUT_FIELDS,
+            include_vector=False,
+        )
         results = []
-        for doc, score, cosine in fused[:top_k]:
+        for doc_id, score, cosine in selected:
+            if doc_id not in docs:
+                raise RuntimeError(f"zvec result is missing during metadata fetch: {doc_id}")
+            doc = docs[doc_id]
             node = {name: doc.fields.get(name, "") for name in self._OUTPUT_FIELDS}
             node["score"] = round(score, 6)
             node["cosine"] = round(cosine, 4)

@@ -94,3 +94,5 @@ def test_diagnostics_observe_bm25_rebuild_only_for_npz(tmp_path, backend):
         hybrid = report["query_breakdown"]["hybrid"]
         assert hybrid["mean_returned_candidates"] == {"embedding": 1, "text": 1}
         assert hybrid["calls"]["result_conversion"]["calls"] == 2
+        assert hybrid["calls"]["metadata_fetch"]["calls"] == 1
+        assert hybrid["calls"]["fetch_result_conversion"]["calls"] == 1

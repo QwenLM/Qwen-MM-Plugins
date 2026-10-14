@@ -233,6 +233,7 @@ def _diagnose_worker(index_path: str, query_pack: str, top_k: int) -> dict:
             with contextlib.ExitStack() as stack:
                 if is_zvec:
                     from zvec.executor import query_executor
+                    from zvec.model import collection
 
                     original_query = index._query
 
@@ -249,6 +250,10 @@ def _diagnose_worker(index_path: str, query_pack: str, top_k: int) -> dict:
                     stack.enter_context(mock.patch.object(index, "_query", measured_query))
                     stack.enter_context(
                         _observe_call(query_executor, "convert_to_py_doc", measurements, "result_conversion")
+                    )
+                    stack.enter_context(_observe_call(index._collection, "fetch", measurements, "metadata_fetch"))
+                    stack.enter_context(
+                        _observe_call(collection, "convert_to_py_doc", measurements, "fetch_result_conversion")
                     )
                 else:
                     stack.enter_context(_observe_call(index, "_sparse_search", measurements, "bm25_scoring"))
@@ -521,6 +526,7 @@ def _print_report(report: dict) -> None:
                 if breakdown.get("mean_returned_candidates"):
                     print(f"  Mean candidates returned per query: {breakdown['mean_returned_candidates']}")
         print("Result conversion is INCLUDED in embedding/text route times, not an additive component.")
+        print("Fetch result conversion is INCLUDED in metadata_fetch, which occurs after fusion.")
 
 
 def _parser() -> argparse.ArgumentParser:

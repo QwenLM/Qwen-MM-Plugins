@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from dataclasses import asdict
+from types import SimpleNamespace
 
 import pytest
 from conftest import REPO_ROOT
@@ -479,10 +480,97 @@ def test_zvec_query_uses_complete_rankings_for_exact_rrf(embeddings):
     index._query(object(), filter_expr="node_type IN ('event')")
     assert calls[-1][1]["topk"] == 10_000
     assert calls[-1][1]["filter"] == "node_type IN ('event')"
+    assert calls[-1][1]["output_fields"] == []
+    assert calls[-1][1]["include_vector"] is False
 
     index._doc_count = 20
     index._query(object(), filter_expr=None)
     assert calls[-1][1]["topk"] == 20
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "fts", "failed_dense"])
+def test_zvec_late_fetch_preserves_ties_scores_and_duplicate_public_ids(embeddings, monkeypatch, mode):
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(
+        embeddings, "_require_zvec", lambda: SimpleNamespace(Query=SimpleNamespace, Fts=SimpleNamespace)
+    )
+    fields = {
+        key: {"node_id": "same:id", "macro_id": key, "node_type": "event", "text": f"text {key}"} for key in "abcde"
+    }
+    fetches = []
+
+    class Collection:
+        def query(self, query, **kwargs):
+            assert kwargs["output_fields"] == []
+            assert kwargs["include_vector"] is False
+            assert kwargs["topk"] == 5
+            assert kwargs["filter"] == "node_type IN ('event')"
+            ranked = [("c", 0.1), ("a", 0.2), ("b", 0.3), ("d", 0.4)]
+            if query.field_name == "text":
+                ranked = [("a", 10), ("c", 8), ("e", 4)]
+            return [SimpleNamespace(id=key, score=score, fields={}) for key, score in ranked]
+
+        def fetch(self, ids, **kwargs):
+            fetches.append(ids)
+            assert kwargs == {"output_fields": embeddings.ZvecEmbeddingIndex._OUTPUT_FIELDS, "include_vector": False}
+            # Fetch iteration order and scores must not replace the fused order/scores.
+            return {key: SimpleNamespace(fields=fields[key], score=999) for key in reversed(ids)}
+
+        def close(self):
+            pass
+
+    index = embeddings.ZvecEmbeddingIndex()
+    index._collection = Collection()
+    index._doc_count = 5
+    index._dimension = 2
+    index._dense_disabled = mode == "fts"
+
+    def embed(_texts):
+        if mode == "failed_dense":
+            raise RuntimeError("embedding unavailable")
+        return np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+    monkeypatch.setattr(index, "_embed_batch", embed)
+    rows = index.search("orange", top_k=3, node_types=["event"])
+    if mode == "hybrid":
+        order = ["c", "a", "b"]
+        scores = [1 / 60 + 1 / 61, 1 / 61 + 1 / 60, 1 / 62]
+        cosines = [0.9, 0.8, 0.7]
+    else:
+        order = ["a", "c", "e"]
+        scores = [1 / 60, 1 / 61, 1 / 62]
+        cosines = [0.0, 0.0, 0.0]
+    assert fetches == [order]
+    assert rows == [
+        {**fields[key], "score": round(score, 6), "cosine": cosine}
+        for key, score, cosine in zip(order, scores, cosines, strict=True)
+    ]
+
+
+def test_zvec_candidate_projection_returns_no_fields_or_vectors(embeddings, tmp_path):
+    zvec = pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "n", "node_type": "event", "macro_id": "m", "text": "orange cat"}]
+    path = str(tmp_path / embeddings.ZVEC_INDEX_DIRNAME)
+    embeddings.save_zvec_index(path, nodes, np.asarray([[1.0, 0.0]], dtype=np.float32))
+    index = embeddings.load_retrieval_index(path)
+    try:
+        for query in (
+            zvec.Query(field_name="embedding", vector=[1.0, 0.0]),
+            zvec.Query(field_name="text", fts=zvec.Fts(match_string="orange")),
+        ):
+            docs = index._query(query, filter_expr=None)
+            assert len(docs) == 1
+            assert docs[0].id
+            assert isinstance(docs[0].score, (int, float))
+            assert not docs[0].fields
+            assert not docs[0].vectors
+        index._dense_disabled = True
+        assert index.search("unmatchedword") == []
+        assert index.search("orange", node_types=["asr_text"]) == []
+        assert index.search("orange", top_k=0) == []
+    finally:
+        index.close()
 
 
 def test_detect_retrieval_index_rejects_two_backends(embeddings, tmp_path):

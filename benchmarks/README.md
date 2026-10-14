@@ -28,8 +28,9 @@ builds both backends in temporary directories and removes those directories on c
   isolates backend behavior and is not a relevance or end-to-end quality evaluation.
 - **Diagnostics** run separately after headline timings. They measure NPZ's BM25 rebuild, zvec's
   extra dependency initialization, build calls, query routes and Python result conversion. Conversion
-  is included in route timings; do not add it again. Instrumented timings include wrapper overhead
-  and are attribution evidence, not replacement latency numbers.
+  is included in route timings; fetch conversion is included in the separately reported metadata
+  fetch. Do not add these nested costs again. Instrumented timings include wrapper overhead and
+  are attribution evidence, not replacement latency numbers.
 
 Fresh processes do not imply cold disks: OS file caches are retained. Shared Python/NumPy startup,
 graph loading, MCP transport and remote query embedding are excluded. Default results use 20 queries
@@ -37,7 +38,37 @@ and five fresh-process repetitions per backend/mode; these are descriptive sampl
 intervals. `--scale-nodes` repeats source text and slightly perturbs copied vectors with a fixed seed.
 It tests a synthetic size trend, not a representative multi-video corpus, and disables parity output.
 
-## Local observations, 2026-10-14
+## Deferred metadata fetching, 2026-10-14
+
+Candidate queries now request only internal IDs and scores. Both complete rankings, dense-first
+tie-breaking, RRF and cosine calculation are preserved. After fusion, one batch fetch retrieves the
+selected records' fields without vectors, and results follow fused order rather than fetch order.
+With the toolkit's overfetch, at most 20 records are fetched for a tool Top-10 request.
+
+Compared with the baseline below, using the same corpus, queries and five repetitions:
+
+- At 1,000 synthetic nodes, zvec warm hybrid p50 fell from 1.15 to 0.82 ms (29% lower).
+- At 5,000 synthetic nodes, warm hybrid p50 fell from 5.06 to 3.26 ms (36% lower), and p95 from
+  6.70 to 4.47 ms. The same rerun measured NPZ at 1.69/2.11 ms, so zvec is still slower for warm
+  hybrid retrieval. zvec's load + first hybrid query remained lower: 31.93 vs 50.04 ms for NPZ.
+- The extra fetch has a cost when little metadata can be avoided. Warm FTS p50 increased from
+  0.44 to 0.53 ms at 5,000 nodes, and from 0.16 to 0.20 ms at 1,000 nodes. At the real 81-node
+  size, hybrid changed from 0.26 to 0.29 ms and FTS from 0.07 to 0.08 ms.
+
+The 5,000-node hybrid diagnostic still returned 41,686 ID/score candidates across 20 queries, but
+only 400 records carried full fields, versus 41,686 previously. Candidate conversion decreased from
+35.94 to 19.62 ms; the added metadata fetch took 2.76 ms, including 0.43 ms for fetched-record
+conversion. The full-ranking query/transfer cost remains. In FTS mode, fetch took 1.92 ms across
+20 queries (about 0.10 ms each), consistent with the observed latency increase.
+
+An explicit before/after check loaded the implementation from commit `ea58530` and the new version
+against the same read-only collections. All **5,616 comparisons matched exactly**, including result
+order, metadata, RRF scores and cosine: 74 source queries plus four empty/stopword/unmatched/Unicode
+cases, hybrid and FTS, route-specific/unfiltered/missing-type filters, Top-K 1/10/20/100, at
+81/1,000/5,000 nodes. This checks optimization equivalence, including synthetic ties; it does not
+claim semantic relevance. NPZ/zvec parity on the real source stayed unchanged from the baseline.
+
+## Baseline before deferred metadata fetching, 2026-10-14
 
 Apple M4 Pro, macOS 26.6.2, Python 3.12.13, NumPy 2.5.4, zvec 0.7.0. Source: the local
 `aurora-31min.mp4.memory` smoke fixture, 81 nodes, 2560 dimensions. Its NPZ SHA-256 is
@@ -53,13 +84,13 @@ in 9.67 / 9.25 / 9.76 ms after its roughly 15 ms dependency import, without rebu
 load + first hybrid query was 50.63 ms for NPZ and 31.57 ms for zvec (38% lower); the FTS fallback was
 40.47 vs 26.06 ms (36% lower). This is a first-access benefit, not a per-query saving.
 
-The costs and current integration bottlenecks are:
+The baseline costs and integration bottlenecks were:
 
 - **Small-index initialization:** At 81 nodes, median load + first hybrid query was 1.47 vs 23.23 ms
-  (NPZ vs zvec); at 1,000 nodes, 9.61 vs 26.18 ms. zvec's import/open cost exceeds the BM25 work saved
+  (NPZ vs zvec); at 1,000 nodes, 9.61 vs 26.18 ms. zvec's import/open cost exceeded the BM25 work saved
   at these sizes. The observed crossover is workload-specific, not a universal node threshold.
 - **Warm hybrid retrieval:** At 5,000 nodes, median latency was 1.70 vs 5.06 ms. The current adapter
-  asks both routes for up to the full collection size and returns all metadata, including text,
+  asked both routes for up to the full collection size and returned all metadata, including text,
   before Python RRF. The diagnostic observed an average of 1,927 dense and 158 FTS candidates per
   query. Across 20 queries, SDK result conversion consumed 35.94 ms of 98.25 ms instrumented total;
   dense and FTS route calls, including conversion, consumed 73.85 and 10.86 ms. This demonstrates a
@@ -76,7 +107,6 @@ The costs and current integration bottlenecks are:
   agreement was 100% and exact-order agreement 90%; FTS was 95% and 80%. Different tokenization/BM25
   behavior and ties need consideration; matching result sets does not imply identical ranking.
 
-The first query optimization to investigate is retaining complete ID/score rankings while deferring
-metadata/text fetches until after fusion, then checking parity and latency again. Simply bounding
-each route's candidates would change the current exhaustive RRF semantics. Native fusion could also
-reduce Python transfers, but requires separate verification of ranks, scores and tie behavior.
+Deferred metadata fetching above preserves exhaustive RRF. Simply bounding each route's candidates
+would change those semantics. Native fusion could further reduce Python transfers, but requires
+separate verification of ranks, scores and tie behavior.
