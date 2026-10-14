@@ -168,10 +168,7 @@ CONFIG_FIELDS = {
             str | None,
             Field(default=None, description="graph_memory.json path (overrides a passed video path)"),
         ),
-        "EMBEDDINGS_PATH": (
-            str | None,
-            Field(default=None, description="Retrieval index path (embeddings.npz or embeddings.zvec/)"),
-        ),
+        "EMBEDDINGS_PATH": (str | None, Field(default=None, description="embeddings.npz path")),
         "CUTOFF_SEC": (
             FiniteFloat | None,
             Field(default=None, description="time cutoff (seconds) for retrieval", ge=0),

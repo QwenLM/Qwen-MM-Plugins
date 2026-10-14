@@ -103,7 +103,7 @@ CONFIG_SPEC=(
   "OSS_VIDEO_CLIP_PREFIX|0|oss|tmp/video_clips|key prefix for uploaded video clips"
   "OSS_URL_EXPIRY|0|oss|7200|signed-URL TTL seconds"
   "GRAPH_MEMORY_PATH|0|memory||graph_memory.json path (overrides a passed video path)"
-  "EMBEDDINGS_PATH|0|memory||Retrieval index path (embeddings.npz or embeddings.zvec/)"
+  "EMBEDDINGS_PATH|0|memory||embeddings.npz path"
   "CUTOFF_SEC|0|memory||time cutoff (seconds) for retrieval"
   "MEM_LOCAL_DIR|0|omni||optional shared root for namespace memories; defaults beside the input video"
   "BLENDER_BINARY|0|hosts||path to the Blender executable"

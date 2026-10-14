@@ -173,6 +173,9 @@ The collection boundary follows the generated memory: normally one video, or
 one explicitly merged directory memory. Existing prefixed node and macro IDs
 identify records in a merged memory, so no separate `video_id` field is added.
 
+To select a retrieval artifact explicitly, set `EMBEDDINGS_PATH` to an
+`embeddings.npz` file or an `embeddings.zvec/` collection directory.
+
 Contents: `graph_memory.json`, `embeddings.npz` or `embeddings.zvec/`,
 `01_macros.json`, `subgraphs/`
 
