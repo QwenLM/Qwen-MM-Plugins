@@ -42,7 +42,14 @@ Root (1 per video)
 ## Building Graph Memory
 
 If `graph_memory.json` is missing, run the builder below. It installs missing Python dependencies,
-including `pydantic>=2.11,<3`:
+including `pydantic>=2.11,<3`.
+
+When building a new memory, honor an explicitly requested backend. Otherwise:
+
+- Prefer `--retrieval-backend zvec` for large or growing memories and multi-video
+  merges, so the full-text index is persisted rather than rebuilt on load.
+- Keep NPZ (the default, or `--retrieval-backend npz`) for small, standalone
+  memories without an expected growth requirement.
 
 ```bash
 # Build memory for a single video (output: <video_path>.memory/)
@@ -161,17 +168,6 @@ Question arrives
 Graph memory is stored next to the video, in `<video_path>.memory/` (e.g.
 `/data/clip.mp4` → `/data/clip.mp4.memory/`). The server auto-loads it from there
 when you pass `video_path`, or set `GRAPH_MEMORY_PATH` to point at one explicitly.
-
-By default the retrieval artifact is `embeddings.npz`. With
-`--retrieval-backend zvec`, it is the persistent `embeddings.zvec/` collection,
-which stores vectors, node metadata, and the full-text index together. The
-collection covers one video or one explicitly merged memory. Switching backends
-successfully removes the old retrieval artifact.
-
-The server auto-detects either format; auto-detection reports an error if both
-artifacts are present. To select one explicitly, set `EMBEDDINGS_PATH` to an
-existing `embeddings.npz` file or `embeddings.zvec/` collection directory;
-this takes precedence over auto-detection.
 
 Contents: `graph_memory.json`, `embeddings.npz` or `embeddings.zvec/`,
 `01_macros.json`, `subgraphs/`
