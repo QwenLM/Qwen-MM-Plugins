@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import numpy as np
@@ -53,3 +54,43 @@ def test_benchmark_rejects_memory_without_retrieval_artifact(tmp_path):
 
     with pytest.raises(RuntimeError, match="no embeddings.npz or embeddings.zvec"):
         benchmark.run_benchmark(str(tmp_path), max_queries=1, runs=1, top_k=1)
+
+
+def test_scale_corpus_is_reproducible_and_preserves_source():
+    nodes = [{"macro_id": "m1", "node_id": "n1", "text": "orange cat", "node_type": "event"}]
+    vectors = np.ones((1, 4), dtype=np.float32)
+    scaled_nodes, scaled_vectors = benchmark._scale_corpus(nodes, vectors, 3)
+    repeated_nodes, repeated_vectors = benchmark._scale_corpus(nodes, vectors, 3)
+
+    assert nodes[0]["node_id"] == "n1"
+    np.testing.assert_array_equal(vectors, np.ones((1, 4), dtype=np.float32))
+    assert len({node["node_id"] for node in scaled_nodes}) == 3
+    assert all(node["text"] == "orange cat" for node in scaled_nodes)
+    np.testing.assert_array_equal(scaled_vectors[0], vectors[0])
+    assert scaled_nodes == repeated_nodes
+    np.testing.assert_array_equal(scaled_vectors, repeated_vectors)
+
+
+@pytest.mark.parametrize("backend", ["npz", "zvec"])
+def test_diagnostics_observe_bm25_rebuild_only_for_npz(tmp_path, backend):
+    if backend == "zvec":
+        pytest.importorskip("zvec")
+    nodes = [{"macro_id": "m1", "node_id": "n1", "text": "orange cat", "node_type": "event"}]
+    vectors = np.ones((1, 4), dtype=np.float32)
+    index_path = benchmark.save_retrieval_index(str(tmp_path / backend), backend, nodes, vectors)
+    specs, queries = benchmark._build_query_pack(nodes, vectors, max_queries=1)
+    query_pack = str(tmp_path / "queries.npz")
+    np.savez(query_pack, specs=json.dumps(specs), vectors=queries)
+    original = benchmark.EmbeddingIndex._build_sparse_index
+
+    report = benchmark._diagnose_worker(index_path, query_pack, top_k=2)
+
+    assert benchmark.EmbeddingIndex._build_sparse_index is original
+    assert (report["npz_bm25_rebuild_ms"] > 0) == (backend == "npz")
+    assert report["open_after_import_ms"] >= report["npz_bm25_rebuild_ms"]
+    assert report["query_breakdown"]["hybrid"]["queries"] == 1
+    assert report["query_breakdown"]["fts"]["calls"]
+    if backend == "zvec":
+        hybrid = report["query_breakdown"]["hybrid"]
+        assert hybrid["mean_returned_candidates"] == {"embedding": 1, "text": 1}
+        assert hybrid["calls"]["result_conversion"]["calls"] == 2

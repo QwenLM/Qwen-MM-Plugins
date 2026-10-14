@@ -47,3 +47,8 @@ Match tests to the capability's components:
 
 Never require credentials, a GUI application, GPU hardware, or public-network reachability in the
 default offline suite.
+
+## Video-memory backend benchmark
+
+See the [backend benchmark](../../benchmarks/README.md) for offline NPZ/zvec comparisons of first
+access, warm hybrid/FTS retrieval, storage, result parity and optional cost diagnostics.

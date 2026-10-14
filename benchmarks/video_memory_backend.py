@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import contextlib
 import json
 import os
 import platform
@@ -22,6 +23,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src" / "capabilities" / "video-memory"))
@@ -30,7 +32,9 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 import numpy as np  # noqa: E402
 
 from qwen_mm_plugins_video_memory.embeddings import (  # noqa: E402
+    EmbeddingIndex,
     ZvecEmbeddingIndex,
+    _require_zvec,
     _tokenize,
     detect_retrieval_index,
     export_retrieval_index,
@@ -119,6 +123,149 @@ def _artifact_size(path: str) -> int:
     return sum(os.path.getsize(os.path.join(root, name)) for root, _dirs, files in os.walk(path) for name in files)
 
 
+def _scale_corpus(nodes: list[dict], embeddings: np.ndarray, count: int) -> tuple[list[dict], np.ndarray]:
+    """Replicate the source for an explicitly synthetic performance probe, never a parity test."""
+    if count < len(nodes):
+        raise ValueError("--scale-nodes must be at least the source node count")
+    scaled_nodes = []
+    for position in range(count):
+        node = dict(nodes[position % len(nodes)])
+        group = position // len(nodes)
+        for key in ("macro_id", "node_id"):
+            node[key] = f"replica{group}_{node.get(key, '')}"
+        scaled_nodes.append(node)
+    vectors = embeddings[np.arange(count) % len(nodes)].copy()
+    # Deterministic perturbation avoids identical dense vectors; duplicated text still ties.
+    rng = np.random.default_rng(0)
+    for start in range(len(nodes), count, 1000):
+        batch = vectors[start : start + 1000]
+        batch += rng.normal(0, 1e-5, batch.shape).astype(np.float32)
+    return scaled_nodes, vectors
+
+
+@contextlib.contextmanager
+def _observe_call(target, name: str, measurements: dict, label: str):
+    """Time explicit call boundaries without relying on native-extension profiler events."""
+    original = getattr(target, name)
+    measurements[label] = {"ms": 0.0, "calls": 0}
+
+    def measured(*args, **kwargs):
+        started = time.perf_counter()
+        try:
+            return original(*args, **kwargs)
+        finally:
+            measurements[label]["ms"] += (time.perf_counter() - started) * 1000
+            measurements[label]["calls"] += 1
+
+    with mock.patch.object(target, name, measured):
+        yield
+
+
+def _diagnose_build(backend: str, directory: str, nodes: list[dict], embeddings: np.ndarray) -> dict:
+    measurements = {}
+    with contextlib.ExitStack() as stack:
+        if backend == "zvec":
+            zvec = _require_zvec()
+            calls = [(zvec, "create_and_open"), (zvec, "open")]
+            calls += [(zvec.Collection, name) for name in ("insert", "flush", "close")]
+        else:
+            calls = [(np, "savez"), (EmbeddingIndex, "_build_sparse_index")]
+        for target, name in calls:
+            stack.enter_context(_observe_call(target, name, measurements, name))
+        started = time.perf_counter()
+        save_retrieval_index(directory, backend, nodes, embeddings)
+        total_ms = (time.perf_counter() - started) * 1000
+    return {"total_ms": total_ms, "calls": measurements}
+
+
+def _diagnose_worker(index_path: str, query_pack: str, top_k: int) -> dict:
+    """Run separately from headline timings: load components, then instrumented warm searches."""
+    with np.load(query_pack, allow_pickle=False) as data:
+        specs = json.loads(str(data["specs"]))
+        vectors = np.asarray(data["vectors"], dtype=np.float32)
+
+    is_zvec = os.path.isdir(index_path)
+    dependency_ms = 0.0
+    if is_zvec:
+        started = time.perf_counter()
+        _require_zvec()
+        dependency_ms = (time.perf_counter() - started) * 1000
+
+    sparse_ms = 0.0
+    original_build = EmbeddingIndex._build_sparse_index
+
+    def timed_sparse(index):
+        nonlocal sparse_ms
+        started = time.perf_counter()
+        try:
+            return original_build(index)
+        finally:
+            sparse_ms += (time.perf_counter() - started) * 1000
+
+    EmbeddingIndex._build_sparse_index = timed_sparse
+    try:
+        started = time.perf_counter()
+        index = load_retrieval_index(index_path)
+        open_ms = (time.perf_counter() - started) * 1000
+    finally:
+        EmbeddingIndex._build_sparse_index = original_build
+
+    report = {
+        "backend_dependency_init_ms": dependency_ms,
+        "open_after_import_ms": open_ms,
+        "npz_bm25_rebuild_ms": sparse_ms,
+        "open_other_ms": open_ms - sparse_ms,
+        "query_breakdown": {},
+    }
+    try:
+        for mode in ("hybrid", "fts"):
+            index._dense_disabled = mode == "fts"
+
+            def run_queries():
+                for position, spec in enumerate(specs):
+                    vector = vectors[position : position + 1]
+                    index._embed_batch = lambda _texts, value=vector: value
+                    index.search(spec["query"], top_k=top_k, node_types=spec["node_types"])
+
+            run_queries()  # Warm every query before instrumenting.
+            measurements = {}
+            candidates = collections.defaultdict(list)
+            with contextlib.ExitStack() as stack:
+                if is_zvec:
+                    from zvec.executor import query_executor
+
+                    original_query = index._query
+
+                    def measured_query(query, *, filter_expr):
+                        label = query.field_name
+                        measured = measurements.setdefault(label, {"ms": 0.0, "calls": 0})
+                        started = time.perf_counter()
+                        docs = original_query(query, filter_expr=filter_expr)
+                        measured["ms"] += (time.perf_counter() - started) * 1000
+                        measured["calls"] += 1
+                        candidates[label].append(len(docs))
+                        return docs
+
+                    stack.enter_context(mock.patch.object(index, "_query", measured_query))
+                    stack.enter_context(
+                        _observe_call(query_executor, "convert_to_py_doc", measurements, "result_conversion")
+                    )
+                else:
+                    stack.enter_context(_observe_call(index, "_sparse_search", measurements, "bm25_scoring"))
+                started = time.perf_counter()
+                run_queries()
+                total_ms = (time.perf_counter() - started) * 1000
+            report["query_breakdown"][mode] = {
+                "queries": len(specs),
+                "total_ms": total_ms,
+                "calls": measurements,
+                "mean_returned_candidates": {route: statistics.fmean(counts) for route, counts in candidates.items()},
+            }
+    finally:
+        _close_index(index)
+    return report
+
+
 def _result_key(result: dict) -> tuple[str, str]:
     return str(result.get("macro_id", "")), str(result.get("node_id", ""))
 
@@ -174,12 +321,17 @@ def _worker(index_path: str, query_pack: str, mode: str, top_k: int) -> dict:
                 vector = vectors[position : position + 1]
                 index._embed_batch = lambda _texts, value=vector: value
             spec = specs[position]
-            return index.search(spec["query"], top_k=top_k, node_types=spec["node_types"])
+            results = index.search(spec["query"], top_k=top_k, node_types=spec["node_types"])
+            if mode == "hybrid" and index._dense_disabled:
+                raise RuntimeError("hybrid benchmark unexpectedly fell back to FTS-only search")
+            return results
 
         first_started = time.perf_counter()
         run_one(0)
         first_ms = (time.perf_counter() - first_started) * 1000
 
+        for position in range(len(specs)):
+            run_one(position)
         warm_ms = []
         results = []
         for position in range(len(specs)):
@@ -228,12 +380,17 @@ def _measure_runtime(index_path: str, query_pack: str, mode: str, top_k: int, ru
     )
 
 
-def run_benchmark(memory_dir: str, *, max_queries: int, runs: int, top_k: int) -> dict:
+def run_benchmark(
+    memory_dir: str, *, max_queries: int, runs: int, top_k: int, diagnose: bool = False, scale_nodes: int = 0
+) -> dict:
     source_path = detect_retrieval_index(memory_dir)
     if not source_path:
         raise RuntimeError(f"no embeddings.npz or embeddings.zvec found in {memory_dir}")
     nodes, embeddings = export_retrieval_index(source_path)
     specs, query_vectors = _build_query_pack(nodes, embeddings, max_queries)
+    source_nodes = len(nodes)
+    if scale_nodes:
+        nodes, embeddings = _scale_corpus(nodes, embeddings, scale_nodes)
 
     with tempfile.TemporaryDirectory(prefix="video-memory-backend-benchmark-") as temp_dir:
         query_pack = os.path.join(temp_dir, "queries.npz")
@@ -258,7 +415,18 @@ def run_benchmark(memory_dir: str, *, max_queries: int, runs: int, top_k: int) -
                     index_path, query_pack, mode, backend_top_k, runs
                 )
 
-        parity = {mode: _parity(results["npz"][mode], results["zvec"][mode], top_k) for mode in ("hybrid", "fts")}
+        parity = (
+            {"skipped": "replicated corpus has artificial ties; use the unscaled source for parity"}
+            if scale_nodes
+            else {mode: _parity(results["npz"][mode], results["zvec"][mode], top_k) for mode in ("hybrid", "fts")}
+        )
+        diagnostics = {}
+        if diagnose:
+            # Instrument only after all headline measurements are complete.
+            for backend, index_path in index_paths.items():
+                diagnostics[backend] = _run_worker_process(index_path, query_pack, "diagnose", backend_top_k)
+                profile_dir = os.path.join(temp_dir, f"profile-build-{backend}")
+                diagnostics[backend]["build_breakdown"] = _diagnose_build(backend, profile_dir, nodes, embeddings)
 
     import zvec
 
@@ -273,6 +441,8 @@ def run_benchmark(memory_dir: str, *, max_queries: int, runs: int, top_k: int) -
             "memory_dir": os.path.realpath(memory_dir),
             "source_index": source_path,
             "nodes": len(nodes),
+            "source_nodes": source_nodes,
+            "synthetic_scale": bool(scale_nodes),
             "dimension": int(embeddings.shape[1]),
             "queries": len(specs),
             "workloads": dict(collections.Counter(spec["workload"] for spec in specs)),
@@ -283,6 +453,7 @@ def run_benchmark(memory_dir: str, *, max_queries: int, runs: int, top_k: int) -
         "build": builds,
         "runtime": runtime,
         "parity": parity,
+        "diagnostics": diagnostics,
     }
 
 
@@ -298,6 +469,9 @@ def _print_report(report: dict) -> None:
     )
     print(f"Workloads: {json.dumps(corpus['workloads'], sort_keys=True)}")
     print(f"Top-K: tool={corpus['top_k']}, backend={corpus['backend_top_k']} (project overfetch)")
+    if corpus["synthetic_scale"]:
+        print(f"SYNTHETIC SCALE: replicated {corpus['source_nodes']} source nodes; performance only.")
+    print("Fresh processes, OS file cache retained; shared Python/NumPy startup excluded.")
     print("\nBuild and storage")
     print("backend  build_ms  size_mib")
     for backend in ("npz", "zvec"):
@@ -316,12 +490,37 @@ def _print_report(report: dict) -> None:
             )
 
     print("\nResult parity")
-    print("mode    top1_agreement  top-k_overlap  exact_order")
-    overlap_key = f"top{corpus['top_k']}_set_overlap"
-    order_key = f"top{corpus['top_k']}_exact_order"
-    for mode in ("hybrid", "fts"):
-        metric = report["parity"][mode]
-        print(f"{mode:<6}  {metric['top1_agreement']:>14.2%}  {metric[overlap_key]:>13.2%}  {metric[order_key]:>11.2%}")
+    if "skipped" in report["parity"]:
+        print(report["parity"]["skipped"])
+    else:
+        print("mode    top1_agreement  top-k_overlap  exact_order")
+        overlap_key = f"top{corpus['top_k']}_set_overlap"
+        order_key = f"top{corpus['top_k']}_exact_order"
+        for mode in ("hybrid", "fts"):
+            metric = report["parity"][mode]
+            print(
+                f"{mode:<6}  {metric['top1_agreement']:>14.2%}  {metric[overlap_key]:>13.2%}  {metric[order_key]:>11.2%}"
+            )
+
+    if report["diagnostics"]:
+        print("\nLoad breakdown: one separate diagnostic run, milliseconds")
+        print("backend  dependency_init  open_after_import  BM25_rebuild  other_open")
+        for backend, diagnostic in report["diagnostics"].items():
+            print(
+                f"{backend:<7}  {diagnostic['backend_dependency_init_ms']:>15.2f}  "
+                f"{diagnostic['open_after_import_ms']:>17.2f}  {diagnostic['npz_bm25_rebuild_ms']:>12.2f}  "
+                f"{diagnostic['open_other_ms']:>10.2f}"
+            )
+        print("Dependency init isolates zvec's lazy import; shared imports are excluded for both backends.")
+        for backend, diagnostic in report["diagnostics"].items():
+            breakdowns = {"build": diagnostic["build_breakdown"], **diagnostic["query_breakdown"]}
+            for phase, breakdown in breakdowns.items():
+                print(f"\n{backend} {phase}: instrumented total {breakdown['total_ms']:.2f} ms (not headline latency)")
+                for name, measured in breakdown["calls"].items():
+                    print(f"  {name}: {measured['ms']:.2f} ms, calls={measured['calls']}")
+                if breakdown.get("mean_returned_candidates"):
+                    print(f"  Mean candidates returned per query: {breakdown['mean_returned_candidates']}")
+        print("Result conversion is INCLUDED in embedding/text route times, not an additive component.")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -336,10 +535,12 @@ def _parser() -> argparse.ArgumentParser:
         help="Tool-visible results; the backend receives twice this value (default: 10)",
     )
     parser.add_argument("--json-output", help="Optional path for the full JSON report")
+    parser.add_argument("--diagnose", action="store_true", help="Separately instrument load/build/query costs")
+    parser.add_argument("--scale-nodes", type=int, default=0, help="Replicate source to N nodes for performance only")
     parser.add_argument("--_worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--_index-path", help=argparse.SUPPRESS)
     parser.add_argument("--_query-pack", help=argparse.SUPPRESS)
-    parser.add_argument("--_mode", choices=("hybrid", "fts"), help=argparse.SUPPRESS)
+    parser.add_argument("--_mode", choices=("hybrid", "fts", "diagnose"), help=argparse.SUPPRESS)
     return parser
 
 
@@ -349,14 +550,25 @@ def main() -> int:
     if args._worker:
         if not args._index_path or not args._query_pack or not args._mode:
             parser.error("worker arguments are incomplete")
-        print(json.dumps(_worker(args._index_path, args._query_pack, args._mode, args.top_k)))
+        if args._mode == "diagnose":
+            result = _diagnose_worker(args._index_path, args._query_pack, args.top_k)
+        else:
+            result = _worker(args._index_path, args._query_pack, args._mode, args.top_k)
+        print(json.dumps(result))
         return 0
     if not args.memory_dir:
         parser.error("memory_dir is required")
-    if args.queries <= 0 or args.runs <= 0 or args.top_k <= 0:
-        parser.error("--queries, --runs, and --top-k must be positive")
+    if args.queries <= 0 or args.runs <= 0 or args.top_k <= 0 or args.scale_nodes < 0:
+        parser.error("--queries, --runs, and --top-k must be positive; --scale-nodes must be nonnegative")
 
-    report = run_benchmark(args.memory_dir, max_queries=args.queries, runs=args.runs, top_k=args.top_k)
+    report = run_benchmark(
+        args.memory_dir,
+        max_queries=args.queries,
+        runs=args.runs,
+        top_k=args.top_k,
+        diagnose=args.diagnose,
+        scale_nodes=args.scale_nodes,
+    )
     _print_report(report)
     if args.json_output:
         output = Path(args.json_output)
