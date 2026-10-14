@@ -56,11 +56,11 @@ if [[ "$RETRIEVAL_BACKEND" != "npz" && "$RETRIEVAL_BACKEND" != "zvec" ]]; then
     exit 1
 fi
 if [[ "$RETRIEVAL_BACKEND" == "zvec" ]]; then
-    RETRIEVAL_ARTIFACT="retrieval.zvec"
+    RETRIEVAL_ARTIFACT="embeddings.zvec"
     INACTIVE_RETRIEVAL_ARTIFACT="embeddings.npz"
 else
     RETRIEVAL_ARTIFACT="embeddings.npz"
-    INACTIVE_RETRIEVAL_ARTIFACT="retrieval.zvec"
+    INACTIVE_RETRIEVAL_ARTIFACT="embeddings.zvec"
 fi
 
 if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
@@ -85,8 +85,9 @@ _MISSING_PKGS=()
 python -c "import cv2" 2>/dev/null || _MISSING_PKGS+=(opencv-python-headless)
 python -c "import numpy" 2>/dev/null || _MISSING_PKGS+=('numpy<2')
 python -c "import dashscope" 2>/dev/null || _MISSING_PKGS+=(dashscope)
+_ZVEC_CHECK='import zvec; version = tuple(map(int, zvec.__version__.split(".")[:2])); assert (0, 7) <= version < (1, 0)'
 if [[ "$RETRIEVAL_BACKEND" == "zvec" ]]; then
-    python -c "import zvec; version = tuple(map(int, zvec.__version__.split('.')[:2])); assert (0, 7) <= version < (1, 0)" 2>/dev/null || _MISSING_PKGS+=('zvec>=0.7,<1')
+    python -c "$_ZVEC_CHECK" 2>/dev/null || _MISSING_PKGS+=('zvec>=0.7,<1')
 fi
 _PYDANTIC_CHECK='import pydantic; assert (2, 11) <= tuple(map(int, pydantic.__version__.split(".")[:2])) < (3, 0)'
 python -c "$_PYDANTIC_CHECK" 2>/dev/null || _MISSING_PKGS+=('pydantic>=2.11,<3')
@@ -96,6 +97,11 @@ if [[ ${#_MISSING_PKGS[@]} -gt 0 ]]; then
     python -m pip install -q -i https://mirrors.aliyun.com/pypi/simple/ --timeout 60 "${_MISSING_PKGS[@]}" || {
         echo "WARNING: pip install failed for: ${_MISSING_PKGS[*]}"
     }
+fi
+
+if [[ "$RETRIEVAL_BACKEND" == "zvec" ]] && ! python -c "$_ZVEC_CHECK" 2>/dev/null; then
+    echo "ERROR: the zvec retrieval backend requires zvec>=0.7,<1, and dependency installation did not provide it."
+    exit 1
 fi
 
 if [[ $ENABLE_ASR -eq 1 ]]; then
@@ -114,7 +120,7 @@ export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
 
 _remove_inactive_retrieval_if_needed() {
     local memory_dir="$1"
-    if [[ -e "$memory_dir/$INACTIVE_RETRIEVAL_ARTIFACT" ]]; then
+    if [[ -e "$memory_dir/$INACTIVE_RETRIEVAL_ARTIFACT" || -L "$memory_dir/$INACTIVE_RETRIEVAL_ARTIFACT" ]]; then
         python - "$memory_dir" "$RETRIEVAL_BACKEND" <<'PY'
 import sys
 from embeddings import activate_retrieval_backend

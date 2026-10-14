@@ -86,7 +86,7 @@ def test_merge_chunks_resorts_remaps_and_renames(build_graph, tmp_path):
     assert sorted(p.name for p in (out / "subgraphs").iterdir()) == [f"macro_{i:04d}.json" for i in range(3)]
 
 
-def _write_zvec_memory(root, mm, key, text, vector):
+def _write_memory(root, mm, key, text, vector, backend="zvec"):
     memory_dir = root / f"{key}.mp4.memory"
     memory_dir.mkdir()
     graph = {
@@ -101,22 +101,22 @@ def _write_zvec_memory(root, mm, key, text, vector):
     (memory_dir / "graph_memory.json").write_text(json.dumps(graph))
     mm.save_retrieval_index(
         str(memory_dir),
-        "zvec",
+        backend,
         [{"node_id": "duplicate:id", "node_type": "event", "macro_id": "macro_0000", "text": text}],
         mm.np.asarray([vector], dtype=mm.np.float32),
     )
 
 
 def test_merge_directory_can_write_one_zvec_memory(merge_memories, tmp_path):
-    _write_zvec_memory(tmp_path, merge_memories, "P001", "orange cat", [1.0, 0.0])
-    _write_zvec_memory(tmp_path, merge_memories, "P002", "blue car", [0.0, 1.0])
+    _write_memory(tmp_path, merge_memories, "P001", "orange cat", [1.0, 0.0])
+    _write_memory(tmp_path, merge_memories, "P002", "blue car", [0.0, 1.0])
     output = tmp_path / "merged"
     output.mkdir()
     (output / "embeddings.npz").write_bytes(b"stale")
 
     merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="zvec")
 
-    index_path = output / "retrieval.zvec"
+    index_path = output / "embeddings.zvec"
     assert index_path.is_dir()
     assert not (output / "embeddings.npz").exists()
     nodes, matrix = merge_memories.export_retrieval_index(str(index_path))
@@ -126,3 +126,27 @@ def test_merge_directory_can_write_one_zvec_memory(merge_memories, tmp_path):
 
     graph = json.loads((output / "graph_memory.json").read_text())
     assert [video["prefix"] for video in graph["source_videos"]] == ["P001", "P002"]
+
+
+def test_merge_mixed_input_backends_can_write_npz(merge_memories, tmp_path):
+    _write_memory(tmp_path, merge_memories, "P001", "orange cat", [1.0, 0.0], backend="zvec")
+    _write_memory(tmp_path, merge_memories, "P002", "blue car", [0.0, 1.0], backend="npz")
+    output = tmp_path / "merged"
+
+    merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="npz")
+
+    index_path = output / "embeddings.npz"
+    assert index_path.is_file()
+    assert not (output / "embeddings.zvec").exists()
+    nodes, matrix = merge_memories.export_retrieval_index(str(index_path))
+    assert sorted(node["node_id"] for node in nodes) == ["P001_duplicate:id", "P002_duplicate:id"]
+    assert matrix.shape == (2, 2)
+
+
+def test_merge_rejects_invalid_backend_before_writing_output(merge_memories, tmp_path):
+    output = tmp_path / "merged"
+
+    with pytest.raises(ValueError, match="unsupported retrieval backend"):
+        merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="invalid")
+
+    assert not output.exists()

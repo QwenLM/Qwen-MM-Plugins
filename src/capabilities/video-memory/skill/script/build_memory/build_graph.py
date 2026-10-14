@@ -1316,6 +1316,8 @@ def _assemble_save_embed(
 
 def _build_save_embeddings(memory: HierarchicalGraphMemory, output_dir: str, retrieval_backend: str = "npz") -> str:
     """Build embeddings and persist them through the selected retrieval backend."""
+    if retrieval_backend not in RETRIEVAL_BACKENDS:
+        raise ValueError(f"unsupported retrieval backend: {retrieval_backend!r}; expected one of {RETRIEVAL_BACKENDS}")
     print(f"\nPhase 4: Building {retrieval_backend} retrieval index...")
     index = EmbeddingIndex()
     nodes = memory.get_all_nodes()
@@ -1343,6 +1345,8 @@ def build_graph_memory(
     retrieval_backend: str = "npz",
 ) -> HierarchicalGraphMemory:
     """End-to-end graph memory construction."""
+    if retrieval_backend not in RETRIEVAL_BACKENDS:
+        raise ValueError(f"unsupported retrieval backend: {retrieval_backend!r}; expected one of {RETRIEVAL_BACKENDS}")
     if not output_dir:
         output_dir = os.path.abspath(video_path) + ".memory"
     os.makedirs(output_dir, exist_ok=True)

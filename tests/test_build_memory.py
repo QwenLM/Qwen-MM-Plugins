@@ -355,7 +355,116 @@ def test_zvec_roundtrip_persists_vectors_metadata_and_fts(embeddings, tmp_path, 
         loaded.close()
 
 
-def test_zvec_query_bounds_rrf_candidates(embeddings):
+def test_save_zvec_replaces_symlink_without_touching_its_target(embeddings, tmp_path):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    external = tmp_path / "external"
+    external.mkdir()
+    marker = external / "keep"
+    marker.write_text("must survive")
+    path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
+    try:
+        path.symlink_to(external, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+
+    embeddings.save_zvec_index(
+        str(path),
+        [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}],
+        np.asarray([[1.0, 0.0]], dtype=np.float32),
+    )
+
+    assert path.is_dir()
+    assert not path.is_symlink()
+    assert marker.read_text() == "must survive"
+
+
+def test_require_zvec_rejects_unsupported_runtime_version(embeddings, monkeypatch):
+    zvec = pytest.importorskip("zvec")
+    monkeypatch.setattr(zvec, "__version__", "1.0.0")
+
+    with pytest.raises(RuntimeError, match=r"expected zvec>=0\.7,<1"):
+        embeddings._require_zvec()
+
+
+def test_zvec_load_closes_collection_when_schema_read_fails(embeddings, monkeypatch):
+    closed = []
+
+    class Schema:
+        def vector(self, _name):
+            raise RuntimeError("broken schema")
+
+        def field(self, _name):
+            return object()
+
+    class Collection:
+        schema = Schema()
+
+        def close(self):
+            closed.append(True)
+
+    class FakeZvec:
+        class CollectionOption:
+            def __init__(self, *, read_only):
+                assert read_only is True
+
+        @staticmethod
+        def open(_path, _option):
+            return Collection()
+
+    monkeypatch.setattr(embeddings, "_require_zvec", lambda: FakeZvec)
+    index = embeddings.ZvecEmbeddingIndex()
+
+    with pytest.raises(RuntimeError, match="broken schema"):
+        index.load("unused")
+
+    assert closed == [True]
+    assert index._collection is None
+
+
+def test_zvec_load_rejects_missing_metadata_fields(embeddings, monkeypatch):
+    closed = []
+
+    class Vector:
+        dimension = 2
+
+    class Schema:
+        def vector(self, _name):
+            return Vector()
+
+        def field(self, name):
+            return None if name == "text" else object()
+
+    class Stats:
+        doc_count = 1
+
+    class Collection:
+        schema = Schema()
+        stats = Stats()
+
+        def close(self):
+            closed.append(True)
+
+    class FakeZvec:
+        class CollectionOption:
+            def __init__(self, *, read_only):
+                assert read_only is True
+
+        @staticmethod
+        def open(_path, _option):
+            return Collection()
+
+    monkeypatch.setattr(embeddings, "_require_zvec", lambda: FakeZvec)
+    index = embeddings.ZvecEmbeddingIndex()
+
+    with pytest.raises(RuntimeError, match="missing required fields.*text"):
+        index.load("unused")
+
+    assert closed == [True]
+    assert index._collection is None
+
+
+def test_zvec_query_uses_complete_rankings_for_exact_rrf(embeddings):
     calls = []
 
     class Collection:
@@ -367,15 +476,12 @@ def test_zvec_query_bounds_rrf_candidates(embeddings):
     index._collection = Collection()
     index._doc_count = 10_000
 
-    index._query(object(), filter_expr="node_type IN ('event')", top_k=5)
-    assert calls[-1][1]["topk"] == 100
+    index._query(object(), filter_expr="node_type IN ('event')")
+    assert calls[-1][1]["topk"] == 10_000
     assert calls[-1][1]["filter"] == "node_type IN ('event')"
 
-    index._query(object(), filter_expr=None, top_k=50)
-    assert calls[-1][1]["topk"] == 500
-
     index._doc_count = 20
-    index._query(object(), filter_expr=None, top_k=5)
+    index._query(object(), filter_expr=None)
     assert calls[-1][1]["topk"] == 20
 
 
@@ -402,7 +508,7 @@ def test_save_retrieval_index_keeps_exactly_one_backend(embeddings, tmp_path):
     zvec_path = embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
     assert os.path.isdir(zvec_path)
     assert not (tmp_path / embeddings.NPZ_INDEX_FILENAME).exists()
-    assert embeddings.detect_retrieval_index(str(tmp_path)) == str((tmp_path / "retrieval.zvec").resolve())
+    assert embeddings.detect_retrieval_index(str(tmp_path)) == str((tmp_path / "embeddings.zvec").resolve())
 
     npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
     assert os.path.isfile(npz_path)
@@ -416,13 +522,58 @@ def test_activate_existing_backend_cleans_historical_duplicate(embeddings, tmp_p
     matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
 
     embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
-    embeddings.save_zvec_index(str(tmp_path / "retrieval.zvec"), nodes, matrix)
-    assert (tmp_path / "embeddings.npz").exists() and (tmp_path / "retrieval.zvec").exists()
+    embeddings.save_zvec_index(str(tmp_path / "embeddings.zvec"), nodes, matrix)
+    assert (tmp_path / "embeddings.npz").exists() and (tmp_path / "embeddings.zvec").exists()
 
     embeddings.activate_retrieval_backend(str(tmp_path), "zvec")
 
     assert not (tmp_path / "embeddings.npz").exists()
-    assert (tmp_path / "retrieval.zvec").is_dir()
+    assert (tmp_path / "embeddings.zvec").is_dir()
+
+
+def test_activate_backend_unlinks_inactive_symlink_without_deleting_target(embeddings, tmp_path):
+    np = pytest.importorskip("numpy")
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    embeddings.save_retrieval_index(str(memory_dir), "npz", nodes, matrix)
+
+    external = tmp_path / "external-zvec"
+    external.mkdir()
+    marker = external / "keep"
+    marker.write_text("must survive")
+    inactive = memory_dir / embeddings.ZVEC_INDEX_DIRNAME
+    try:
+        inactive.symlink_to(external, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+
+    embeddings.activate_retrieval_backend(str(memory_dir), "npz")
+
+    assert not inactive.exists()
+    assert not inactive.is_symlink()
+    assert marker.read_text() == "must survive"
+
+
+def test_save_backend_removes_broken_inactive_symlink(embeddings, tmp_path):
+    np = pytest.importorskip("numpy")
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    embeddings.save_retrieval_index(str(memory_dir), "npz", nodes, matrix)
+
+    inactive = memory_dir / embeddings.ZVEC_INDEX_DIRNAME
+    try:
+        inactive.symlink_to(tmp_path / "missing-target", target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+
+    embeddings.save_retrieval_index(str(memory_dir), "npz", nodes, matrix)
+
+    assert not inactive.exists()
+    assert not inactive.is_symlink()
 
 
 def test_failed_backend_switch_keeps_existing_index(embeddings, tmp_path, monkeypatch):
@@ -464,6 +615,83 @@ def test_validation_failure_leaves_only_previous_backend(embeddings, tmp_path, m
     assert not list(tmp_path.glob(".retrieval-index-*"))
 
 
+def test_publish_failure_restores_previous_active_backend(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    original_matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    replacement_matrix = np.asarray([[0.0, 1.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, original_matrix)
+    previous = open(npz_path, "rb").read()
+    real_replace = embeddings.os.replace
+
+    def fail_final_publish(source, destination):
+        parent = os.path.basename(os.path.dirname(source))
+        if parent.startswith(".retrieval-index-") and os.path.basename(source) == "embeddings.npz":
+            raise OSError("publish failed")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(embeddings.os, "replace", fail_final_publish)
+
+    with pytest.raises(OSError, match="publish failed"):
+        embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, replacement_matrix)
+
+    assert open(npz_path, "rb").read() == previous
+    assert not list(tmp_path.glob(".retrieval-index-*"))
+
+
+def test_rollback_failure_preserves_recoverable_backend_backup(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    original_matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    replacement_matrix = np.asarray([[0.0, 1.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, original_matrix)
+    previous = open(npz_path, "rb").read()
+    real_replace = embeddings.os.replace
+
+    def fail_publish_and_rollback(source, destination):
+        if os.path.abspath(destination) == os.path.abspath(npz_path):
+            if os.path.basename(source) == "embeddings.npz":
+                raise OSError("publish failed")
+            if os.path.basename(source) == "previous-active":
+                raise OSError("rollback failed")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(embeddings.os, "replace", fail_publish_and_rollback)
+
+    with pytest.raises(RuntimeError, match="recoverable backups are preserved"):
+        embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, replacement_matrix)
+
+    stage_roots = list(tmp_path.glob(".retrieval-index-*"))
+    assert len(stage_roots) == 1
+    assert (stage_roots[0] / "previous-active").read_bytes() == previous
+
+
+def test_zvec_rollback_failure_preserves_previous_collection(embeddings, tmp_path, monkeypatch):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    embeddings.save_zvec_index(str(path), nodes, np.asarray([[1.0, 0.0]], dtype=np.float32))
+    real_replace = embeddings.os.replace
+
+    def fail_publish_and_rollback(source, destination):
+        if os.path.abspath(destination) == os.path.abspath(path):
+            if os.path.basename(source) == "collection":
+                raise OSError("publish failed")
+            if os.path.basename(source) == "previous":
+                raise OSError("rollback failed")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(embeddings.os, "replace", fail_publish_and_rollback)
+
+    with pytest.raises(RuntimeError, match="previous collection is preserved"):
+        embeddings.save_zvec_index(str(path), nodes, np.asarray([[0.0, 1.0]], dtype=np.float32))
+
+    stage_roots = list(tmp_path.glob(".embeddings-zvec-*"))
+    assert len(stage_roots) == 1
+    assert (stage_roots[0] / "previous").is_dir()
+
+
 def test_build_save_embeddings_can_select_zvec(build_graph, embeddings, tmp_path, monkeypatch):
     pytest.importorskip("zvec")
     np = pytest.importorskip("numpy")
@@ -478,11 +706,23 @@ def test_build_save_embeddings_can_select_zvec(build_graph, embeddings, tmp_path
     (tmp_path / "embeddings.npz").write_bytes(b"stale")
     path = build_graph._build_save_embeddings(memory, str(tmp_path), retrieval_backend="zvec")
 
-    assert path == str(tmp_path / "retrieval.zvec")
-    assert (tmp_path / "retrieval.zvec").is_dir()
+    assert path == str(tmp_path / "embeddings.zvec")
+    assert (tmp_path / "embeddings.zvec").is_dir()
     assert not (tmp_path / "embeddings.npz").exists()
     nodes, matrix = embeddings.export_retrieval_index(path)
     assert len(nodes) == matrix.shape[0] > 0
+
+
+def test_build_save_embeddings_rejects_invalid_backend_before_embedding(build_graph, tmp_path, monkeypatch):
+    memory = _make_memory(build_graph)
+    monkeypatch.setattr(
+        build_graph.EmbeddingIndex,
+        "build",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("must validate before embedding")),
+    )
+
+    with pytest.raises(ValueError, match="unsupported retrieval backend"):
+        build_graph._build_save_embeddings(memory, str(tmp_path), retrieval_backend="invalid")
 
 
 # ── build_graph: pure helpers (no ffmpeg / LLM / OSS) ────────────────

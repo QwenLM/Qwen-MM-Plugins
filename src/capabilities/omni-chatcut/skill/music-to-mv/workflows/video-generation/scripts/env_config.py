@@ -170,7 +170,7 @@ CONFIG_FIELDS = {
         ),
         "EMBEDDINGS_PATH": (
             str | None,
-            Field(default=None, description="Retrieval index path (embeddings.npz or retrieval.zvec/)"),
+            Field(default=None, description="Retrieval index path (embeddings.npz or embeddings.zvec/)"),
         ),
         "CUTOFF_SEC": (
             FiniteFloat | None,

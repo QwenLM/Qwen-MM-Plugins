@@ -163,7 +163,7 @@ Graph memory is stored next to the video, in `<video_path>.memory/` (e.g.
 when you pass `video_path`, or set `GRAPH_MEMORY_PATH` to point at one explicitly.
 
 By default the retrieval artifact is `embeddings.npz`. With
-`--retrieval-backend zvec`, it is the persistent `retrieval.zvec/` collection,
+`--retrieval-backend zvec`, it is the persistent `embeddings.zvec/` collection,
 which stores vectors, node metadata, and the full-text index together. The
 server detects either format automatically. A memory contains exactly one
 retrieval artifact; after a new backend is successfully written and reopened,
@@ -173,7 +173,7 @@ The collection boundary follows the generated memory: normally one video, or
 one explicitly merged directory memory. Existing prefixed node and macro IDs
 identify records in a merged memory, so no separate `video_id` field is added.
 
-Contents: `graph_memory.json`, `embeddings.npz` or `retrieval.zvec/`,
+Contents: `graph_memory.json`, `embeddings.npz` or `embeddings.zvec/`,
 `01_macros.json`, `subgraphs/`
 
 ## Efficiency Rules

@@ -24,10 +24,8 @@ _MAX_RETRIES = 80
 _RETRY_BASE_DELAY = 1.0
 
 NPZ_INDEX_FILENAME = "embeddings.npz"
-ZVEC_INDEX_DIRNAME = "retrieval.zvec"
+ZVEC_INDEX_DIRNAME = "embeddings.zvec"
 RETRIEVAL_BACKENDS = ("npz", "zvec")
-_ZVEC_RRF_MIN_CANDIDATES = 100
-_ZVEC_RRF_CANDIDATE_MULTIPLIER = 10
 
 
 # DashScope native multimodal-embedding endpoint.
@@ -469,6 +467,12 @@ def _require_zvec():
             "The zvec retrieval backend requires zvec>=0.7,<1. "
             "Install the video-memory extra or run `pip install 'zvec>=0.7,<1'`."
         ) from e
+    try:
+        version = tuple(map(int, zvec.__version__.split(".")[:2]))
+    except (AttributeError, ValueError) as e:
+        raise RuntimeError("Unable to determine the installed zvec version; expected zvec>=0.7,<1.") from e
+    if not (0, 7) <= version < (1, 0):
+        raise RuntimeError(f"Unsupported zvec version {zvec.__version__}; expected zvec>=0.7,<1.")
     return zvec
 
 
@@ -485,14 +489,15 @@ def save_zvec_index(path: str, nodes: list[dict], embeddings: np.ndarray) -> Non
     if embeddings.ndim != 2 or embeddings.shape[0] != len(nodes) or embeddings.shape[1] == 0:
         raise ValueError("embeddings must be a non-empty 2-D matrix aligned with nodes")
 
-    path = os.path.realpath(path)
+    path = os.path.abspath(path)
     parent = os.path.dirname(path)
     os.makedirs(parent, exist_ok=True)
-    stage_root = tempfile.mkdtemp(prefix=".retrieval-zvec-", dir=parent)
+    stage_root = tempfile.mkdtemp(prefix=".embeddings-zvec-", dir=parent)
     stage_path = os.path.join(stage_root, "collection")
     backup_path = os.path.join(stage_root, "previous")
     collection = None
     old_moved = False
+    cleanup_stage = True
     try:
         schema = zvec.CollectionSchema(
             name="video_memory",
@@ -535,21 +540,29 @@ def save_zvec_index(path: str, nodes: list[dict], embeddings: np.ndarray) -> Non
         collection.close()
         collection = None
 
-        if os.path.exists(path):
+        if os.path.lexists(path):
             os.replace(path, backup_path)
             old_moved = True
         try:
             os.replace(stage_path, path)
         except Exception:
-            if old_moved and os.path.exists(backup_path):
-                os.replace(backup_path, path)
+            if old_moved and os.path.lexists(backup_path):
+                try:
+                    os.replace(backup_path, path)
+                except Exception as rollback_error:
+                    cleanup_stage = False
+                    raise RuntimeError(
+                        f"failed to publish zvec collection and restore the previous collection; "
+                        f"the previous collection is preserved at {backup_path}"
+                    ) from rollback_error
             raise
         if old_moved:
             shutil.rmtree(backup_path, ignore_errors=True)
     finally:
         if collection is not None:
             collection.close()
-        shutil.rmtree(stage_root, ignore_errors=True)
+        if cleanup_stage:
+            shutil.rmtree(stage_root, ignore_errors=True)
 
 
 class ZvecEmbeddingIndex:
@@ -569,13 +582,20 @@ class ZvecEmbeddingIndex:
     def load(self, path: str) -> None:
         zvec = _require_zvec()
         self.close()
-        self._collection = zvec.open(path, zvec.CollectionOption(read_only=True))
-        vector = self._collection.schema.vector("embedding")
-        if vector is None:
+        try:
+            self._collection = zvec.open(path, zvec.CollectionOption(read_only=True))
+            schema = self._collection.schema
+            vector = schema.vector("embedding")
+            if vector is None:
+                raise RuntimeError(f"zvec collection has no 'embedding' vector field: {path}")
+            missing_fields = [name for name in self._OUTPUT_FIELDS if schema.field(name) is None]
+            if missing_fields:
+                raise RuntimeError(f"zvec collection is missing required fields {missing_fields}: {path}")
+            self._dimension = int(vector.dimension)
+            self._doc_count = int(self._collection.stats.doc_count)
+        except Exception:
             self.close()
-            raise RuntimeError(f"zvec collection has no 'embedding' vector field: {path}")
-        self._dimension = int(vector.dimension)
-        self._doc_count = int(self._collection.stats.doc_count)
+            raise
 
     def close(self) -> None:
         if self._collection is not None:
@@ -612,16 +632,12 @@ class ZvecEmbeddingIndex:
         quoted = ", ".join("'" + value.replace("'", "''") + "'" for value in values)
         return f"node_type IN ({quoted})"
 
-    def _query(self, query, *, filter_expr: str | None, top_k: int):
+    def _query(self, query, *, filter_expr: str | None):
         if self._collection is None:
             return []
-        candidate_count = min(
-            self._doc_count,
-            max(_ZVEC_RRF_MIN_CANDIDATES, top_k * _ZVEC_RRF_CANDIDATE_MULTIPLIER),
-        )
         return self._collection.query(
             query,
-            topk=max(1, candidate_count),
+            topk=max(1, self._doc_count),
             filter=filter_expr,
             output_fields=self._OUTPUT_FIELDS,
         )
@@ -632,7 +648,7 @@ class ZvecEmbeddingIndex:
         top_k: int = 10,
         node_types: list[str] | None = None,
     ) -> list[dict]:
-        """Run exact cosine and persisted FTS routes, then fuse bounded candidates with RRF."""
+        """Run exact cosine and persisted FTS routes, then preserve the existing RRF behavior."""
         if self._collection is None or self._doc_count == 0 or top_k <= 0:
             return []
         zvec = _require_zvec()
@@ -653,7 +669,6 @@ class ZvecEmbeddingIndex:
                     dense_docs = self._query(
                         zvec.Query(field_name="embedding", vector=q_emb.tolist()),
                         filter_expr=filter_expr,
-                        top_k=top_k,
                     )
             except Exception as e:
                 print(f"[embed] dense backend failed ({e}); falling back to FTS-only search", file=sys.stderr)
@@ -666,7 +681,6 @@ class ZvecEmbeddingIndex:
                 sparse_docs = self._query(
                     zvec.Query(field_name="text", fts=zvec.Fts(match_string=sparse_query)),
                     filter_expr=filter_expr,
-                    top_k=top_k,
                 )
             except Exception as e:
                 print(f"[fts] zvec full-text search failed ({e})", file=sys.stderr)
@@ -776,13 +790,13 @@ def activate_retrieval_backend(memory_dir: str, backend: str) -> str:
     This enforces the storage invariant that one memory directory contains exactly one retrieval
     backend. Cleanup happens only after the selected artifact has been reopened successfully.
     """
-    active_path = os.path.realpath(retrieval_index_path(memory_dir, backend))
+    active_path = os.path.abspath(retrieval_index_path(memory_dir, backend))
     _validate_retrieval_index(active_path)
 
     inactive_backend = "npz" if backend == "zvec" else "zvec"
-    inactive_path = os.path.realpath(retrieval_index_path(memory_dir, inactive_backend))
+    inactive_path = os.path.abspath(retrieval_index_path(memory_dir, inactive_backend))
     _remove_retrieval_artifact(inactive_path)
-    return active_path
+    return os.path.realpath(active_path)
 
 
 def save_retrieval_index(
@@ -809,6 +823,7 @@ def save_retrieval_index(
     inactive_backup = os.path.join(stage_root, "previous-inactive")
     active_moved = False
     inactive_moved = False
+    cleanup_stage = True
 
     try:
         if backend == "zvec":
@@ -822,20 +837,33 @@ def save_retrieval_index(
         _validate_retrieval_index(stage_path, len(nodes), int(embeddings.shape[1]))
 
         try:
-            if os.path.exists(path):
+            if os.path.lexists(path):
                 os.replace(path, active_backup)
                 active_moved = True
-            if os.path.exists(inactive_path):
+            if os.path.lexists(inactive_path):
                 os.replace(inactive_path, inactive_backup)
                 inactive_moved = True
             os.replace(stage_path, path)
         except Exception:
-            if inactive_moved and os.path.exists(inactive_backup):
-                os.replace(inactive_backup, inactive_path)
-            if active_moved and os.path.exists(active_backup):
-                os.replace(active_backup, path)
+            rollback_errors = []
+            for moved, backup, destination in (
+                (inactive_moved, inactive_backup, inactive_path),
+                (active_moved, active_backup, path),
+            ):
+                if moved and os.path.lexists(backup):
+                    try:
+                        os.replace(backup, destination)
+                    except Exception as rollback_error:
+                        rollback_errors.append(rollback_error)
+            if rollback_errors:
+                cleanup_stage = False
+                raise RuntimeError(
+                    f"failed to publish retrieval index and fully restore the previous artifacts; "
+                    f"recoverable backups are preserved at {stage_root}"
+                ) from rollback_errors[0]
             raise
     finally:
-        shutil.rmtree(stage_root, ignore_errors=True)
+        if cleanup_stage:
+            shutil.rmtree(stage_root, ignore_errors=True)
 
     return path

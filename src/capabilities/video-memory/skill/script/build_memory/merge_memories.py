@@ -99,6 +99,8 @@ def merge_directory(
     skip_embeddings: bool = False,
     retrieval_backend: str = "npz",
 ):
+    if retrieval_backend not in RETRIEVAL_BACKENDS:
+        raise ValueError(f"unsupported retrieval backend: {retrieval_backend!r}; expected one of {RETRIEVAL_BACKENDS}")
     out = output_dir or video_dir
     os.makedirs(out, exist_ok=True)
 

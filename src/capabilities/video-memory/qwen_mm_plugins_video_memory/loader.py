@@ -19,31 +19,22 @@ log = logging.getLogger("qwen-mm-plugins-video-memory")
 # import still applies and video-memory follows the same single-accessor convention.
 # Cache entries include every input that changes the loaded toolkit. Replacing the graph or
 # embeddings, selecting a different path, or changing the cutoff invalidates the entry.
-_PathStamp = tuple[str, int, int]
+_PathStamp = tuple[str, int, int, int]
 _CacheSignature = tuple[_PathStamp, _PathStamp, float | None]
 _toolkits: dict[str, tuple[_CacheSignature, MemoryToolkit]] = {}
 _toolkits_lock = threading.Lock()
 
 
 def _path_stamp(path: str) -> _PathStamp:
+    # Retrieval artifacts are immutable after publication and zvec directories are replaced by
+    # atomic rename, so the root inode/mtime identifies a generation without scanning every file
+    # on every MCP call.
     path = os.path.realpath(path)
     try:
         stat = os.stat(path)
-        if os.path.isdir(path):
-            latest_mtime = stat.st_mtime_ns
-            total_size = 0
-            for root, _dirs, files in os.walk(path):
-                for name in files:
-                    try:
-                        child = os.stat(os.path.join(root, name))
-                    except OSError:
-                        continue
-                    latest_mtime = max(latest_mtime, child.st_mtime_ns)
-                    total_size += child.st_size
-            return path, latest_mtime, total_size
-        return path, stat.st_mtime_ns, stat.st_size
+        return path, stat.st_mtime_ns, stat.st_size, stat.st_ino
     except OSError:
-        return path, 0, 0
+        return path, 0, 0, 0
 
 
 def _resolve_embed_path(memory_dir: str, configured: str | None) -> str:
