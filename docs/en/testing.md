@@ -50,5 +50,6 @@ default offline suite.
 
 ## Video-memory backend benchmark
 
-See the [backend benchmark](../../benchmarks/README.md) for offline NPZ/zvec comparisons of first
-access, warm hybrid/FTS retrieval, storage, result parity and optional cost diagnostics.
+Video-memory tests and its benchmark live in [`tests/video-memory/`](../../tests/video-memory/README.md).
+See that directory's README for offline NPZ/zvec comparisons of first access, warm hybrid/FTS
+retrieval, storage, result parity and optional cost diagnostics.

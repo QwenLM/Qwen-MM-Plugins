@@ -5,7 +5,7 @@ build runs with (not the server package copies). Only pure logic is exercised: s
 construct/serialize round-trips, time parsing, JSON extraction, BM25/cosine search with the
 embedding network boundary monkeypatched, and NPZ save/load. Nothing here needs
 DASHSCOPE_API_KEY, ffmpeg, or the network. Modules whose imports pull heavy/optional deps
-are loaded through a skipping fixture, mirroring tests/test_build_merge.py.
+are loaded through a skipping fixture, mirroring test_build_merge.py in this directory.
 """
 
 import importlib

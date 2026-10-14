@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-_BUILD_DIR = Path(__file__).resolve().parents[1] / "src/capabilities/video-memory/skill/script/build_memory"
+_BUILD_DIR = Path(__file__).resolve().parents[2] / "src/capabilities/video-memory/skill/script/build_memory"
 _PROBE = """
 import json
 from pathlib import Path

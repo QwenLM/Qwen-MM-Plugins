@@ -1,12 +1,21 @@
-# Video-memory storage backend benchmark
+# Video-memory tests and storage backend benchmark
+
+This directory contains video-memory's build, merge, configuration, retrieval and MCP protocol tests,
+plus the storage backend benchmark and its regression tests. Run the tests from the repository root:
+
+```bash
+python -m pytest -q tests/video-memory/
+```
+
+## Run the backend benchmark
 
 Compare NPZ and zvec on the same stored nodes and float32 vectors, using hybrid RRF and the
 FTS fallback with the project's entity/event, OCR and ASR filters. No API credentials are needed.
 
 ```bash
-python benchmarks/video_memory_backend.py /path/to/video.mp4.memory --diagnose --json-output real.json
-python benchmarks/video_memory_backend.py /path/to/video.mp4.memory --scale-nodes 1000 --diagnose --json-output scale-1000.json
-python benchmarks/video_memory_backend.py /path/to/video.mp4.memory --scale-nodes 5000 --diagnose --json-output scale-5000.json
+python tests/video-memory/video_memory_backend.py /path/to/video.mp4.memory --diagnose --json-output real.json
+python tests/video-memory/video_memory_backend.py /path/to/video.mp4.memory --scale-nodes 1000 --diagnose --json-output scale-1000.json
+python tests/video-memory/video_memory_backend.py /path/to/video.mp4.memory --scale-nodes 5000 --diagnose --json-output scale-5000.json
 ```
 
 Install the project's `video-memory` extra first. Source artifacts are left untouched; the benchmark

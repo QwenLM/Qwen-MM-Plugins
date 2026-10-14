@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-_SCRIPT = Path(__file__).parents[1] / "benchmarks" / "video_memory_backend.py"
+_SCRIPT = Path(__file__).with_name("video_memory_backend.py")
 _SPEC = importlib.util.spec_from_file_location("video_memory_backend_benchmark", _SCRIPT)
 benchmark = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(benchmark)

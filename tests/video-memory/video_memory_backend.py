@@ -6,7 +6,7 @@ existing memory, writes the exact same nodes and vectors to NPZ and zvec, then m
 runtime paths the project actually uses: hybrid RRF and the FTS-only fallback.
 
 Example:
-    python benchmarks/video_memory_backend.py /path/to/video.mp4.memory
+    python tests/video-memory/video_memory_backend.py /path/to/video.mp4.memory
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from unittest import mock
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src" / "capabilities" / "video-memory"))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
