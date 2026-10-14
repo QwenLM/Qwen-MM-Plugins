@@ -165,16 +165,13 @@ when you pass `video_path`, or set `GRAPH_MEMORY_PATH` to point at one explicitl
 By default the retrieval artifact is `embeddings.npz`. With
 `--retrieval-backend zvec`, it is the persistent `embeddings.zvec/` collection,
 which stores vectors, node metadata, and the full-text index together. The
-server detects either format automatically. A memory contains exactly one
-retrieval artifact; after a new backend is successfully written and reopened,
-the builder removes the inactive backend. Finding both artifacts is treated as
-an invalid memory rather than guessing which one matches `graph_memory.json`.
-The collection boundary follows the generated memory: normally one video, or
-one explicitly merged directory memory. Existing prefixed node and macro IDs
-identify records in a merged memory, so no separate `video_id` field is added.
+collection covers one video or one explicitly merged memory. Switching backends
+successfully removes the old retrieval artifact.
 
-To select a retrieval artifact explicitly, set `EMBEDDINGS_PATH` to an
-`embeddings.npz` file or an `embeddings.zvec/` collection directory.
+The server auto-detects either format; auto-detection reports an error if both
+artifacts are present. To select one explicitly, set `EMBEDDINGS_PATH` to an
+existing `embeddings.npz` file or `embeddings.zvec/` collection directory;
+this takes precedence over auto-detection.
 
 Contents: `graph_memory.json`, `embeddings.npz` or `embeddings.zvec/`,
 `01_macros.json`, `subgraphs/`
