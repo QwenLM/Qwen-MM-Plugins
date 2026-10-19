@@ -52,7 +52,7 @@ Issues = "https://github.com/QwenLM/Qwen-MM-Plugins/issues"
 [project.optional-dependencies]
 # capability extras — compose via the profiles below
 api = ["dashscope", "httpx[socks]", "requests[socks]"]  # cloud media APIs + HTTP/SOCKS
-search = ["requests[socks]"]                    # Serper / Exa / Tavily / Serply + optional SOCKS proxy transport
+search = ["requests[socks]"]                    # Serper / Exa / Tavily / Serply / Firecrawl + optional SOCKS proxy transport
 nifti = ["numpy<3", "pillow<12", "nibabel>=5,<6"]  # configurable NIfTI volume visualization
 # viz = the full visualize stack — a `core` install then renders every format out of the box.
 viz = [
