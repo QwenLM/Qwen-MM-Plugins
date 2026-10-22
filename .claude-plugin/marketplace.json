@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Qwen multimodal understanding plugins — Agent Skills + MCP servers",
-    "version": "1.1.11"
+    "version": "1.2.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/core",
-        "ref": "qwen-mm-plugins-core-v1.2.0"
+        "ref": "qwen-mm-plugins-core-v1.3.0"
       },
       "description": "Inspect local files and media, extract video frames, and crop or annotate images."
     },
@@ -25,7 +25,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/api",
-        "ref": "qwen-mm-plugins-api-v1.3.0"
+        "ref": "qwen-mm-plugins-api-v1.4.0"
       },
       "description": "Understand images, audio, and video through model APIs, including OCR, object localization, and speech transcription."
     },
@@ -35,7 +35,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/search",
-        "ref": "qwen-mm-plugins-search-v1.1.1"
+        "ref": "qwen-mm-plugins-search-v1.2.0"
       },
       "description": "Search the web, read pages, and identify objects or places with reverse-image search."
     },
@@ -45,7 +45,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/video-memory",
-        "ref": "qwen-mm-plugins-video-memory-v1.1.1"
+        "ref": "qwen-mm-plugins-video-memory-v1.2.0"
       },
       "description": "Build searchable, hierarchical memory of long videos to summarize content and locate events, text, and dialogue."
     },
@@ -55,7 +55,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/omni-memory",
-        "ref": "qwen-mm-plugins-omni-memory-v1.1.4"
+        "ref": "qwen-mm-plugins-omni-memory-v1.2.0"
       },
       "description": "Build and query audio-visual memory to track speakers, dialogue, sounds, and events across videos."
     },
@@ -65,7 +65,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/omni-video2note",
-        "ref": "qwen-mm-plugins-omni-video2note-v1.0.4"
+        "ref": "qwen-mm-plugins-omni-video2note-v1.1.0"
       },
       "description": "Convert a local tutorial video into an illustrated PDF with resumable processing and offline status inspection."
     },
@@ -75,7 +75,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/video-edit",
-        "ref": "qwen-mm-plugins-video-edit-v1.1.1"
+        "ref": "qwen-mm-plugins-video-edit-v1.2.0"
       },
       "description": "Edit existing footage into finished videos with pacing, sound, subtitles, and visual effects."
     },
@@ -85,7 +85,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/omni-chatcut",
-        "ref": "qwen-mm-plugins-omni-chatcut-v1.0.3"
+        "ref": "qwen-mm-plugins-omni-chatcut-v1.1.0"
       },
       "description": "Omni ChatCut video creation with Music-to-MV, movie commentary, and speaker-preserving video translation."
     },
@@ -95,7 +95,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/video-spatio",
-        "ref": "qwen-mm-plugins-video-spatio-v1.0.1"
+        "ref": "qwen-mm-plugins-video-spatio-v1.1.0"
       },
       "description": "Model-free 3D spatial reasoning (skill) + stateless geometry/BEV MCP tools."
     },
@@ -105,7 +105,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/edu-agent",
-        "ref": "qwen-mm-plugins-edu-agent-v1.1.1"
+        "ref": "qwen-mm-plugins-edu-agent-v1.2.0"
       },
       "description": "Create narrated Mandarin math and science tutorial videos or interactive explainers from problem statements and images."
     },
@@ -115,7 +115,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/blender",
-        "ref": "qwen-mm-plugins-blender-v1.1.1"
+        "ref": "qwen-mm-plugins-blender-v1.2.0"
       },
       "description": "Create, refine, and render 3D scenes and assets in Blender."
     },
@@ -125,7 +125,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/freecad",
-        "ref": "qwen-mm-plugins-freecad-v1.1.1"
+        "ref": "qwen-mm-plugins-freecad-v1.2.0"
       },
       "description": "Create and edit parametric CAD models, technical drawings, and model exports in FreeCAD."
     },
@@ -135,7 +135,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/omni-skill-creator",
-        "ref": "qwen-mm-plugins-omni-skill-creator-v1.0.2"
+        "ref": "qwen-mm-plugins-omni-skill-creator-v1.1.0"
       },
       "description": "Turns a demonstration video into a reusable Agent Skill. Needs a DashScope key and ffmpeg."
     },
@@ -145,7 +145,7 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/mhs",
-        "ref": "qwen-mm-plugins-mhs-v1.1.1"
+        "ref": "qwen-mm-plugins-mhs-v1.2.0"
       },
       "description": "Operate physical hardware through Model Hardware Standard adapters: discover devices, read sensors and camera frames, send commands with host-side safety-limit enforcement, check health, and emergency-stop — as MCP tools. Adapters are run by the hardware's owner."
     },
@@ -156,7 +156,17 @@
         "source": "git-subdir",
         "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
         "path": "src/capabilities/nifti",
-        "ref": "qwen-mm-plugins-nifti-v1.0.0"
+        "ref": "qwen-mm-plugins-nifti-v1.1.0"
+      }
+    },
+    {
+      "name": "qwen-mm-plugins-omnidr",
+      "description": "Research a video using audiovisual evidence and external sources, and produce a cited interactive report.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/QwenLM/Qwen-MM-Plugins.git",
+        "path": "src/capabilities/omnidr",
+        "ref": "qwen-mm-plugins-omnidr-v1.0.0"
       }
     }
   ]
