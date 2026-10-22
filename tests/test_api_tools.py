@@ -750,3 +750,22 @@ def test_grounding_draws_boxes_with_reversed_corners(monkeypatch, sample_image):
     result = json.loads(blocks[0]["text"])
     assert result["detections"][0]["label"] == "cat"
     assert any(block["type"] == "image" for block in blocks)
+
+
+def test_grounding_draws_boxes_on_grayscale_image(monkeypatch, tmp_path):
+    pytest.importorskip("openai")
+    from PIL import Image
+
+    scan = tmp_path / "scan.png"
+    Image.new("L", (96, 64), 255).save(scan)
+    model_json = '[{"label": "stamp", "bbox_2d": [200, 100, 800, 400]}]'
+    monkeypatch.setattr(oa, "call_openai_chat", lambda **kwargs: _chat_response(model_json))
+
+    blocks = grounding.handle({"image_path": str(scan), "prompt": "stamp", "return_img": True})
+
+    assert not _is_error(blocks)
+    assert json.loads(blocks[0]["text"])["detections"][0]["bbox_pixel"] == [19, 6, 77, 26]
+    drawn = next(block for block in blocks if block["type"] == "image")
+    with Image.open(io.BytesIO(base64.b64decode(drawn["data"]))) as annotated:
+        # The box comes back in the first default color, red, not as a gray level.
+        assert any(r > 200 and g < 80 and b < 80 for r, g, b in annotated.convert("RGB").getdata())
