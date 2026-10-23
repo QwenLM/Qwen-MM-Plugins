@@ -171,6 +171,7 @@ wsl --install -d Ubuntu
 | `TAVILY_API_KEY` | Tavily 网页搜索和页面抽取 |
 | `EXA_API_KEY` | Exa 网页搜索和页面抽取 |
 | `SERPLY_API_KEY` | Serply 网页搜索和页面抽取 |
+| `FIRECRAWL_API_KEY` | [Firecrawl](https://docs.firecrawl.dev) 网页搜索和页面抽取 |
 
 本地 `core` 文件读取无需 API key。可通过安装器的 **Configure**、shell 环境变量或
 `~/.qwen-mm-plugins/config` 设置；环境变量优先。
@@ -182,7 +183,7 @@ wsl --install -d Ubuntu
 临时上传凭证接口。临时上传不可用或失败时，仍按原有规则转码、使用用户自管 OSS 或抽帧降级。
 
 未设置 `QWEN_MM_SEARCH_BACKEND` 或设为 `auto` 时，文本搜索按固定顺序选择第一个已配置
-key 的后端：Serper、Tavily、Exa、Serply。设为 `serper`、`tavily`、`exa` 或 `serply` 会固定使用该后端；
+key 的后端：Serper、Tavily、Exa、Serply、Firecrawl。设为 `serper`、`tavily`、`exa`、`serply` 或 `firecrawl` 会固定使用该后端；
 如果缺少对应 key，则直接报错，不会回退。
 `image_search` 独立于 `QWEN_MM_SEARCH_BACKEND`，始终使用 Serper Lens；缺少
 `SERPER_API_KEY` 时会直接报错。
