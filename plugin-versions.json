@@ -1,21 +1,22 @@
 {
-  "distribution_version": "1.1.11",
+  "distribution_version": "1.2.0",
   "tag_format": "qwen-mm-plugins-{cap}-v{version}",
   "plugins": {
-    "api": "1.3.0",
-    "blender": "1.1.1",
-    "core": "1.2.0",
-    "edu-agent": "1.1.1",
-    "freecad": "1.1.1",
-    "mhs": "1.1.1",
-    "omni-chatcut": "1.0.3",
-    "omni-memory": "1.1.4",
-    "omni-skill-creator": "1.0.2",
-    "omni-video2note": "1.0.4",
-    "search": "1.1.1",
-    "video-edit": "1.1.1",
-    "video-memory": "1.1.1",
-    "video-spatio": "1.0.1",
-    "nifti": "1.0.0"
+    "api": "1.4.0",
+    "blender": "1.2.0",
+    "core": "1.3.0",
+    "edu-agent": "1.2.0",
+    "freecad": "1.2.0",
+    "mhs": "1.2.0",
+    "omni-chatcut": "1.1.0",
+    "omni-memory": "1.2.0",
+    "omni-skill-creator": "1.1.0",
+    "omni-video2note": "1.1.0",
+    "search": "1.2.0",
+    "video-edit": "1.2.0",
+    "video-memory": "1.2.0",
+    "video-spatio": "1.1.0",
+    "nifti": "1.1.0",
+    "omnidr": "1.0.0"
   }
 }
