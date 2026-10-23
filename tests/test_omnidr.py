@@ -193,9 +193,12 @@ def test_shell_invalid_arguments_show_fields_without_input(tool, monkeypatch, ca
     assert secret not in output
 
 
-def test_manifests_follow_unpublished_plugin_contract():
+def test_manifests_follow_plugin_release_contract():
     index = json.loads((ROOT / "plugin-versions.json").read_text())
-    assert "omnidr" not in index["plugins"]
+    version = index["plugins"].get("omnidr")
+    if version is not None:
+        assert version == plugin.__version__
+    ref = index["tag_format"].format(cap="omnidr", version=version) if version is not None else "main"
     for kind in ["claude", "codex", "qoder"]:
         manifest = json.loads((CAP / f".{kind}-plugin/plugin.json").read_text())
         assert manifest["name"] == "qwen-mm-plugins-omnidr"
@@ -208,6 +211,11 @@ def test_manifests_follow_unpublished_plugin_contract():
             assert manifest["mcp"] == ".mcp.json"
     config = json.loads((CAP / ".mcp.json").read_text())
     assert set(config["mcpServers"]) == {"qwen-mm-plugins-omnidr"}
+    assert config["mcpServers"]["qwen-mm-plugins-omnidr"]["args"] == [
+        "--from",
+        f"qwen-mm-plugins[omnidr] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@{ref}",
+        "qwen-mm-plugins-omnidr",
+    ]
 
 
 def test_skill_references_resolve_and_bundle_is_small():
@@ -2737,6 +2745,7 @@ def test_local_plugin_copy_includes_shared_roles_and_local_commands(tmp_path):
     import subprocess
     import sys
 
+    source_mcp = (CAP / ".mcp.json").read_bytes()
     destination = tmp_path / "plugin"
     subprocess.run(
         [
@@ -2778,7 +2787,7 @@ def test_local_plugin_copy_includes_shared_roles_and_local_commands(tmp_path):
                 assert (document.parent / target).is_file(), (document, target)
     assert claude["mcpServers"] == mcp["mcpServers"]
     assert mcp["mcpServers"]["qwen-mm-plugins-omnidr"]["args"] == [str(SERVER)]
-    assert "@main" in (CAP / ".mcp.json").read_text()
+    assert (CAP / ".mcp.json").read_bytes() == source_mcp
 
 
 def test_real_mcp_reader_roundtrip_with_local_streaming_endpoint(tmp_path, sample_media_av):
