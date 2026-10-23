@@ -6,7 +6,7 @@ import json
 import math
 import re
 
-from .embeddings import EmbeddingIndex
+from .embeddings import EmbeddingIndex, ZvecEmbeddingIndex
 from .schema import HierarchicalGraphMemory
 from .time_system import DefaultTimeSystem, EgoLifeTimeSystem
 
@@ -61,7 +61,10 @@ class MemoryToolkit:
     """Retrieval methods over a loaded HierarchicalGraphMemory."""
 
     def __init__(
-        self, memory: HierarchicalGraphMemory, index: EmbeddingIndex | None = None, egolife_mode: bool = False
+        self,
+        memory: HierarchicalGraphMemory,
+        index: EmbeddingIndex | ZvecEmbeddingIndex | None = None,
+        egolife_mode: bool = False,
     ):
         self.memory = memory
         self.index = index

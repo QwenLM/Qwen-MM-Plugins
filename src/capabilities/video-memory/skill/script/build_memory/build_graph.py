@@ -22,7 +22,7 @@ try:
 except ImportError:
     oss2 = None
 
-from embeddings import EmbeddingIndex
+from embeddings import RETRIEVAL_BACKENDS, EmbeddingIndex, save_retrieval_index
 from env_config import ConfigurationError, get_env, get_int_env
 from llm_client import call_vlm_curl, extract_json
 from prompts import (
@@ -1293,6 +1293,7 @@ def _assemble_save_embed(
     macros,
     macro_rels,
     super_rels,
+    retrieval_backend: str = "npz",
 ) -> HierarchicalGraphMemory:
     """Assemble memory, save graph_memory.json, build + save embeddings."""
     memory = HierarchicalGraphMemory(
@@ -1309,22 +1310,23 @@ def _assemble_save_embed(
     memory.save(graph_path)
     print(f"\nGraph memory saved to: {graph_path}")
 
-    _build_save_embeddings(memory, output_dir)
+    _build_save_embeddings(memory, output_dir, retrieval_backend)
     return memory
 
 
-def _build_save_embeddings(memory: HierarchicalGraphMemory, output_dir: str) -> str:
-    """Build the embedding index and replace its output only after a complete save."""
-    print("\nPhase 4: Building embedding index...")
+def _build_save_embeddings(memory: HierarchicalGraphMemory, output_dir: str, retrieval_backend: str = "npz") -> str:
+    """Build embeddings and persist them through the selected retrieval backend."""
+    if retrieval_backend not in RETRIEVAL_BACKENDS:
+        raise ValueError(f"unsupported retrieval backend: {retrieval_backend!r}; expected one of {RETRIEVAL_BACKENDS}")
+    print(f"\nPhase 4: Building {retrieval_backend} retrieval index...")
     index = EmbeddingIndex()
     nodes = memory.get_all_nodes()
     if not nodes:
         raise RuntimeError("graph contains no nodes; cannot build embeddings")
     index.build(nodes)
 
-    index_path = os.path.join(output_dir, "embeddings.npz")
-    index.save(index_path)
-    print(f"Embedding index saved to: {index_path} ({len(nodes)} nodes)")
+    index_path = save_retrieval_index(output_dir, retrieval_backend, index.nodes, index.embeddings)
+    print(f"Retrieval index saved to: {index_path} ({len(nodes)} nodes)")
     return index_path
 
 
@@ -1340,8 +1342,11 @@ def build_graph_memory(
     scene_threshold: float = 0,
     enable_asr: bool = True,
     asr_model: str = "qwen3-asr-flash",
+    retrieval_backend: str = "npz",
 ) -> HierarchicalGraphMemory:
     """End-to-end graph memory construction."""
+    if retrieval_backend not in RETRIEVAL_BACKENDS:
+        raise ValueError(f"unsupported retrieval backend: {retrieval_backend!r}; expected one of {RETRIEVAL_BACKENDS}")
     if not output_dir:
         output_dir = os.path.abspath(video_path) + ".memory"
     os.makedirs(output_dir, exist_ok=True)
@@ -1418,7 +1423,17 @@ def build_graph_memory(
     # Phase 3: Hierarchical aggregation
     root, supers, macro_rels, super_rels = step3_hierarchical_aggregation(macros, model=model, api_key=_api_key)
 
-    return _assemble_save_embed(video_key, video_path, output_dir, root, supers, macros, macro_rels, super_rels)
+    return _assemble_save_embed(
+        video_key,
+        video_path,
+        output_dir,
+        root,
+        supers,
+        macros,
+        macro_rels,
+        super_rels,
+        retrieval_backend,
+    )
 
 
 def _save_subgraph_compat(output_dir: str, macro: MacroEvent):
@@ -1512,6 +1527,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--embeddings-only", action="store_true", help="Build embeddings from an existing graph_memory.json"
     )
+    parser.add_argument(
+        "--retrieval-backend",
+        choices=RETRIEVAL_BACKENDS,
+        default="npz",
+        help="Persistent retrieval backend (default: npz)",
+    )
     parser.add_argument("--start-sec", type=float, default=0.0, help="Start time in seconds for Phase 1 (default: 0)")
     parser.add_argument(
         "--end-sec", type=float, default=None, help="End time in seconds for Phase 1 (default: full duration)"
@@ -1560,7 +1581,7 @@ if __name__ == "__main__":
         if not os.path.exists(graph_path):
             print(f"ERROR: {graph_path} not found")
             sys.exit(1)
-        _build_save_embeddings(HierarchicalGraphMemory.load(graph_path), args.output_dir)
+        _build_save_embeddings(HierarchicalGraphMemory.load(graph_path), args.output_dir, args.retrieval_backend)
 
     elif args.phase1_only:
         os.makedirs(args.output_dir, exist_ok=True)
@@ -1647,7 +1668,15 @@ if __name__ == "__main__":
             api_key=_api_key,
         )
         _assemble_save_embed(
-            args.video_key, args.video_path, args.output_dir, root, supers, macros, macro_rels, super_rels
+            args.video_key,
+            args.video_path,
+            args.output_dir,
+            root,
+            supers,
+            macros,
+            macro_rels,
+            super_rels,
+            args.retrieval_backend,
         )
 
     else:
@@ -1662,4 +1691,5 @@ if __name__ == "__main__":
             scene_threshold=args.scene_threshold,
             enable_asr=args.asr,
             asr_model=args.asr_model,
+            retrieval_backend=args.retrieval_backend,
         )
