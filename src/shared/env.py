@@ -34,7 +34,7 @@ EnvBool = Annotated[
     BeforeValidator(lambda value: str(value).lower()),
     AfterValidator(lambda value: value in ("1", "true", "yes", "on")),
 ]
-SearchBackend = Annotated[Literal["auto", "serper", "tavily", "exa", "serply"], BeforeValidator(str.lower)]
+SearchBackend = Annotated[Literal["auto", "serper", "tavily", "exa", "serply", "keenable"], BeforeValidator(str.lower)]
 
 # Ordinary settings: group -> name -> (Pydantic type, Field).
 # This is the single definition of defaults, constraints and Configure/docs metadata.
@@ -115,7 +115,8 @@ CONFIG_FIELDS = {
         "QWEN_MM_SEARCH_BACKEND": (
             SearchBackend,
             Field(
-                default="auto", description="text search backend (auto: serper > tavily > exa > serply; or choose one)"
+                default="auto",
+                description="text search backend (auto: serper > tavily > exa > serply > keenable; or choose one)",
             ),
         ),
         "SERPER_API_KEY": (
@@ -132,6 +133,14 @@ CONFIG_FIELDS = {
         "SERPLY_API_KEY": (
             str | None,
             Field(default=None, description="Serply web_search / web_extractor", repr=False),
+        ),
+        "KEENABLE_API_KEY": (
+            str | None,
+            Field(
+                default=None,
+                description="Keenable web_search / web_extractor; optional, raises the keyless rate limits",
+                repr=False,
+            ),
         ),
     },
     "Runtime paths & limits": {

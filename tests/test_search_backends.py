@@ -1,4 +1,4 @@
-"""Offline contract tests for the Serper / Exa / Tavily / Serply search adapters."""
+"""Offline contract tests for the Serper / Exa / Tavily / Serply / Keenable search adapters."""
 
 from __future__ import annotations
 
@@ -45,6 +45,8 @@ def test_explicit_backend_is_normalized_and_does_not_fallback(monkeypatch):
         ({"EXA_API_KEY": "e"}, "exa"),
         ({"EXA_API_KEY": "e", "SERPLY_API_KEY": "p"}, "exa"),
         ({"SERPLY_API_KEY": "p"}, "serply"),
+        ({"SERPLY_API_KEY": "p", "KEENABLE_API_KEY": "k"}, "serply"),
+        ({"KEENABLE_API_KEY": "k"}, "keenable"),
         ({}, "serper"),
     ],
 )
@@ -70,6 +72,7 @@ def test_blank_or_auto_selector_uses_configured_keys(monkeypatch, selector):
         ("exa", "EXA_API_KEY"),
         ("tavily", "TAVILY_API_KEY"),
         ("serply", "SERPLY_API_KEY"),
+        ("keenable", "KEENABLE_API_KEY"),
     ],
 )
 def test_backend_specific_key_resolution_and_explicit_override(monkeypatch, backend, env_name):
@@ -90,7 +93,7 @@ def test_backend_specific_key_resolution_and_explicit_override(monkeypatch, back
 
 def test_invalid_backend_message_lists_choices():
     error = backends.backend_error("other")
-    assert error and "serper, exa, tavily, serply" in error
+    assert error and "serper, exa, tavily, serply, keenable" in error
     assert backends.backend_error("exa") is None
 
 
@@ -101,6 +104,7 @@ def test_shared_config_catalog_lists_backend_selector_and_keys():
     assert fields["EXA_API_KEY"] == (True, "")
     assert fields["TAVILY_API_KEY"] == (True, "")
     assert fields["SERPLY_API_KEY"] == (True, "")
+    assert fields["KEENABLE_API_KEY"] == (True, "")
 
 
 def test_serper_search_adapter_normalizes_results(monkeypatch):
@@ -280,3 +284,103 @@ def test_serply_extraction_adapter_returns_markdown_text(monkeypatch):
 def test_serply_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
     monkeypatch.setattr(backends, "_post_text", lambda *_a, **_k: response)
     assert backends.extract_page("https://page", "serply", "key") == expected
+
+
+@pytest.mark.parametrize(
+    "api_key,path,key_header",
+    [("key", "/v1/search", {"X-API-Key": "key"}), ("", "/v1/search/public", {})],
+)
+def test_keenable_search_adapter_routes_by_key_and_normalizes_results(monkeypatch, api_key, path, key_header):
+    calls = []
+    long_text = "k" * (backends.SEARCH_SNIPPET_LIMIT + 50)
+
+    def fake_post(url, payload, headers, **kwargs):
+        calls.append((url, payload, headers, kwargs))
+        return {
+            "results": [
+                {"url": "https://k", "title": "K", "description": "", "snippet": long_text, "acquired_at": "2026"},
+                {"url": "https://k2", "title": "", "description": "", "snippet": ""},
+            ]
+        }
+
+    monkeypatch.setattr(backends, "_post_json", fake_post)
+    docs = backends.search_text("q", "keenable", api_key)
+
+    assert docs == [
+        {"link": "https://k", "title": "K", "snippet": "k" * backends.SEARCH_SNIPPET_LIMIT, "date": "N/A"},
+        {"link": "https://k2", "title": "N/A", "snippet": "N/A", "date": "N/A"},
+    ]
+    url, payload, headers, kwargs = calls[0]
+    assert url == f"{backends.KEENABLE_BASE}{path}"
+    assert payload == {"query": "q", "max_results": 10}
+    assert headers == {"X-Keenable-Title": "Qwen-MM-Plugins", **key_header}
+    assert kwargs["max_retries"] == 10
+
+
+def test_keenable_search_adapter_handles_failed_request(monkeypatch):
+    monkeypatch.setattr(backends, "_post_json", lambda *_a, **_k: None)
+    assert backends.search_text("q", "keenable", "") == []
+
+
+@pytest.mark.parametrize(
+    "api_key,path,key_header",
+    [("key", "/v1/fetch", {"X-API-Key": "key"}), ("", "/v1/fetch/public", {})],
+)
+def test_keenable_extraction_adapter_routes_by_key_and_returns_markdown(monkeypatch, api_key, path, key_header):
+    calls = []
+
+    def fake_get(url, params, headers, **kwargs):
+        calls.append((url, params, headers, kwargs))
+        return {"url": "https://page", "title": "Page", "content": "# Page\n\nbody", "description": ""}
+
+    monkeypatch.setattr(backends, "_get_json", fake_get)
+    assert backends.extract_page("https://page", "keenable", api_key) == "# Page\n\nbody"
+
+    url, params, headers, kwargs = calls[0]
+    assert url == f"{backends.KEENABLE_BASE}{path}"
+    assert params == {"url": "https://page"}
+    assert headers == {"X-Keenable-Title": "Qwen-MM-Plugins", **key_header}
+    assert kwargs["max_retries"] == 3
+
+
+@pytest.mark.parametrize(
+    "response,expected",
+    [(None, "Error scraping https://page"), ({"content": ""}, "No content extracted.")],
+)
+def test_keenable_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
+    monkeypatch.setattr(backends, "_get_json", lambda *_a, **_k: response)
+    assert backends.extract_page("https://page", "keenable", "") == expected
+
+
+def test_selected_keenable_runs_keyless_through_the_tools(monkeypatch):
+    from qwen_mm_plugins_search.tools import web_extractor, web_search
+
+    monkeypatch.setattr(shared_env, "get_env", _fake_env({"QWEN_MM_SEARCH_BACKEND": "keenable"}))
+    calls = []
+
+    def fake_post(url, payload, headers, **kwargs):
+        calls.append((url, headers))
+        return {"results": [{"url": "https://k", "title": "K", "snippet": "body"}]}
+
+    def fake_get(url, params, headers, **kwargs):
+        calls.append((url, headers))
+        return {"content": "# Page"}
+
+    monkeypatch.setattr(backends, "_post_json", fake_post)
+    monkeypatch.setattr(backends, "_get_json", fake_get)
+
+    assert "[1] https://k" in web_search.handle({"queries": ["q"]})[0]["text"]
+    assert "# Page" in web_extractor.handle({"urls": ["https://page"], "goal": ""})[0]["text"]
+    assert [url for url, _headers in calls] == [
+        f"{backends.KEENABLE_BASE}/v1/search/public",
+        f"{backends.KEENABLE_BASE}/v1/fetch/public",
+    ]
+    assert all("X-API-Key" not in headers for _url, headers in calls)
+
+
+def test_keyed_backends_still_report_a_missing_key(monkeypatch):
+    from qwen_mm_plugins_search.tools import web_search
+
+    monkeypatch.setattr(shared_env, "get_env", _fake_env({"QWEN_MM_SEARCH_BACKEND": "serply"}))
+    monkeypatch.setattr(backends, "_get_json", lambda *_a, **_k: pytest.fail("no request without a key"))
+    assert "no API key for serply" in web_search.handle({"queries": ["q"]})[0]["text"]
