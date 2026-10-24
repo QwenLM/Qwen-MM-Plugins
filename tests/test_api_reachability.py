@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 from conftest import mcp_call
 
-from qwen_mm_plugins_search.backends import BACKEND_KEY_ENVS, resolve_backend
+from qwen_mm_plugins_search.backends import BACKEND_KEY_ENVS, KEYLESS_BACKENDS, resolve_backend
 from shared.env import get_env
 
 pytestmark = pytest.mark.reachability
@@ -35,7 +35,7 @@ RUN_REACHABILITY = os.environ.get("QWEN_MM_RUN_REACHABILITY") == "1"
 HAS_DASHSCOPE = bool(get_env("DASHSCOPE_API_KEY"))
 SEARCH_BACKEND = resolve_backend()
 SEARCH_KEY_ENV = BACKEND_KEY_ENVS.get(SEARCH_BACKEND)
-HAS_SEARCH_KEY = bool(SEARCH_KEY_ENV and get_env(SEARCH_KEY_ENV))
+HAS_SEARCH_KEY = SEARCH_BACKEND in KEYLESS_BACKENDS or bool(SEARCH_KEY_ENV and get_env(SEARCH_KEY_ENV))
 HAS_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 requires_dashscope = pytest.mark.skipif(

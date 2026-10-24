@@ -29,6 +29,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             environment key).
     """
     from qwen_mm_plugins_search.backends import (
+        KEYLESS_BACKENDS,
         backend_error,
         extract_page,
         missing_key_error,
@@ -49,7 +50,7 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
         return text_error(error)
 
     api_key = resolve_api_key(arguments, backend)
-    if not api_key:
+    if not api_key and backend not in KEYLESS_BACKENDS:
         return text_error(missing_key_error(backend))
 
     results = []
