@@ -104,6 +104,7 @@ curl -fsSL https://raw.githubusercontent.com/QwenLM/Qwen-MM-Plugins/main/install
 | `omni-video2note` | 通过 Omni 音视频理解将本地教程视频转换为图文 PDF，并返回审阅反馈。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-video2note/cookbook/) |
 | `omni-skill-creator` | 将演示视频转化为可复用的 Agent Skill。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-skill-creator/cookbook/) |
 | `omni-memory` | 为长音视频构建音视频记忆：谁在场、谁说了什么、怎么说的、听起来是什么样。由 Omni 模型连同音轨一起读取视频。需要 DashScope key 和 ffmpeg。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-memory/cookbook/) |
+| `omnidr` | 围绕视频和用户问题开展深度研究，结合相关的网页、视频与文档等外部资料，生成HTML报告。需要 DashScope key、ffmpeg/ffprobe 和 Node.js。 | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omnidr/cookbook/) |
 
 具体版本与可选依赖见[安装文档](docs/zh/installation.md#依赖)。
 
