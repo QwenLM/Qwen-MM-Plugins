@@ -52,6 +52,7 @@ jobs:
           --with "pydantic>=2"
           --with "pillow<12"
           --with "numpy<3"
+          --with "zvec>=0.7,<1"
           --with scipy
           --with matplotlib
           --with opencv-python-headless

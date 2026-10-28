@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
 import random
 import re
+import shutil
 import sys
+import tempfile
 import time
 
 import numpy as np
@@ -19,6 +22,10 @@ except ImportError:
 
 _MAX_RETRIES = 80
 _RETRY_BASE_DELAY = 1.0
+
+NPZ_INDEX_FILENAME = "embeddings.npz"
+ZVEC_INDEX_DIRNAME = "embeddings.zvec"
+RETRIEVAL_BACKENDS = ("npz", "zvec")
 
 
 # DashScope native multimodal-embedding endpoint.
@@ -415,3 +422,469 @@ class EmbeddingIndex:
             self._set_embeddings(data["embeddings"])
             self.nodes = json.loads(str(data["nodes"]))
         self._build_sparse_index()
+
+
+def retrieval_index_path(memory_dir: str, backend: str) -> str:
+    """Return the on-disk artifact path for a retrieval backend."""
+    if backend == "npz":
+        return os.path.join(memory_dir, NPZ_INDEX_FILENAME)
+    if backend == "zvec":
+        return os.path.join(memory_dir, ZVEC_INDEX_DIRNAME)
+    raise ValueError(f"unsupported retrieval backend: {backend!r}; expected one of {RETRIEVAL_BACKENDS}")
+
+
+def detect_retrieval_index(memory_dir: str, configured: str | None = None) -> str:
+    """Resolve the one retrieval artifact in ``memory_dir``.
+
+    An explicit existing path wins. Auto-detection otherwise rejects a directory that contains
+    both backends: without a manifest there is no reliable way to know which artifact matches the
+    current graph.
+    """
+    if configured:
+        configured = os.path.realpath(configured)
+        if os.path.exists(configured):
+            return configured
+    candidates = [
+        os.path.realpath(retrieval_index_path(memory_dir, backend))
+        for backend in ("zvec", "npz")
+        if os.path.exists(retrieval_index_path(memory_dir, backend))
+    ]
+    if len(candidates) > 1:
+        raise RuntimeError(
+            f"Memory directory contains both {ZVEC_INDEX_DIRNAME}/ and {NPZ_INDEX_FILENAME}: {memory_dir}. "
+            "A memory must contain exactly one retrieval artifact; remove the inactive backend."
+        )
+    if candidates:
+        return candidates[0]
+    return os.path.realpath(configured) if configured else ""
+
+
+def _require_zvec():
+    try:
+        import zvec
+    except ImportError as e:
+        raise RuntimeError(
+            "The zvec retrieval backend requires zvec>=0.7,<1. "
+            "Install the video-memory extra or run `pip install 'zvec>=0.7,<1'`."
+        ) from e
+    try:
+        version = tuple(map(int, zvec.__version__.split(".")[:2]))
+    except (AttributeError, ValueError) as e:
+        raise RuntimeError("Unable to determine the installed zvec version; expected zvec>=0.7,<1.") from e
+    if not (0, 7) <= version < (1, 0):
+        raise RuntimeError(f"Unsupported zvec version {zvec.__version__}; expected zvec>=0.7,<1.")
+    return zvec
+
+
+def _zvec_doc_id(node: dict, position: int) -> str:
+    """Build a valid internal zvec primary key without changing the public node_id."""
+    raw = f"{node.get('macro_id', '')}\0{node.get('node_id', '')}\0{position}".encode()
+    return f"node_{position:08d}_{hashlib.sha256(raw).hexdigest()[:16]}"
+
+
+def save_zvec_index(path: str, nodes: list[dict], embeddings: np.ndarray) -> None:
+    """Atomically create a persistent zvec collection from precomputed embeddings."""
+    zvec = _require_zvec()
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    if embeddings.ndim != 2 or embeddings.shape[0] != len(nodes) or embeddings.shape[1] == 0:
+        raise ValueError("embeddings must be a non-empty 2-D matrix aligned with nodes")
+
+    path = os.path.abspath(path)
+    parent = os.path.dirname(path)
+    os.makedirs(parent, exist_ok=True)
+    stage_root = tempfile.mkdtemp(prefix=".embeddings-zvec-", dir=parent)
+    stage_path = os.path.join(stage_root, "collection")
+    backup_path = os.path.join(stage_root, "previous")
+    collection = None
+    old_moved = False
+    cleanup_stage = True
+    try:
+        schema = zvec.CollectionSchema(
+            name="video_memory",
+            fields=[
+                zvec.FieldSchema("node_id", zvec.DataType.STRING),
+                zvec.FieldSchema("node_type", zvec.DataType.STRING, index_param=zvec.InvertIndexParam()),
+                zvec.FieldSchema("macro_id", zvec.DataType.STRING, index_param=zvec.InvertIndexParam()),
+                zvec.FieldSchema(
+                    "text",
+                    zvec.DataType.STRING,
+                    index_param=zvec.FtsIndexParam(tokenizer_name="standard", filters=["lowercase"]),
+                ),
+            ],
+            vectors=zvec.VectorSchema(
+                "embedding",
+                zvec.DataType.VECTOR_FP32,
+                int(embeddings.shape[1]),
+                index_param=zvec.FlatIndexParam(metric_type=zvec.MetricType.COSINE),
+            ),
+        )
+        collection = zvec.create_and_open(stage_path, schema)
+        for start in range(0, len(nodes), 1000):
+            docs = []
+            for position in range(start, min(start + 1000, len(nodes))):
+                node = nodes[position]
+                docs.append(
+                    zvec.Doc(
+                        id=_zvec_doc_id(node, position),
+                        fields={
+                            "node_id": str(node.get("node_id", "")),
+                            "node_type": str(node.get("node_type", "")),
+                            "macro_id": str(node.get("macro_id", "")),
+                            "text": str(node.get("text", "")),
+                        },
+                        vectors={"embedding": embeddings[position].tolist()},
+                    )
+                )
+            collection.insert(docs)
+        collection.flush()
+        collection.close()
+        collection = None
+
+        if os.path.lexists(path):
+            os.replace(path, backup_path)
+            old_moved = True
+        try:
+            os.replace(stage_path, path)
+        except Exception:
+            if old_moved and os.path.lexists(backup_path):
+                try:
+                    os.replace(backup_path, path)
+                except Exception as rollback_error:
+                    cleanup_stage = False
+                    raise RuntimeError(
+                        f"failed to publish zvec collection and restore the previous collection; "
+                        f"the previous collection is preserved at {backup_path}"
+                    ) from rollback_error
+            raise
+        if old_moved:
+            shutil.rmtree(backup_path, ignore_errors=True)
+    finally:
+        if collection is not None:
+            collection.close()
+        if cleanup_stage:
+            shutil.rmtree(stage_root, ignore_errors=True)
+
+
+class ZvecEmbeddingIndex:
+    """Persistent vector + full-text retrieval over a zvec collection."""
+
+    _OUTPUT_FIELDS = ["node_id", "node_type", "macro_id", "text"]
+
+    def __init__(self):
+        self._collection = None
+        self._dimension = 0
+        self._doc_count = 0
+        self._dense_disabled = False
+
+    def _embed_batch(self, texts: list[str]) -> np.ndarray:
+        return _embed_via_dashscope_native(texts)
+
+    def load(self, path: str) -> None:
+        zvec = _require_zvec()
+        self.close()
+        try:
+            self._collection = zvec.open(path, zvec.CollectionOption(read_only=True))
+            schema = self._collection.schema
+            vector = schema.vector("embedding")
+            if vector is None:
+                raise RuntimeError(f"zvec collection has no 'embedding' vector field: {path}")
+            missing_fields = [name for name in self._OUTPUT_FIELDS if schema.field(name) is None]
+            if missing_fields:
+                raise RuntimeError(f"zvec collection is missing required fields {missing_fields}: {path}")
+            self._dimension = int(vector.dimension)
+            self._doc_count = int(self._collection.stats.doc_count)
+        except Exception:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        if self._collection is not None:
+            self._collection.close()
+            self._collection = None
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def check_dimension_compatibility(self) -> None:
+        if self._collection is None or self._doc_count == 0:
+            return
+        try:
+            q_emb = _embed_via_dashscope_native(["dimension check"], max_retries=3)
+            query_dim = q_emb.shape[1]
+        except Exception as e:
+            raise RuntimeError(
+                f"Stored embeddings are {self._dimension}-dim, but the query embedding backend is unavailable. "
+                f"{_EMBED_BACKEND_HINT} Error: {e}"
+            ) from e
+        if query_dim != self._dimension:
+            raise RuntimeError(
+                f"Embedding dimension mismatch: stored={self._dimension}, query={query_dim}. {_EMBED_BACKEND_HINT}"
+            )
+
+    @staticmethod
+    def _node_type_filter(node_types: list[str] | None) -> str | None:
+        if not node_types:
+            return None
+        values = sorted({str(value).lower() for value in node_types})
+        quoted = ", ".join("'" + value.replace("'", "''") + "'" for value in values)
+        return f"node_type IN ({quoted})"
+
+    def _query(self, query, *, filter_expr: str | None):
+        if self._collection is None:
+            return []
+        return self._collection.query(
+            query,
+            topk=max(1, self._doc_count),
+            filter=filter_expr,
+            output_fields=[],
+            include_vector=False,
+        )
+
+    @staticmethod
+    def _select_fused(dense_docs, sparse_docs, top_k: int) -> list[tuple[str, float, float]]:
+        """Select exact RRF Top-K without sorting candidates that cannot reach it."""
+        rrf_k = 60
+        if not dense_docs:
+            return [(doc.id, 1.0 / (rrf_k + rank), 0.0) for rank, doc in enumerate(sparse_docs[:top_k])]
+        if not sparse_docs:
+            return [
+                (doc.id, 1.0 / (rrf_k + rank), 1.0 - float(doc.score)) for rank, doc in enumerate(dense_docs[:top_k])
+            ]
+
+        sparse_rank = {doc.id: rank for rank, doc in enumerate(sparse_docs)}
+        fused = []
+        for rank, doc in enumerate(dense_docs):
+            sparse_position = sparse_rank.pop(doc.id, None)
+            # A dense-only item below rank K is strictly outranked by the first K
+            # dense items, even after their nonnegative sparse contributions.
+            # Keep EVERY sparse match, using its rank in the complete dense list.
+            if rank < top_k or sparse_position is not None:
+                score = 0.0 if sparse_position is None else 1.0 / (rrf_k + sparse_position)
+                score += 1.0 / (rrf_k + rank)
+                fused.append((doc.id, score, 1.0 - float(doc.score)))
+        # Unmatched sparse entries retain their original insertion order, after
+        # dense entries, preserving the existing stable tie-breaking.
+        fused.extend((doc_id, 1.0 / (rrf_k + rank), 0.0) for doc_id, rank in sparse_rank.items())
+        fused.sort(key=lambda item: item[1], reverse=True)
+        return fused[:top_k]
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        node_types: list[str] | None = None,
+    ) -> list[dict]:
+        """Run exact cosine and persisted FTS routes, then preserve the existing RRF behavior."""
+        if self._collection is None or self._doc_count == 0 or top_k <= 0:
+            return []
+        zvec = _require_zvec()
+        filter_expr = self._node_type_filter(node_types)
+
+        dense_docs = []
+        if not self._dense_disabled:
+            try:
+                q_emb = np.ascontiguousarray(self._embed_batch([query])[0], dtype=np.float32)
+                if q_emb.shape[0] != self._dimension:
+                    print(
+                        f"[embed] dimension mismatch (stored={self._dimension}, query={q_emb.shape[0]}); "
+                        "falling back to FTS-only search",
+                        file=sys.stderr,
+                    )
+                    self._dense_disabled = True
+                else:
+                    dense_docs = self._query(
+                        zvec.Query(field_name="embedding", vector=q_emb),
+                        filter_expr=filter_expr,
+                    )
+            except Exception as e:
+                print(f"[embed] dense backend failed ({e}); falling back to FTS-only search", file=sys.stderr)
+                self._dense_disabled = True
+
+        sparse_docs = []
+        sparse_query = " ".join(_tokenize(query))
+        if sparse_query:
+            try:
+                sparse_docs = self._query(
+                    zvec.Query(field_name="text", fts=zvec.Fts(match_string=sparse_query)),
+                    filter_expr=filter_expr,
+                )
+            except Exception as e:
+                print(f"[fts] zvec full-text search failed ({e})", file=sys.stderr)
+
+        selected = self._select_fused(dense_docs, sparse_docs, top_k)
+        if not selected:
+            return []
+
+        docs = self._collection.fetch(
+            [doc_id for doc_id, _, _ in selected],
+            output_fields=self._OUTPUT_FIELDS,
+            include_vector=False,
+        )
+        results = []
+        for doc_id, score, cosine in selected:
+            if doc_id not in docs:
+                raise RuntimeError(f"zvec result is missing during metadata fetch: {doc_id}")
+            doc = docs[doc_id]
+            node = {name: doc.fields.get(name, "") for name in self._OUTPUT_FIELDS}
+            node["score"] = round(score, 6)
+            node["cosine"] = round(cosine, 4)
+            results.append(node)
+        return results
+
+    def export_records(self) -> tuple[list[dict], np.ndarray]:
+        """Read all records for directory-level memory merging without re-embedding."""
+        if self._collection is None:
+            return [], np.zeros((0, 0), dtype=np.float32)
+        nodes = []
+        vectors = []
+        with self._collection.iter_docs(output_fields=self._OUTPUT_FIELDS, include_vector=True) as docs:
+            for doc in docs:
+                nodes.append({name: doc.fields.get(name, "") for name in self._OUTPUT_FIELDS})
+                vectors.append(doc.vectors["embedding"])
+        if not vectors:
+            return nodes, np.zeros((0, self._dimension), dtype=np.float32)
+        return nodes, np.asarray(vectors, dtype=np.float32)
+
+
+def load_retrieval_index(path: str):
+    """Load either a zvec directory or a legacy NPZ retrieval index."""
+    if os.path.isdir(path):
+        index = ZvecEmbeddingIndex()
+    else:
+        index = EmbeddingIndex()
+    index.load(path)
+    return index
+
+
+def export_retrieval_index(path: str) -> tuple[list[dict], np.ndarray]:
+    """Return node metadata and vectors from either supported retrieval artifact."""
+    index = load_retrieval_index(path)
+    try:
+        if isinstance(index, ZvecEmbeddingIndex):
+            return index.export_records()
+        return [dict(node) for node in index.nodes], np.asarray(index.embeddings, dtype=np.float32)
+    finally:
+        if isinstance(index, ZvecEmbeddingIndex):
+            index.close()
+
+
+def _validate_retrieval_index(
+    path: str,
+    expected_count: int | None = None,
+    expected_dimension: int | None = None,
+) -> None:
+    """Reopen a freshly-written artifact before making it the only active backend."""
+    index = load_retrieval_index(path)
+    try:
+        if isinstance(index, ZvecEmbeddingIndex):
+            actual_count = index._doc_count
+            actual_dimension = index._dimension
+        else:
+            actual_count = len(index.nodes)
+            actual_dimension = index.embeddings.shape[1] if index.embeddings is not None else 0
+        if (expected_count is not None and actual_count != expected_count) or (
+            expected_dimension is not None and actual_dimension != expected_dimension
+        ):
+            raise RuntimeError(
+                f"retrieval index validation failed for {path}: "
+                f"expected ({expected_count}, {expected_dimension}), "
+                f"got ({actual_count}, {actual_dimension})"
+            )
+    finally:
+        if isinstance(index, ZvecEmbeddingIndex):
+            index.close()
+
+
+def _remove_retrieval_artifact(path: str) -> None:
+    if os.path.islink(path) or os.path.isfile(path):
+        os.unlink(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
+
+
+def activate_retrieval_backend(memory_dir: str, backend: str) -> str:
+    """Validate ``backend`` and remove the inactive retrieval artifact.
+
+    This enforces the storage invariant that one memory directory contains exactly one retrieval
+    backend. Cleanup happens only after the selected artifact has been reopened successfully.
+    """
+    active_path = os.path.abspath(retrieval_index_path(memory_dir, backend))
+    _validate_retrieval_index(active_path)
+
+    inactive_backend = "npz" if backend == "zvec" else "zvec"
+    inactive_path = os.path.abspath(retrieval_index_path(memory_dir, inactive_backend))
+    _remove_retrieval_artifact(inactive_path)
+    return os.path.realpath(active_path)
+
+
+def save_retrieval_index(
+    memory_dir: str,
+    backend: str,
+    nodes: list[dict],
+    embeddings: np.ndarray,
+) -> str:
+    """Stage, validate, and publish exactly one retrieval backend for a memory."""
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    if embeddings.ndim != 2 or embeddings.shape[0] != len(nodes) or embeddings.shape[1] == 0:
+        raise ValueError("embeddings must be a non-empty 2-D matrix aligned with nodes")
+
+    if backend not in RETRIEVAL_BACKENDS:
+        raise ValueError(f"unsupported retrieval backend: {backend!r}; expected one of {RETRIEVAL_BACKENDS}")
+
+    os.makedirs(memory_dir, exist_ok=True)
+    path = retrieval_index_path(memory_dir, backend)
+    inactive_backend = "npz" if backend == "zvec" else "zvec"
+    inactive_path = retrieval_index_path(memory_dir, inactive_backend)
+    stage_root = tempfile.mkdtemp(prefix=".retrieval-index-", dir=memory_dir)
+    stage_path = os.path.join(stage_root, os.path.basename(path))
+    active_backup = os.path.join(stage_root, "previous-active")
+    inactive_backup = os.path.join(stage_root, "previous-inactive")
+    active_moved = False
+    inactive_moved = False
+    cleanup_stage = True
+
+    try:
+        if backend == "zvec":
+            save_zvec_index(stage_path, nodes, embeddings)
+        else:
+            index = EmbeddingIndex()
+            index.nodes = nodes
+            index._set_embeddings(embeddings)
+            index.save(stage_path)
+
+        _validate_retrieval_index(stage_path, len(nodes), int(embeddings.shape[1]))
+
+        try:
+            if os.path.lexists(path):
+                os.replace(path, active_backup)
+                active_moved = True
+            if os.path.lexists(inactive_path):
+                os.replace(inactive_path, inactive_backup)
+                inactive_moved = True
+            os.replace(stage_path, path)
+        except Exception:
+            rollback_errors = []
+            for moved, backup, destination in (
+                (inactive_moved, inactive_backup, inactive_path),
+                (active_moved, active_backup, path),
+            ):
+                if moved and os.path.lexists(backup):
+                    try:
+                        os.replace(backup, destination)
+                    except Exception as rollback_error:
+                        rollback_errors.append(rollback_error)
+            if rollback_errors:
+                cleanup_stage = False
+                raise RuntimeError(
+                    f"failed to publish retrieval index and fully restore the previous artifacts; "
+                    f"recoverable backups are preserved at {stage_root}"
+                ) from rollback_errors[0]
+            raise
+    finally:
+        if cleanup_stage:
+            shutil.rmtree(stage_root, ignore_errors=True)
+
+    return path
