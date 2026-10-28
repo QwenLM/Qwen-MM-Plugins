@@ -105,6 +105,7 @@ than routing them through a separate API or ad-hoc shell commands.
 | `omni-video2note` | Converts a local tutorial video into an illustrated PDF using Omni audio-video understanding, with review feedback. Needs a DashScope key and ffmpeg. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-video2note/cookbook/) |
 | `omni-skill-creator` | Turns a demonstration video into a reusable Agent Skill. Needs a DashScope key and ffmpeg. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-skill-creator/cookbook/) |
 | `omni-memory` | Builds an audio-visual memory of a long video: who is present, who said what, how they said it, and what it sounded like. The Omni model reads the video together with its audio track. Needs a DashScope key and ffmpeg. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omni-memory/cookbook/) |
+| `omnidr` | Conducts deep research around a video and the user's question, drawing on related webpages, videos, documents, and other external sources to produce an HTML report. | [Cookbook](https://qwenlm.github.io/qwen-mm-plugins-hub/plugins/omnidr/cookbook/) |
 
 Exact versions and optional extras are in the
 [installation guide](docs/en/installation.md#dependencies).
