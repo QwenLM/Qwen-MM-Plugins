@@ -187,6 +187,13 @@ def contained_file(root: Path, relative: str) -> Path | None:
 
 def credential_marker(content: str) -> bool:
     """Detect key markers, allowing public multiword URL slugs."""
+    if (
+        type(content) is str
+        and "sk-" not in content
+        and "-----BEGIN " not in content
+        and "# Netscape HTTP Cookie File" not in content
+    ):
+        return False
     urls = r"https?://[^/\s<>\"'?#]+(?P<path>/[^\s<>\"'?#]*)?(?:[?#][^\s<>\"']*)?"
     markers = r"\bsk-[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|# Netscape HTTP Cookie File"
     for match in re.finditer(markers, content):
