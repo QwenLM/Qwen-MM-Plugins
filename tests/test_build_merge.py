@@ -25,6 +25,19 @@ def build_graph():
     return bg
 
 
+@pytest.fixture(scope="module")
+def merge_memories():
+    pytest.importorskip("numpy")
+    pytest.importorskip("zvec")
+    if _BUILD_DIR not in sys.path:
+        sys.path.insert(0, _BUILD_DIR)
+    try:
+        import merge_memories as mm
+    except Exception as e:  # noqa: BLE001 — optional build-only deps may be absent
+        pytest.skip(f"merge_memories not importable: {e}")
+    return mm
+
+
 def _write_chunk(root, name, macros):
     d = root / name
     (d / "subgraphs").mkdir(parents=True)
@@ -71,3 +84,133 @@ def test_merge_chunks_resorts_remaps_and_renames(build_graph, tmp_path):
         assert sg["macro_id"] == nid
     # exactly one subgraph file per merged macro — no stale/leftover chunk-local names
     assert sorted(p.name for p in (out / "subgraphs").iterdir()) == [f"macro_{i:04d}.json" for i in range(3)]
+
+
+def _write_memory(root, mm, key, text, vector, backend="zvec"):
+    memory_dir = root / f"{key}.mp4.memory"
+    memory_dir.mkdir()
+    graph = {
+        "video_key": key,
+        "video_path": str(root / f"{key}.mp4"),
+        "root": {"title": key, "description": "", "themes": [], "key_entities": [], "emotional_tone": ""},
+        "super_events": [],
+        "macro_events": [{"macro_id": "macro_0000", "label": text, "time_range": [0, 1]}],
+        "macro_relations": [],
+        "super_relations": [],
+    }
+    (memory_dir / "graph_memory.json").write_text(json.dumps(graph))
+    mm.save_retrieval_index(
+        str(memory_dir),
+        backend,
+        [{"node_id": "duplicate:id", "node_type": "event", "macro_id": "macro_0000", "text": text}],
+        mm.np.asarray([vector], dtype=mm.np.float32),
+    )
+
+
+def test_merge_directory_can_write_one_zvec_memory(merge_memories, tmp_path):
+    _write_memory(tmp_path, merge_memories, "P001", "orange cat", [1.0, 0.0])
+    _write_memory(tmp_path, merge_memories, "P002", "blue car", [0.0, 1.0])
+    output = tmp_path / "merged"
+    output.mkdir()
+    (output / "embeddings.npz").write_bytes(b"stale")
+
+    merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="zvec")
+
+    index_path = output / "embeddings.zvec"
+    assert index_path.is_dir()
+    assert not (output / "embeddings.npz").exists()
+    nodes, matrix = merge_memories.export_retrieval_index(str(index_path))
+    assert sorted(node["node_id"] for node in nodes) == ["P001_duplicate:id", "P002_duplicate:id"]
+    assert sorted(node["macro_id"] for node in nodes) == ["P001_macro_0000", "P002_macro_0000"]
+    assert matrix.shape == (2, 2)
+
+    graph = json.loads((output / "graph_memory.json").read_text())
+    assert [video["prefix"] for video in graph["source_videos"]] == ["P001", "P002"]
+
+
+def test_merge_mixed_input_backends_can_write_npz(merge_memories, tmp_path):
+    _write_memory(tmp_path, merge_memories, "P001", "orange cat", [1.0, 0.0], backend="zvec")
+    _write_memory(tmp_path, merge_memories, "P002", "blue car", [0.0, 1.0], backend="npz")
+    output = tmp_path / "merged"
+
+    merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="npz")
+
+    index_path = output / "embeddings.npz"
+    assert index_path.is_file()
+    assert not (output / "embeddings.zvec").exists()
+    nodes, matrix = merge_memories.export_retrieval_index(str(index_path))
+    assert sorted(node["node_id"] for node in nodes) == ["P001_duplicate:id", "P002_duplicate:id"]
+    assert matrix.shape == (2, 2)
+
+
+def test_merge_rejects_invalid_backend_before_writing_output(merge_memories, tmp_path):
+    output = tmp_path / "merged"
+
+    with pytest.raises(ValueError, match="unsupported retrieval backend"):
+        merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend="invalid")
+
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("output_backend", ["npz", "zvec"])
+@pytest.mark.parametrize("source_state", ["missing_npz", "corrupt_npz", "corrupt_zvec", "corrupt_zvec_file"])
+def test_merge_preserves_npz_repair_writeback_without_converting_zvec_sources(
+    merge_memories, tmp_path, monkeypatch, source_state, output_backend
+):
+    source = tmp_path / "P001.mp4.memory"
+    source.mkdir()
+    graph_path = source / "graph_memory.json"
+    graph_path.write_text(
+        json.dumps(
+            {
+                "video_key": "P001",
+                "macro_events": [
+                    {"macro_id": "macro_0000", "label": "Speech", "time_range": [0, 1], "asr_text": "orange cat"}
+                ],
+            }
+        )
+    )
+    original_graph = graph_path.read_bytes()
+    npz_path = source / "embeddings.npz"
+    if source_state == "corrupt_npz":
+        npz_path.write_bytes(b"corrupt")
+    elif source_state == "corrupt_zvec":
+        zvec_path = source / "embeddings.zvec"
+        zvec_path.mkdir()
+        (zvec_path / "keep").write_bytes(b"unreadable source collection")
+    elif source_state == "corrupt_zvec_file":
+        (source / "embeddings.zvec").write_bytes(b"not a collection directory")
+
+    embedded_texts = []
+
+    def embed(nodes):
+        texts = [node["text"] for node in nodes]
+        embedded_texts.extend(texts)
+        return merge_memories.np.asarray([[1.0, 0.0] for _ in texts], dtype=merge_memories.np.float32)
+
+    monkeypatch.setattr(merge_memories, "embed_nodes", embed)
+    output = tmp_path / "merged"
+    merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend=output_backend)
+
+    nodes, matrix = merge_memories.export_retrieval_index(merge_memories.detect_retrieval_index(str(output)))
+    assert len(nodes) == 1
+    assert nodes[0]["node_id"] == "P001_asr_macro_0000_000"
+    assert nodes[0]["macro_id"] == "P001_macro_0000"
+    assert embedded_texts == ["orange cat"]
+    assert graph_path.read_bytes() == original_graph
+
+    if source_state == "corrupt_zvec":
+        assert not npz_path.exists()
+        assert (zvec_path / "keep").read_bytes() == b"unreadable source collection"
+    elif source_state == "corrupt_zvec_file":
+        assert not npz_path.exists()
+        assert (source / "embeddings.zvec").read_bytes() == b"not a collection directory"
+    else:
+        repaired_nodes, repaired_matrix = merge_memories.export_retrieval_index(str(npz_path))
+        assert repaired_nodes[0]["node_id"] == "asr_macro_0000_000"
+        assert repaired_nodes[0]["macro_id"] == "macro_0000"
+        merge_memories.np.testing.assert_array_equal(repaired_matrix, matrix)
+        assert not (source / "embeddings.zvec").exists()
+        # A second merge reuses the repaired source instead of embedding it again.
+        merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend=output_backend)
+        assert embedded_texts == ["orange cat"]

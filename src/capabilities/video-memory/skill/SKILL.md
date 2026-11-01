@@ -42,7 +42,14 @@ Root (1 per video)
 ## Building Graph Memory
 
 If `graph_memory.json` is missing, run the builder below. It installs missing Python dependencies,
-including `pydantic>=2.11,<3`:
+including `pydantic>=2.11,<3`.
+
+When building a new memory, honor an explicitly requested backend. Otherwise:
+
+- Prefer `--retrieval-backend zvec` for large or growing memories and multi-video
+  merges, so the full-text index is persisted rather than rebuilt on load.
+- Keep NPZ (the default, or `--retrieval-backend npz`) for small, standalone
+  memories without an expected growth requirement.
 
 ```bash
 # Build memory for a single video (output: <video_path>.memory/)
@@ -51,6 +58,12 @@ bash script/build_memory/build_memory.sh /path/to/video.mp4
 # Build with custom options
 bash script/build_memory/build_memory.sh /path/to/video.mp4 \
     --output-dir /path/to/output --model qwen3.7-plus --api-key "$DASHSCOPE_API_KEY"
+
+# Build a persistent zvec vector/scalar/full-text collection
+bash script/build_memory/build_memory.sh /path/to/video.mp4 --retrieval-backend zvec
+
+# Merge per-video memories in one directory into one memory and one zvec collection
+python script/build_memory/merge_memories.py /path/to/video-dir --retrieval-backend zvec
 ```
 
 
@@ -156,7 +169,8 @@ Graph memory is stored next to the video, in `<video_path>.memory/` (e.g.
 `/data/clip.mp4` → `/data/clip.mp4.memory/`). The server auto-loads it from there
 when you pass `video_path`, or set `GRAPH_MEMORY_PATH` to point at one explicitly.
 
-Contents: `graph_memory.json`, `embeddings.npz`, `01_macros.json`, `subgraphs/`
+Contents: `graph_memory.json`, `embeddings.npz` or `embeddings.zvec/`,
+`01_macros.json`, `subgraphs/`
 
 ## Efficiency Rules
 

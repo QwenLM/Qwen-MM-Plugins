@@ -3,9 +3,9 @@
 Targets src/capabilities/video-memory/skill/script/build_memory/ — the flat modules the
 build runs with (not the server package copies). Only pure logic is exercised: schema
 construct/serialize round-trips, time parsing, JSON extraction, BM25/cosine search with the
-embedding network boundary monkeypatched, and NPZ save/load. Nothing here needs
+embedding network boundary monkeypatched, and NPZ/zvec save/load. Nothing here needs
 DASHSCOPE_API_KEY, ffmpeg, or the network. Modules whose imports pull heavy/optional deps
-are loaded through a skipping fixture, mirroring tests/test_build_merge.py.
+are loaded through a skipping fixture, mirroring test_build_merge.py in this directory.
 """
 
 import importlib
@@ -13,6 +13,9 @@ import json
 import os
 import sys
 from dataclasses import asdict
+from pathlib import Path
+from threading import Event
+from types import SimpleNamespace
 
 import pytest
 from conftest import REPO_ROOT
@@ -311,7 +314,619 @@ def test_npz_save_load_roundtrip(embeddings, tmp_path):
     loaded.load(path)
     assert np.allclose(loaded.embeddings, index.embeddings)
     assert loaded.nodes == index.nodes
+    assert (loaded.doc_count, loaded.dimension) == (3, 8)
+    exported_nodes, exported_matrix = loaded.export_records()
+    assert exported_nodes == index.nodes
+    np.testing.assert_array_equal(exported_matrix, index.embeddings)
     assert loaded._inv_index, "sparse BM25 index must be rebuilt on load"
+    loaded.close()
+
+
+@pytest.mark.parametrize("max_workers", [1, 3])
+def test_embed_nodes_preserves_order_across_batches(embeddings, monkeypatch, max_workers):
+    np = pytest.importorskip("numpy")
+    later_batch_finished = Event()
+
+    def embed(texts):
+        if max_workers > 1 and texts[0] == "0":
+            assert later_batch_finished.wait(timeout=5)
+        else:
+            later_batch_finished.set()
+        return np.asarray([[int(text), 1] for text in texts], dtype=np.float64)
+
+    monkeypatch.setattr(embeddings, "_embed_via_dashscope_native", embed)
+    nodes = [{"text": str(i)} for i in range(7)]
+    vectors = embeddings.embed_nodes(nodes, batch_size=2, max_workers=max_workers)
+
+    assert vectors.dtype == np.float32
+    np.testing.assert_array_equal(vectors, [[i, 1] for i in range(7)])
+
+
+def test_zvec_roundtrip_persists_vectors_metadata_and_fts(embeddings, tmp_path, monkeypatch):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [
+        {"node_id": "same:id", "node_type": "entity", "macro_id": "macro_0", "text": "orange cat on mat"},
+        {"node_id": "same:id", "node_type": "event", "macro_id": "macro_1", "text": "blue car driving"},
+        {
+            "node_id": "ocr/2",
+            "node_type": "on_screen_text",
+            "macro_id": "macro_1",
+            "text": "FINAL SCORE",
+        },
+    ]
+    matrix = np.asarray([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]], dtype=np.float32)
+    path = str(tmp_path / embeddings.ZVEC_INDEX_DIRNAME)
+
+    embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+    loaded = embeddings.load_retrieval_index(path)
+    try:
+        monkeypatch.setattr(
+            loaded,
+            "_embed_batch",
+            # A strided embedding must be made contiguous before the native query.
+            lambda _texts: np.asarray([[1.0, 99.0, 0.0, 99.0]], dtype=np.float32)[:, ::2],
+        )
+        results = loaded.search("orange", top_k=3)
+        assert results[0]["node_id"] == "same:id"
+        assert results[0]["macro_id"] == "macro_0"
+        assert results[0]["cosine"] == pytest.approx(1.0)
+
+        loaded._dense_disabled = True
+        assert [result["macro_id"] for result in loaded.search("orange", top_k=10)] == ["macro_0"]
+        assert [result["macro_id"] for result in loaded.search("car", node_types=["event"])] == ["macro_1"]
+
+        exported_nodes, exported_matrix = loaded.export_records()
+        assert len(exported_nodes) == 3
+        assert sorted(node["node_id"] for node in exported_nodes) == ["ocr/2", "same:id", "same:id"]
+        assert exported_matrix.shape == matrix.shape
+    finally:
+        loaded.close()
+
+
+def test_save_zvec_replaces_symlink_without_touching_its_target(embeddings, tmp_path):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    external = tmp_path / "external"
+    external.mkdir()
+    marker = external / "keep"
+    marker.write_text("must survive")
+    path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
+    try:
+        path.symlink_to(external, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+
+    embeddings.save_retrieval_index(
+        str(tmp_path),
+        "zvec",
+        [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}],
+        np.asarray([[1.0, 0.0]], dtype=np.float32),
+    )
+
+    assert path.is_dir()
+    assert not path.is_symlink()
+    assert marker.read_text() == "must survive"
+
+
+@pytest.mark.parametrize("version,supported", [("0.7.9", False), ("0.8.0", True), ("0.9.4", True), ("1.0.0", False)])
+def test_require_zvec_enforces_supported_runtime_version(embeddings, monkeypatch, version, supported):
+    zvec = SimpleNamespace(__version__=version)
+    monkeypatch.setitem(sys.modules, "zvec", zvec)
+
+    if supported:
+        assert embeddings._require_zvec() is zvec
+    else:
+        with pytest.raises(RuntimeError, match=r"expected zvec>=0\.8,<1"):
+            embeddings._require_zvec()
+
+
+def test_zvec_load_closes_collection_when_schema_read_fails(embeddings, monkeypatch):
+    closed = []
+
+    class Schema:
+        def vector(self, _name):
+            raise RuntimeError("broken schema")
+
+        def field(self, _name):
+            return object()
+
+    class Collection:
+        schema = Schema()
+
+        def close(self):
+            closed.append(True)
+
+    class FakeZvec:
+        class CollectionOption:
+            def __init__(self, *, read_only):
+                assert read_only is True
+
+        @staticmethod
+        def open(_path, _option):
+            return Collection()
+
+    monkeypatch.setattr(embeddings, "_require_zvec", lambda: FakeZvec)
+    index = embeddings.ZvecEmbeddingIndex()
+
+    with pytest.raises(RuntimeError, match="broken schema"):
+        index.load("unused")
+
+    assert closed == [True]
+    assert index._collection is None
+
+
+def test_zvec_load_rejects_missing_metadata_fields(embeddings, monkeypatch):
+    closed = []
+
+    class Vector:
+        dimension = 2
+
+    class Schema:
+        def vector(self, _name):
+            return Vector()
+
+        def field(self, name):
+            return None if name == "text" else object()
+
+    class Stats:
+        doc_count = 1
+
+    class Collection:
+        schema = Schema()
+        stats = Stats()
+
+        def close(self):
+            closed.append(True)
+
+    class FakeZvec:
+        class CollectionOption:
+            def __init__(self, *, read_only):
+                assert read_only is True
+
+        @staticmethod
+        def open(_path, _option):
+            return Collection()
+
+    monkeypatch.setattr(embeddings, "_require_zvec", lambda: FakeZvec)
+    index = embeddings.ZvecEmbeddingIndex()
+
+    with pytest.raises(RuntimeError, match="missing required fields.*text"):
+        index.load("unused")
+
+    assert closed == [True]
+    assert index._collection is None
+
+
+def test_zvec_query_uses_complete_rankings_for_exact_rrf(embeddings):
+    calls = []
+
+    class Collection:
+        def query(self, query, **kwargs):
+            calls.append((query, kwargs))
+            return []
+
+    index = embeddings.ZvecEmbeddingIndex()
+    index._collection = Collection()
+    index._doc_count = 10_000
+
+    index._query(object(), filter_expr="node_type IN ('event')")
+    assert calls[-1][1]["topk"] == 10_000
+    assert calls[-1][1]["filter"] == "node_type IN ('event')"
+    assert calls[-1][1]["output_fields"] == []
+    assert calls[-1][1]["include_vector"] is False
+
+    index._doc_count = 20
+    index._query(object(), filter_expr=None)
+    assert calls[-1][1]["topk"] == 20
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "fts", "failed_dense"])
+def test_zvec_late_fetch_preserves_ties_scores_and_duplicate_public_ids(embeddings, monkeypatch, mode):
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(
+        embeddings, "_require_zvec", lambda: SimpleNamespace(Query=SimpleNamespace, Fts=SimpleNamespace)
+    )
+    fields = {
+        key: {"node_id": "same:id", "macro_id": key, "node_type": "event", "text": f"text {key}"} for key in "abcde"
+    }
+    fetches = []
+
+    class Collection:
+        def query(self, query, **kwargs):
+            assert kwargs["output_fields"] == []
+            assert kwargs["include_vector"] is False
+            assert kwargs["topk"] == 5
+            assert kwargs["filter"] == "node_type IN ('event')"
+            ranked = [("c", 0.1), ("a", 0.2), ("b", 0.3), ("d", 0.4)]
+            if query.field_name == "text":
+                ranked = [("a", 10), ("c", 8), ("e", 4)]
+            return [SimpleNamespace(id=key, score=score, fields={}) for key, score in ranked]
+
+        def fetch(self, ids, **kwargs):
+            fetches.append(ids)
+            assert kwargs == {"output_fields": embeddings.ZvecEmbeddingIndex._OUTPUT_FIELDS, "include_vector": False}
+            # Fetch iteration order and scores must not replace the fused order/scores.
+            return {key: SimpleNamespace(fields=fields[key], score=999) for key in reversed(ids)}
+
+        def close(self):
+            pass
+
+    index = embeddings.ZvecEmbeddingIndex()
+    index._collection = Collection()
+    index._doc_count = 5
+    index._dimension = 2
+    index._dense_disabled = mode == "fts"
+
+    def embed(_texts):
+        if mode == "failed_dense":
+            raise RuntimeError("embedding unavailable")
+        return np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+    monkeypatch.setattr(index, "_embed_batch", embed)
+    rows = index.search("orange", top_k=3, node_types=["event"])
+    if mode == "hybrid":
+        order = ["c", "a", "b"]
+        scores = [1 / 60 + 1 / 61, 1 / 61 + 1 / 60, 1 / 62]
+        cosines = [0.9, 0.8, 0.7]
+    else:
+        order = ["a", "c", "e"]
+        scores = [1 / 60, 1 / 61, 1 / 62]
+        cosines = [0.0, 0.0, 0.0]
+    assert fetches == [order]
+    assert rows == [
+        {**fields[key], "score": round(score, 6), "cosine": cosine}
+        for key, score, cosine in zip(order, scores, cosines, strict=True)
+    ]
+
+
+@pytest.mark.parametrize("dense_mode", ["matches", "empty", "query_failed", "embedding_failed", "disabled", "mismatch"])
+@pytest.mark.parametrize("fts_fails", [False, True])
+def test_zvec_distinguishes_failed_retrieval_from_empty_results(embeddings, monkeypatch, caplog, dense_mode, fts_fails):
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(
+        embeddings, "_require_zvec", lambda: SimpleNamespace(Query=SimpleNamespace, Fts=SimpleNamespace)
+    )
+    fields = {"node_id": "n", "node_type": "event", "macro_id": "m", "text": "orange cat"}
+    fts_error = RuntimeError("full-text index unavailable")
+
+    class Collection:
+        def query(self, query, **kwargs):
+            if query.field_name == "text":
+                if fts_fails:
+                    raise fts_error
+                return []
+            if dense_mode == "query_failed":
+                raise RuntimeError("vector index unavailable")
+            return [SimpleNamespace(id="n", score=0.0)] if dense_mode == "matches" else []
+
+        def fetch(self, ids, **kwargs):
+            return {"n": SimpleNamespace(fields=fields)}
+
+        def close(self):
+            pass
+
+    def embed(_texts):
+        if dense_mode == "embedding_failed":
+            raise RuntimeError("embedding unavailable")
+        return np.ones((1, 3 if dense_mode == "mismatch" else 2), dtype=np.float32)
+
+    index = embeddings.ZvecEmbeddingIndex()
+    index._collection = Collection()
+    index._doc_count = 1
+    index._dimension = 2
+    index._dense_disabled = dense_mode == "disabled"
+    monkeypatch.setattr(index, "_embed_batch", embed)
+
+    if fts_fails and dense_mode not in ("matches", "empty"):
+        with pytest.raises(RuntimeError, match="Retrieval failed") as exc:
+            index.search("orange")
+        assert exc.value.__cause__ is fts_error
+    else:
+        results = index.search("orange")
+        expected = [{**fields, "score": round(1 / 60, 6), "cosine": 1.0}] if dense_mode == "matches" else []
+        assert results == expected
+        if fts_fails:
+            assert any(record.exc_info and "dense-only" in record.message for record in caplog.records)
+
+
+def test_zvec_candidate_projection_returns_no_fields_or_vectors(embeddings, tmp_path):
+    zvec = pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "n", "node_type": "event", "macro_id": "m", "text": "orange cat"}]
+    path = str(tmp_path / embeddings.ZVEC_INDEX_DIRNAME)
+    embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, np.asarray([[1.0, 0.0]], dtype=np.float32))
+    index = embeddings.load_retrieval_index(path)
+    try:
+        for query in (
+            zvec.Query(field_name="embedding", vector=[1.0, 0.0]),
+            zvec.Query(field_name="text", fts=zvec.Fts(match_string="orange")),
+        ):
+            docs = index._query(query, filter_expr=None)
+            assert len(docs) == 1
+            assert docs[0].id
+            assert isinstance(docs[0].score, (int, float))
+            assert not docs[0].fields
+            assert not docs[0].vectors
+        index._dense_disabled = True
+        assert index.search("unmatchedword") == []
+        assert index.search("orange", node_types=["asr_text"]) == []
+        assert index.search("orange", top_k=0) == []
+    finally:
+        index.close()
+
+
+def test_zvec_fusion_pruning_matches_exhaustive_rrf(embeddings):
+    np = pytest.importorskip("numpy")
+    rng = np.random.default_rng(42)
+    for _ in range(200):
+        ids = [str(i) for i in range(200)]
+        dense = [
+            SimpleNamespace(id=key, score=float(rng.uniform(0, 2)))
+            for key in rng.permutation(ids)[: int(rng.integers(0, 201))]
+        ]
+        sparse = [SimpleNamespace(id=key, score=1.0) for key in rng.permutation(ids)[: int(rng.integers(0, 201))]]
+        # Reference: exhaustive fusion before the optimization, including stable ties.
+        dense_rank = {doc.id: rank for rank, doc in enumerate(dense)}
+        sparse_rank = {doc.id: rank for rank, doc in enumerate(sparse)}
+        cosine = {doc.id: 1.0 - float(doc.score) for doc in dense}
+        reference = []
+        for key in dict.fromkeys([*dense_rank, *sparse_rank]):
+            score = 0.0
+            if key in sparse_rank:
+                score += 1.0 / (60 + sparse_rank[key])
+            if key in dense_rank:
+                score += 1.0 / (60 + dense_rank[key])
+            reference.append((key, score, cosine.get(key, 0.0)))
+        reference.sort(key=lambda item: item[1], reverse=True)
+        for k in (1, 2, 10, 20, 100, 300):
+            assert embeddings.ZvecEmbeddingIndex._select_fused(dense, sparse, k) == reference[:k]
+
+
+def test_detect_retrieval_index_rejects_two_backends(embeddings, tmp_path):
+    (tmp_path / embeddings.NPZ_INDEX_FILENAME).write_bytes(b"legacy")
+    zvec_path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
+    zvec_path.mkdir()
+
+    with pytest.raises(RuntimeError, match="exactly one retrieval artifact"):
+        embeddings.detect_retrieval_index(str(tmp_path))
+
+
+def test_save_retrieval_index_keeps_exactly_one_backend(embeddings, tmp_path):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+    assert os.path.isfile(npz_path)
+    assert not (tmp_path / embeddings.ZVEC_INDEX_DIRNAME).exists()
+    assert embeddings.detect_retrieval_index(str(tmp_path)) == str((tmp_path / "embeddings.npz").resolve())
+
+    zvec_path = embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+    assert os.path.isdir(zvec_path)
+    assert not (tmp_path / embeddings.NPZ_INDEX_FILENAME).exists()
+    assert embeddings.detect_retrieval_index(str(tmp_path)) == str((tmp_path / "embeddings.zvec").resolve())
+
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+    assert os.path.isfile(npz_path)
+    assert not (tmp_path / embeddings.ZVEC_INDEX_DIRNAME).exists()
+
+
+def test_activate_existing_backend_cleans_historical_duplicate(embeddings, tmp_path):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+    embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+    index = embeddings.EmbeddingIndex()
+    index.nodes = nodes
+    index._set_embeddings(matrix)
+    index.save(str(tmp_path / "embeddings.npz"))
+    assert (tmp_path / "embeddings.npz").exists() and (tmp_path / "embeddings.zvec").exists()
+
+    embeddings.activate_retrieval_backend(str(tmp_path), "zvec")
+
+    assert not (tmp_path / "embeddings.npz").exists()
+    assert (tmp_path / "embeddings.zvec").is_dir()
+
+
+def test_activate_backend_unlinks_inactive_symlink_without_deleting_target(embeddings, tmp_path):
+    np = pytest.importorskip("numpy")
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    embeddings.save_retrieval_index(str(memory_dir), "npz", nodes, matrix)
+
+    external = tmp_path / "external-zvec"
+    external.mkdir()
+    marker = external / "keep"
+    marker.write_text("must survive")
+    inactive = memory_dir / embeddings.ZVEC_INDEX_DIRNAME
+    try:
+        inactive.symlink_to(external, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+
+    embeddings.activate_retrieval_backend(str(memory_dir), "npz")
+
+    assert not inactive.exists()
+    assert not inactive.is_symlink()
+    assert marker.read_text() == "must survive"
+
+
+def test_save_backend_removes_broken_inactive_symlink(embeddings, tmp_path):
+    np = pytest.importorskip("numpy")
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    embeddings.save_retrieval_index(str(memory_dir), "npz", nodes, matrix)
+
+    inactive = memory_dir / embeddings.ZVEC_INDEX_DIRNAME
+    try:
+        inactive.symlink_to(tmp_path / "missing-target", target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+
+    embeddings.save_retrieval_index(str(memory_dir), "npz", nodes, matrix)
+
+    assert not inactive.exists()
+    assert not inactive.is_symlink()
+
+
+def test_failed_backend_switch_keeps_existing_index(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+
+    def fail_write(*_args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(embeddings, "_write_zvec_index", fail_write)
+    with pytest.raises(RuntimeError, match="boom"):
+        embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+
+    assert os.path.isfile(npz_path)
+
+
+def test_validation_failure_leaves_only_previous_backend(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, matrix)
+    previous = Path(npz_path).read_bytes()
+
+    def fake_save_zvec(path, *_args):
+        os.makedirs(path)
+        (Path(path) / "incomplete").touch()
+
+    def fail_validation(*_args):
+        raise RuntimeError("validation failed")
+
+    monkeypatch.setattr(embeddings, "_write_zvec_index", fake_save_zvec)
+    monkeypatch.setattr(embeddings, "_validate_retrieval_index", fail_validation)
+
+    with pytest.raises(RuntimeError, match="validation failed"):
+        embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, matrix)
+
+    assert Path(npz_path).read_bytes() == previous
+    assert not (tmp_path / embeddings.ZVEC_INDEX_DIRNAME).exists()
+    assert not list(tmp_path.glob(".retrieval-index-*"))
+
+
+def test_publish_failure_restores_previous_active_backend(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    original_matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    replacement_matrix = np.asarray([[0.0, 1.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, original_matrix)
+    previous = Path(npz_path).read_bytes()
+    real_replace = embeddings.os.replace
+
+    def fail_final_publish(source, destination):
+        parent = os.path.basename(os.path.dirname(source))
+        if parent.startswith(".retrieval-index-") and os.path.basename(source) == "embeddings.npz":
+            raise OSError("publish failed")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(embeddings.os, "replace", fail_final_publish)
+
+    with pytest.raises(OSError, match="publish failed"):
+        embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, replacement_matrix)
+
+    assert Path(npz_path).read_bytes() == previous
+    assert not list(tmp_path.glob(".retrieval-index-*"))
+
+
+def test_rollback_failure_preserves_recoverable_backend_backup(embeddings, tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    original_matrix = np.asarray([[1.0, 0.0]], dtype=np.float32)
+    replacement_matrix = np.asarray([[0.0, 1.0]], dtype=np.float32)
+    npz_path = embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, original_matrix)
+    previous = Path(npz_path).read_bytes()
+    real_replace = embeddings.os.replace
+
+    def fail_publish_and_rollback(source, destination):
+        if os.path.abspath(destination) == os.path.abspath(npz_path):
+            if os.path.basename(source) == "embeddings.npz":
+                raise OSError("publish failed")
+            if os.path.basename(source) == "previous-active":
+                raise OSError("rollback failed")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(embeddings.os, "replace", fail_publish_and_rollback)
+
+    with pytest.raises(RuntimeError, match="recoverable backups are preserved"):
+        embeddings.save_retrieval_index(str(tmp_path), "npz", nodes, replacement_matrix)
+
+    stage_roots = list(tmp_path.glob(".retrieval-index-*"))
+    assert len(stage_roots) == 1
+    assert (stage_roots[0] / "previous-active").read_bytes() == previous
+
+
+def test_zvec_rollback_failure_preserves_previous_collection(embeddings, tmp_path, monkeypatch):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    path = tmp_path / embeddings.ZVEC_INDEX_DIRNAME
+    nodes = [{"node_id": "event_1", "node_type": "event", "macro_id": "macro_0", "text": "orange cat"}]
+    embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, np.asarray([[1.0, 0.0]], dtype=np.float32))
+    real_replace = embeddings.os.replace
+
+    def fail_publish_and_rollback(source, destination):
+        if os.path.abspath(destination) == os.path.abspath(path):
+            if os.path.basename(source) == "embeddings.zvec":
+                raise OSError("publish failed")
+            if os.path.basename(source) == "previous-active":
+                raise OSError("rollback failed")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(embeddings.os, "replace", fail_publish_and_rollback)
+
+    with pytest.raises(RuntimeError, match="recoverable backups are preserved"):
+        embeddings.save_retrieval_index(str(tmp_path), "zvec", nodes, np.asarray([[0.0, 1.0]], dtype=np.float32))
+
+    stage_roots = list(tmp_path.glob(".retrieval-index-*"))
+    assert len(stage_roots) == 1
+    nodes, matrix = embeddings.export_retrieval_index(str(stage_roots[0] / "previous-active"))
+    assert nodes[0]["node_id"] == "event_1"
+    np.testing.assert_array_equal(matrix, [[1.0, 0.0]])
+
+
+def test_build_save_embeddings_can_select_zvec(build_graph, embeddings, tmp_path, monkeypatch):
+    pytest.importorskip("zvec")
+    np = pytest.importorskip("numpy")
+    memory = _make_memory(build_graph)
+
+    def unexpected_sparse_build(*_args):
+        raise AssertionError("zvec must not build a Python BM25 index")
+
+    monkeypatch.setattr(embeddings, "_embed_via_dashscope_native", lambda texts: np.eye(len(texts), dtype=np.float32))
+    monkeypatch.setattr(embeddings.EmbeddingIndex, "_build_sparse_index", unexpected_sparse_build)
+    (tmp_path / "embeddings.npz").write_bytes(b"stale")
+    path = build_graph._build_save_embeddings(memory, str(tmp_path), retrieval_backend="zvec")
+
+    assert path == str(tmp_path / "embeddings.zvec")
+    assert (tmp_path / "embeddings.zvec").is_dir()
+    assert not (tmp_path / "embeddings.npz").exists()
+    nodes, matrix = embeddings.export_retrieval_index(path)
+    assert len(nodes) == matrix.shape[0] > 0
+
+
+def test_build_save_embeddings_rejects_invalid_backend_before_embedding(build_graph, tmp_path, monkeypatch):
+    memory = _make_memory(build_graph)
+
+    def unexpected_embedding(*_args):
+        raise AssertionError("must validate before embedding")
+
+    monkeypatch.setattr(build_graph, "embed_nodes", unexpected_embedding)
+
+    with pytest.raises(ValueError, match="unsupported retrieval backend"):
+        build_graph._build_save_embeddings(memory, str(tmp_path), retrieval_backend="invalid")
 
 
 # ── build_graph: pure helpers (no ffmpeg / LLM / OSS) ────────────────
@@ -381,14 +996,14 @@ def test_pipeline_worker_does_not_mark_done_when_phase1_failed(pipeline_worker, 
     assert not (tmp_path / "02_done").exists()
 
 
-def test_embedding_failure_can_resume_from_saved_graph(build_graph, monkeypatch, tmp_path):
+def test_embedding_failure_can_resume_from_saved_graph(build_graph, embeddings, monkeypatch, tmp_path):
     np = pytest.importorskip("numpy")
     memory = _make_memory(build_graph)
 
-    def fail_build(_self, _nodes):
+    def fail_build(_texts):
         raise RuntimeError("synthetic embedding failure")
 
-    monkeypatch.setattr(build_graph.EmbeddingIndex, "build", fail_build)
+    monkeypatch.setattr(embeddings, "_embed_via_dashscope_native", fail_build)
     with pytest.raises(RuntimeError, match="synthetic embedding failure"):
         build_graph._assemble_save_embed(
             memory.video_key,
@@ -405,16 +1020,13 @@ def test_embedding_failure_can_resume_from_saved_graph(build_graph, monkeypatch,
     assert graph_path.exists()
     assert not (tmp_path / "embeddings.npz").exists()
 
-    def build_locally(index, nodes):
-        index.nodes = nodes
-        index._set_embeddings(np.ones((len(nodes), 3), dtype=np.float32))
-        index._build_sparse_index()
-
-    monkeypatch.setattr(build_graph.EmbeddingIndex, "build", build_locally)
+    monkeypatch.setattr(
+        embeddings, "_embed_via_dashscope_native", lambda texts: np.ones((len(texts), 3), dtype=np.float32)
+    )
     saved = build_graph.HierarchicalGraphMemory.load(str(graph_path))
     build_graph._build_save_embeddings(saved, str(tmp_path))
 
-    loaded = build_graph.EmbeddingIndex()
+    loaded = embeddings.EmbeddingIndex()
     loaded.load(str(tmp_path / "embeddings.npz"))
     assert len(loaded.nodes) == loaded.embeddings.shape[0] > 0
 
