@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-_BUILD_DIR = Path(__file__).resolve().parents[1] / "src/capabilities/video-memory/skill/script/build_memory"
+_BUILD_DIR = Path(__file__).resolve().parents[2] / "src/capabilities/video-memory/skill/script/build_memory"
 _PROBE = """
 import json
 from pathlib import Path
@@ -152,6 +152,110 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *args])
     output = result.stdout + result.stderr
     assert "private-file-only-key" not in output
     assert ("Video file not found" if install_succeeds else "configuration requires pydantic") in output
+
+
+@pytest.mark.parametrize(
+    "zvec_version,expects_install",
+    [("0.7.9", True), ("0.8.0", False), ("0.9.4", False), ("1.0.0", True)],
+)
+@pytest.mark.parametrize("optimize", ["0", "1"])
+def test_launcher_enforces_supported_zvec_version_range(tmp_path, zvec_version, expects_install, optimize):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log = tmp_path / "pip-args"
+    installed = tmp_path / "zvec-installed"
+    python = fake_bin / "python"
+    python.write_text(f"""#!{sys.executable}
+import os, sys
+from pathlib import Path
+from types import SimpleNamespace
+args = sys.argv[1:]
+if args[:2] == ["-m", "pip"]:
+    Path({str(log)!r}).write_text("\\n".join(args[2:]))
+    Path({str(installed)!r}).touch()
+    sys.exit(0)
+if args[0] == "-c":
+    if "zvec.__version__" in args[1]:
+        version = "0.8.0" if Path({str(installed)!r}).exists() else {zvec_version!r}
+        sys.modules["zvec"] = SimpleNamespace(__version__=version)
+        exec(args[1])
+        sys.exit(0)
+    if args[1] in ("import cv2", "import numpy", "import dashscope") or "pydantic.__version__" in args[1]:
+        sys.exit(0)
+os.execv({sys.executable!r}, [{sys.executable!r}, *args])
+""")
+    python.chmod(0o755)
+    config = tmp_path / "config"
+    config.write_text("DASHSCOPE_API_KEY=test-key\n")
+    process_env = {
+        **os.environ,
+        "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
+        "QWEN_MM_CONFIG": str(config),
+        "PYTHONOPTIMIZE": optimize,
+    }
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(_BUILD_DIR / "build_memory.sh"),
+            str(tmp_path / "missing.mp4"),
+            "--no-asr",
+            "--retrieval-backend",
+            "zvec",
+        ],
+        env=process_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    assert log.exists() is expects_install
+    if expects_install:
+        assert "zvec>=0.8,<1" in log.read_text()
+    assert "Video file not found" in result.stdout + result.stderr
+
+
+def test_launcher_fails_fast_when_zvec_install_does_not_provide_supported_version(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    python = fake_bin / "python"
+    python.write_text(f"""#!{sys.executable}
+import os, sys
+args = sys.argv[1:]
+if args[:2] == ["-m", "pip"]:
+    sys.exit(1)
+if args[0] == "-c":
+    if "zvec.__version__" in args[1]:
+        sys.exit(1)
+    if args[1] in ("import cv2", "import numpy", "import dashscope") or "pydantic.__version__" in args[1]:
+        sys.exit(0)
+os.execv({sys.executable!r}, [{sys.executable!r}, *args])
+""")
+    python.chmod(0o755)
+    config = tmp_path / "config"
+    config.write_text("DASHSCOPE_API_KEY=test-key\n")
+    process_env = {**os.environ, "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"], "QWEN_MM_CONFIG": str(config)}
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(_BUILD_DIR / "build_memory.sh"),
+            str(tmp_path / "missing.mp4"),
+            "--no-asr",
+            "--retrieval-backend",
+            "zvec",
+        ],
+        env=process_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 1
+    assert "requires zvec>=0.8,<1" in output
+    assert "Video file not found" not in output
 
 
 def test_builder_chat_settings_refresh_and_invalid_timeout_never_retries(tmp_path):
