@@ -8,9 +8,9 @@ Usage:
     python merge_memories.py /path/to/video_dir --skip-embeddings
 
 Scans for *.mp4.memory/graph_memory.json, prefixes all IDs with a short
-video key, concatenates everything, merges existing retrieval records without
-re-embedding, and writes graph_memory.json plus the selected retrieval backend
-in the video directory (or --output-dir).
+video key, concatenates everything, reuses existing vectors (rebuilding missing
+or corrupt indexes), and writes graph_memory.json plus the selected retrieval
+backend in the video directory (or --output-dir).
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from embeddings import (
     RETRIEVAL_BACKENDS,
     EmbeddingIndex,
     detect_retrieval_index,
+    embed_nodes,
     export_retrieval_index,
     save_retrieval_index,
 )
@@ -77,7 +78,7 @@ def prefix_ids(data: dict, prefix: str):
         sr["target"] = p + str(sr["target"])
 
 
-def _rebuild_embeddings_for_memory(gm_path: str, emb_path: str | None):
+def _rebuild_embeddings_for_memory(gm_path: str, emb_path: str | None) -> tuple[list[dict], np.ndarray]:
     """Rebuild embeddings for a single video memory from its graph_memory.json."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     if script_dir not in sys.path:
@@ -89,12 +90,14 @@ def _rebuild_embeddings_for_memory(gm_path: str, emb_path: str | None):
     if not nodes:
         return [], np.zeros((0, 0), dtype=np.float32)
 
-    index = EmbeddingIndex()
-    index.build(nodes)
+    vectors = embed_nodes(nodes)
     # Retain legacy NPZ repair write-back; zvec sources remain read-only.
     if emb_path is not None:
+        index = EmbeddingIndex()
+        index.nodes = nodes
+        index.embeddings = vectors
         index.save(emb_path)
-    return index.nodes, index.embeddings
+    return nodes, vectors
 
 
 def merge_directory(
@@ -236,7 +239,7 @@ def merge_directory(
                     if node.get("macro_id"):
                         node["macro_id"] = p + str(node["macro_id"])
                 all_nodes.extend(nodes)
-                if embs is not None and embs.size > 0:
+                if embs.size > 0:
                     all_embs.append(embs)
                 print(f"    {prefix}: rebuilt {len(nodes)} nodes")
             except Exception as e:

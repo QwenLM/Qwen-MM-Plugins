@@ -5,7 +5,7 @@ import json
 import pytest
 
 from qwen_mm_plugins_video_memory import loader
-from qwen_mm_plugins_video_memory.embeddings import ZvecEmbeddingIndex, save_zvec_index
+from qwen_mm_plugins_video_memory.embeddings import ZvecEmbeddingIndex, save_retrieval_index
 from qwen_mm_plugins_video_memory.loader import load_toolkit
 from qwen_mm_plugins_video_memory.schema import HierarchicalGraphMemory, MacroEvent
 from qwen_mm_plugins_video_memory.time_system import DefaultTimeSystem
@@ -104,7 +104,11 @@ def test_zvec_cache_stamp_uses_atomic_directory_generation_without_tree_walk(tmp
     path = tmp_path / "embeddings.zvec"
     path.mkdir()
     (path / "segment").write_bytes(b"first")
-    monkeypatch.setattr(loader.os, "walk", lambda *_args: (_ for _ in ()).throw(AssertionError("must not walk")))
+
+    def unexpected_walk(*_args):
+        raise AssertionError("must not walk")
+
+    monkeypatch.setattr(loader.os, "walk", unexpected_walk)
 
     first = loader._path_stamp(str(path))
     replacement = tmp_path / "replacement"
@@ -123,8 +127,9 @@ def test_loader_auto_detects_persistent_zvec_index(tmp_path, monkeypatch):
     np = pytest.importorskip("numpy")
     memory = HierarchicalGraphMemory(macro_events=[MacroEvent("opening", "Opening", [0, 60])])
     memory.save(str(tmp_path / "graph_memory.json"))
-    save_zvec_index(
-        str(tmp_path / "embeddings.zvec"),
+    save_retrieval_index(
+        str(tmp_path),
+        "zvec",
         [{"node_id": "evt:1", "node_type": "event", "macro_id": "opening", "text": "orange cat jumps"}],
         np.asarray([[1.0, 0.0]], dtype=np.float32),
     )

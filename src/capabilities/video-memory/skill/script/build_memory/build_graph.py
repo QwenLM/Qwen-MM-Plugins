@@ -22,7 +22,7 @@ try:
 except ImportError:
     oss2 = None
 
-from embeddings import RETRIEVAL_BACKENDS, EmbeddingIndex, save_retrieval_index
+from embeddings import RETRIEVAL_BACKENDS, embed_nodes, save_retrieval_index
 from env_config import ConfigurationError, get_env, get_int_env
 from llm_client import call_vlm_curl, extract_json
 from prompts import (
@@ -1319,13 +1319,12 @@ def _build_save_embeddings(memory: HierarchicalGraphMemory, output_dir: str, ret
     if retrieval_backend not in RETRIEVAL_BACKENDS:
         raise ValueError(f"unsupported retrieval backend: {retrieval_backend!r}; expected one of {RETRIEVAL_BACKENDS}")
     print(f"\nPhase 4: Building {retrieval_backend} retrieval index...")
-    index = EmbeddingIndex()
     nodes = memory.get_all_nodes()
     if not nodes:
         raise RuntimeError("graph contains no nodes; cannot build embeddings")
-    index.build(nodes)
+    vectors = embed_nodes(nodes)
 
-    index_path = save_retrieval_index(output_dir, retrieval_backend, index.nodes, index.embeddings)
+    index_path = save_retrieval_index(output_dir, retrieval_backend, nodes, vectors)
     print(f"Retrieval index saved to: {index_path} ({len(nodes)} nodes)")
     return index_path
 

@@ -183,11 +183,12 @@ def test_merge_preserves_npz_repair_writeback_without_converting_zvec_sources(
 
     embedded_texts = []
 
-    def embed(_self, texts):
+    def embed(nodes):
+        texts = [node["text"] for node in nodes]
         embedded_texts.extend(texts)
         return merge_memories.np.asarray([[1.0, 0.0] for _ in texts], dtype=merge_memories.np.float32)
 
-    monkeypatch.setattr(merge_memories.EmbeddingIndex, "_embed_batch", embed)
+    monkeypatch.setattr(merge_memories, "embed_nodes", embed)
     output = tmp_path / "merged"
     merge_memories.merge_directory(str(tmp_path), str(output), retrieval_backend=output_backend)
 
