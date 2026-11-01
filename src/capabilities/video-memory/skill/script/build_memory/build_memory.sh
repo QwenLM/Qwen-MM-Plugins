@@ -85,9 +85,9 @@ _MISSING_PKGS=()
 python -c "import cv2" 2>/dev/null || _MISSING_PKGS+=(opencv-python-headless)
 python -c "import numpy" 2>/dev/null || _MISSING_PKGS+=('numpy<2')
 python -c "import dashscope" 2>/dev/null || _MISSING_PKGS+=(dashscope)
-_ZVEC_CHECK='import zvec; version = tuple(map(int, zvec.__version__.split(".")[:2])); assert (0, 7) <= version < (1, 0)'
+_ZVEC_CHECK='import sys, zvec; version = tuple(map(int, zvec.__version__.split(".")[:2])); sys.exit(0 if (0, 8) <= version < (1, 0) else 1)'
 if [[ "$RETRIEVAL_BACKEND" == "zvec" ]]; then
-    python -c "$_ZVEC_CHECK" 2>/dev/null || _MISSING_PKGS+=('zvec>=0.7,<1')
+    python -c "$_ZVEC_CHECK" 2>/dev/null || _MISSING_PKGS+=('zvec>=0.8,<1')
 fi
 _PYDANTIC_CHECK='import pydantic; assert (2, 11) <= tuple(map(int, pydantic.__version__.split(".")[:2])) < (3, 0)'
 python -c "$_PYDANTIC_CHECK" 2>/dev/null || _MISSING_PKGS+=('pydantic>=2.11,<3')
@@ -100,7 +100,7 @@ if [[ ${#_MISSING_PKGS[@]} -gt 0 ]]; then
 fi
 
 if [[ "$RETRIEVAL_BACKEND" == "zvec" ]] && ! python -c "$_ZVEC_CHECK" 2>/dev/null; then
-    echo "ERROR: the zvec retrieval backend requires zvec>=0.7,<1, and dependency installation did not provide it."
+    echo "ERROR: the zvec retrieval backend requires zvec>=0.8,<1, and dependency installation did not provide it."
     exit 1
 fi
 

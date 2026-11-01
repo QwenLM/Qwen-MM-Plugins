@@ -147,7 +147,7 @@ def _scale_corpus(nodes: list[dict], embeddings: np.ndarray, count: int) -> tupl
 def _observe_call(target, name: str, measurements: dict, label: str):
     """Time explicit call boundaries without relying on native-extension profiler events."""
     original = getattr(target, name)
-    measurements[label] = {"ms": 0.0, "calls": 0}
+    measurements.setdefault(label, {"ms": 0.0, "calls": 0})
 
     def measured(*args, **kwargs):
         started = time.perf_counter()
@@ -241,7 +241,10 @@ def _diagnose_worker(index_path: str, query_pack: str, top_k: int) -> dict:
                         label = query.field_name
                         measured = measurements.setdefault(label, {"ms": 0.0, "calls": 0})
                         started = time.perf_counter()
-                        docs = original_query(query, filter_expr=filter_expr)
+                        # zvec 0.8 materializes query tuples through Doc._from_tuple.
+                        # Scope this observer to queries: fetch uses the same constructor.
+                        with _observe_call(query_executor.Doc, "_from_tuple", measurements, "result_conversion"):
+                            docs = original_query(query, filter_expr=filter_expr)
                         measured["ms"] += (time.perf_counter() - started) * 1000
                         measured["calls"] += 1
                         candidates[label].append(len(docs))
@@ -256,9 +259,6 @@ def _diagnose_worker(index_path: str, query_pack: str, top_k: int) -> dict:
                         _observe_call(
                             query_executor.QueryExecutor, "set_query_vector", measurements, "query_vector_setup"
                         )
-                    )
-                    stack.enter_context(
-                        _observe_call(query_executor, "convert_to_py_doc", measurements, "result_conversion")
                     )
                     stack.enter_context(_observe_call(index._collection, "fetch", measurements, "metadata_fetch"))
                     stack.enter_context(

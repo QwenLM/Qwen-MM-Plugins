@@ -156,9 +156,10 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *args])
 
 @pytest.mark.parametrize(
     "zvec_version,expects_install",
-    [("0.6.9", True), ("0.7.0", False), ("0.9.4", False), ("1.0.0", True)],
+    [("0.7.9", True), ("0.8.0", False), ("0.9.4", False), ("1.0.0", True)],
 )
-def test_launcher_enforces_supported_zvec_version_range(tmp_path, zvec_version, expects_install):
+@pytest.mark.parametrize("optimize", ["0", "1"])
+def test_launcher_enforces_supported_zvec_version_range(tmp_path, zvec_version, expects_install, optimize):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     log = tmp_path / "pip-args"
@@ -167,6 +168,7 @@ def test_launcher_enforces_supported_zvec_version_range(tmp_path, zvec_version, 
     python.write_text(f"""#!{sys.executable}
 import os, sys
 from pathlib import Path
+from types import SimpleNamespace
 args = sys.argv[1:]
 if args[:2] == ["-m", "pip"]:
     Path({str(log)!r}).write_text("\\n".join(args[2:]))
@@ -174,10 +176,10 @@ if args[:2] == ["-m", "pip"]:
     sys.exit(0)
 if args[0] == "-c":
     if "zvec.__version__" in args[1]:
-        if Path({str(installed)!r}).exists():
-            sys.exit(0)
-        version = tuple(map(int, {zvec_version!r}.split(".")[:2]))
-        sys.exit(0 if (0, 7) <= version < (1, 0) else 1)
+        version = "0.8.0" if Path({str(installed)!r}).exists() else {zvec_version!r}
+        sys.modules["zvec"] = SimpleNamespace(__version__=version)
+        exec(args[1])
+        sys.exit(0)
     if args[1] in ("import cv2", "import numpy", "import dashscope") or "pydantic.__version__" in args[1]:
         sys.exit(0)
 os.execv({sys.executable!r}, [{sys.executable!r}, *args])
@@ -185,7 +187,12 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *args])
     python.chmod(0o755)
     config = tmp_path / "config"
     config.write_text("DASHSCOPE_API_KEY=test-key\n")
-    process_env = {**os.environ, "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"], "QWEN_MM_CONFIG": str(config)}
+    process_env = {
+        **os.environ,
+        "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
+        "QWEN_MM_CONFIG": str(config),
+        "PYTHONOPTIMIZE": optimize,
+    }
 
     result = subprocess.run(
         [
@@ -205,7 +212,7 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *args])
     assert result.returncode == 1
     assert log.exists() is expects_install
     if expects_install:
-        assert "zvec>=0.7,<1" in log.read_text()
+        assert "zvec>=0.8,<1" in log.read_text()
     assert "Video file not found" in result.stdout + result.stderr
 
 
@@ -247,7 +254,7 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *args])
 
     output = result.stdout + result.stderr
     assert result.returncode == 1
-    assert "requires zvec>=0.7,<1" in output
+    assert "requires zvec>=0.8,<1" in output
     assert "Video file not found" not in output
 
 

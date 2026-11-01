@@ -482,15 +482,15 @@ def _require_zvec():
         import zvec
     except ImportError as e:
         raise RuntimeError(
-            "The zvec retrieval backend requires zvec>=0.7,<1. "
-            "Install the video-memory extra or run `pip install 'zvec>=0.7,<1'`."
+            "The zvec retrieval backend requires zvec>=0.8,<1. "
+            "Install the video-memory extra or run `pip install 'zvec>=0.8,<1'`."
         ) from e
     try:
         version = tuple(map(int, zvec.__version__.split(".")[:2]))
     except (AttributeError, ValueError) as e:
-        raise RuntimeError("Unable to determine the installed zvec version; expected zvec>=0.7,<1.") from e
-    if not (0, 7) <= version < (1, 0):
-        raise RuntimeError(f"Unsupported zvec version {zvec.__version__}; expected zvec>=0.7,<1.")
+        raise RuntimeError("Unable to determine the installed zvec version; expected zvec>=0.8,<1.") from e
+    if not (0, 8) <= version < (1, 0):
+        raise RuntimeError(f"Unsupported zvec version {zvec.__version__}; expected zvec>=0.8,<1.")
     return zvec
 
 

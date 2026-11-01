@@ -409,12 +409,16 @@ def test_save_zvec_replaces_symlink_without_touching_its_target(embeddings, tmp_
     assert marker.read_text() == "must survive"
 
 
-def test_require_zvec_rejects_unsupported_runtime_version(embeddings, monkeypatch):
-    zvec = pytest.importorskip("zvec")
-    monkeypatch.setattr(zvec, "__version__", "1.0.0")
+@pytest.mark.parametrize("version,supported", [("0.7.9", False), ("0.8.0", True), ("0.9.4", True), ("1.0.0", False)])
+def test_require_zvec_enforces_supported_runtime_version(embeddings, monkeypatch, version, supported):
+    zvec = SimpleNamespace(__version__=version)
+    monkeypatch.setitem(sys.modules, "zvec", zvec)
 
-    with pytest.raises(RuntimeError, match=r"expected zvec>=0\.7,<1"):
-        embeddings._require_zvec()
+    if supported:
+        assert embeddings._require_zvec() is zvec
+    else:
+        with pytest.raises(RuntimeError, match=r"expected zvec>=0\.8,<1"):
+            embeddings._require_zvec()
 
 
 def test_zvec_load_closes_collection_when_schema_read_fails(embeddings, monkeypatch):
