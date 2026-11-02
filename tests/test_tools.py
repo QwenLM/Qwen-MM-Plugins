@@ -283,6 +283,17 @@ def test_media_info_missing_file():
     assert _is_error(media_info.handle({"path": "/no/such/file.mp4"}))
 
 
+def test_media_info_duration_carries_a_rounded_up_second_into_the_minute():
+    # Container durations are arbitrary floats (1798 frames at 29.97 fps last 59.993s), so a
+    # duration just under a minute boundary must not print as second 60.
+    assert media_info._fmt_duration(59.993) == "1:00.0 (59.99s)"
+    assert media_info._fmt_duration(119.97) == "2:00.0 (119.97s)"
+    assert media_info._fmt_duration(3599.97) == "1:00:00.0 (3599.97s)"
+    assert media_info._fmt_duration(3659.96) == "1:01:00.0 (3659.96s)"
+    assert media_info._fmt_duration(59.94) == "0:59.9 (59.94s)"
+    assert media_info._fmt_duration(75.0) == "1:15.0 (75.00s)"
+
+
 # ── visualize dispatch ───────────────────────────────────────────────
 
 

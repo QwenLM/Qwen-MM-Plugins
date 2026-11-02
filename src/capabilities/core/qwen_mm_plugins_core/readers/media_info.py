@@ -34,9 +34,12 @@ def _num(v: Any) -> float:
 def _fmt_duration(sec: float) -> str:
     if sec <= 0:
         return "unknown duration"
-    h = int(sec // 3600)
-    m = int((sec % 3600) // 60)
-    s = sec % 60
+    # Round to the one decimal shown before splitting into fields, so 59.97 carries into the
+    # minute ("1:00.0") instead of printing a 60th second ("0:60.0").
+    shown = round(sec, 1)
+    h = int(shown // 3600)
+    m = int((shown % 3600) // 60)
+    s = shown % 60
     clock = f"{h}:{m:02d}:{s:04.1f}" if h else f"{m}:{s:04.1f}"
     return f"{clock} ({sec:.2f}s)"
 
