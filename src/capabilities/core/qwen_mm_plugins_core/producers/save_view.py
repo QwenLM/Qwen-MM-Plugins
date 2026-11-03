@@ -122,9 +122,17 @@ def _save_frames(file_path: str, times: list[float] | None, budget: str, out_dir
         return text_error("no frames extracted (timestamps out of range?).")
 
     saved = []
+    used_names: set[str] = set()
     for ts, b64 in frames:
         raw = base64.b64decode(b64)
-        out = os.path.join(out_dir, f"{stem}_frame_{ts:.1f}s.jpg")
+        base_name = f"{stem}_frame_{ts:.1f}s"
+        name = f"{base_name}.jpg"
+        duplicate = 2
+        while name in used_names:
+            name = f"{base_name}_{duplicate}.jpg"
+            duplicate += 1
+        used_names.add(name)
+        out = os.path.join(out_dir, name)
         with open(out, "wb") as f:
             f.write(raw)
         saved.append((f"[{ts:.1f}s]", out, Image.open(io.BytesIO(raw))))
