@@ -443,6 +443,7 @@ def test_config_spec_lists_search_backend_selector_and_keys():
     assert any(row.startswith("TAVILY_API_KEY|1|search||") for row in rows)
     assert any(row.startswith("EXA_API_KEY|1|search||") for row in rows)
     assert any(row.startswith("SERPLY_API_KEY|1|search||") for row in rows)
+    assert any(row.startswith("KEENABLE_API_KEY|1|search||") for row in rows)
 
 
 def test_config_spec_lists_api_model_defaults():

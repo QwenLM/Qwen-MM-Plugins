@@ -2,7 +2,7 @@
 
 The public MCP tool schemas stay provider-neutral. ``QWEN_MM_SEARCH_BACKEND``
 can pin the transport at call time; otherwise configured keys are discovered in
-the order Serper, Tavily, Exa, Serply. This module normalizes provider responses into
+the order Serper, Tavily, Exa, Serply, Keenable. This module normalizes provider responses into
 the legacy Serper-shaped fields consumed by the tool formatters.
 """
 
@@ -14,18 +14,23 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply")
-AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply")
+SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply", "keenable")
+AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply", "keenable")
 BACKEND_KEY_ENVS = {
     "serper": "SERPER_API_KEY",
     "exa": "EXA_API_KEY",
     "tavily": "TAVILY_API_KEY",
     "serply": "SERPLY_API_KEY",
+    "keenable": "KEENABLE_API_KEY",
 }
+# Backends that also answer without a key when selected explicitly; a key only raises rate limits.
+KEYLESS_BACKENDS = ("keenable",)
 
 EXA_BASE = "https://api.exa.ai"
 TAVILY_BASE = "https://api.tavily.com"
 SERPLY_BASE = "https://api.serply.io"  # API reference: https://serply.io/docs
+KEENABLE_BASE = "https://api.keenable.ai"  # API reference: https://docs.keenable.ai/api-reference
+KEENABLE_APP_TITLE = "Qwen-MM-Plugins"  # X-Keenable-Title app label, required on keyless calls
 DEFAULT_TIMEOUT = 60
 DEFAULT_MAX_RETRIES = 5
 SEARCH_SNIPPET_LIMIT = 1000
@@ -158,6 +163,14 @@ def _post_text(
     return _with_retries(_post, max_retries=max_retries)
 
 
+def _keenable_route(endpoint: str, api_key: str) -> tuple[str, dict[str, str]]:
+    """Keyed calls use ``/v1/<endpoint>``; without a key, the keyless ``/v1/<endpoint>/public`` route."""
+    headers = {"X-Keenable-Title": KEENABLE_APP_TITLE}
+    if api_key:
+        return f"{KEENABLE_BASE}/v1/{endpoint}", {**headers, "X-API-Key": api_key}
+    return f"{KEENABLE_BASE}/v1/{endpoint}/public", headers
+
+
 def _normalized_result(
     doc: dict[str, Any],
     *,
@@ -230,6 +243,20 @@ def search_text(query: str, backend: str, api_key: str) -> list[dict[str, Any]]:
             for doc in (data or {}).get("results", [])
         ]
 
+    if backend == "keenable":
+        endpoint, headers = _keenable_route("search", api_key)
+        data = _post_json(endpoint, {"query": query, "max_results": 10}, headers, max_retries=10)
+        # ``snippet`` holds the page text (``description`` is empty); results carry no publication date.
+        return [
+            _normalized_result(
+                {**doc, "snippet": (doc.get("snippet") or "")[:SEARCH_SNIPPET_LIMIT]},
+                url_key="url",
+                snippet_key="snippet",
+                date_key="date",
+            )
+            for doc in (data or {}).get("results", [])
+        ]
+
     raise ValueError(backend_error(backend))
 
 
@@ -280,5 +307,12 @@ def extract_page(url: str, backend: str, api_key: str) -> str:
         if text is None:
             return f"Error scraping {url}"
         return text.strip() or "No content extracted."
+
+    if backend == "keenable":
+        endpoint, headers = _keenable_route("fetch", api_key)
+        data = _get_json(endpoint, {"url": url}, headers, max_retries=3)
+        if data is None:
+            return f"Error scraping {url}"
+        return data.get("content") or "No content extracted."
 
     raise ValueError(backend_error(backend))
