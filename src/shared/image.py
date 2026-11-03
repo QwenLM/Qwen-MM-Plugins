@@ -73,7 +73,7 @@ def find_font(size: int):
 
 
 def draw_boxes(img, detections: list[dict[str, Any]]):
-    """Draw bounding boxes (+ optional labels) on a copy of `img`.
+    """Draw bounding boxes (+ optional labels) on an RGB copy of `img` (RGBA if it has transparency).
 
     Each detection: ``{"bbox_pixel": [x1,y1,x2,y2], "label": str, "color": (r,g,b)}``.
     ``label`` and ``color`` are optional — an empty label draws no text box, and a
@@ -81,7 +81,10 @@ def draw_boxes(img, detections: list[dict[str, Any]]):
     """
     from PIL import ImageDraw
 
-    annotated = img.copy()
+    # The (r, g, b) colors below need an RGB canvas: grayscale, bilevel and 16-bit images reject them,
+    # a palette with all 256 slots in use has no room for a new one, and CMYK paints every box black.
+    has_alpha = img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
+    annotated = img.convert("RGBA" if has_alpha else "RGB")
     draw = ImageDraw.Draw(annotated)
 
     short_edge = min(img.width, img.height)
