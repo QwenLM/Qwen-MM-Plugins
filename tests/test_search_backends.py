@@ -1,4 +1,4 @@
-"""Offline contract tests for the Serper / Exa / Tavily / Serply search adapters."""
+"""Offline contract tests for the Serper / Exa / Tavily / Serply / Outcrawl search adapters."""
 
 from __future__ import annotations
 
@@ -45,6 +45,8 @@ def test_explicit_backend_is_normalized_and_does_not_fallback(monkeypatch):
         ({"EXA_API_KEY": "e"}, "exa"),
         ({"EXA_API_KEY": "e", "SERPLY_API_KEY": "p"}, "exa"),
         ({"SERPLY_API_KEY": "p"}, "serply"),
+        ({"SERPLY_API_KEY": "p", "OUTCRAWL_API_KEY": "o"}, "serply"),
+        ({"OUTCRAWL_API_KEY": "o"}, "outcrawl"),
         ({}, "serper"),
     ],
 )
@@ -70,6 +72,7 @@ def test_blank_or_auto_selector_uses_configured_keys(monkeypatch, selector):
         ("exa", "EXA_API_KEY"),
         ("tavily", "TAVILY_API_KEY"),
         ("serply", "SERPLY_API_KEY"),
+        ("outcrawl", "OUTCRAWL_API_KEY"),
     ],
 )
 def test_backend_specific_key_resolution_and_explicit_override(monkeypatch, backend, env_name):
@@ -90,7 +93,7 @@ def test_backend_specific_key_resolution_and_explicit_override(monkeypatch, back
 
 def test_invalid_backend_message_lists_choices():
     error = backends.backend_error("other")
-    assert error and "serper, exa, tavily, serply" in error
+    assert error and "serper, exa, tavily, serply, outcrawl" in error
     assert backends.backend_error("exa") is None
 
 
@@ -101,6 +104,7 @@ def test_shared_config_catalog_lists_backend_selector_and_keys():
     assert fields["EXA_API_KEY"] == (True, "")
     assert fields["TAVILY_API_KEY"] == (True, "")
     assert fields["SERPLY_API_KEY"] == (True, "")
+    assert fields["OUTCRAWL_API_KEY"] == (True, "")
 
 
 def test_serper_search_adapter_normalizes_results(monkeypatch):
@@ -140,6 +144,14 @@ def test_serper_search_adapter_normalizes_results(monkeypatch):
             "/search",
             ("Authorization", "Bearer key"),
             {"query": "q", "search_depth": "basic", "max_results": 10, "include_answer": False},
+        ),
+        (
+            "outcrawl",
+            {"hits": [{"url": "https://o", "title": "O", "snippet": "outcrawl body", "rank": 1}]},
+            {"link": "https://o", "title": "O", "snippet": "outcrawl body", "date": "N/A"},
+            "/v1/search",
+            ("Authorization", "Bearer key"),
+            {"query": "q", "limit": 10},
         ),
     ],
 )
@@ -187,6 +199,14 @@ def test_non_serper_search_adapters(
             "/extract",
             ("Authorization", "Bearer key"),
             {"urls": ["https://page"], "format": "markdown"},
+        ),
+        (
+            "outcrawl",
+            {"url": "https://page", "statusCode": 200, "markdown": "outcrawl page"},
+            "outcrawl page",
+            "/v1/scrape",
+            ("Authorization", "Bearer key"),
+            {"url": "https://page", "formats": ["markdown"], "onlyMainContent": True},
         ),
     ],
 )
@@ -280,3 +300,16 @@ def test_serply_extraction_adapter_returns_markdown_text(monkeypatch):
 def test_serply_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
     monkeypatch.setattr(backends, "_post_text", lambda *_a, **_k: response)
     assert backends.extract_page("https://page", "serply", "key") == expected
+
+
+@pytest.mark.parametrize(
+    "response,expected",
+    [
+        (None, "Error scraping https://page"),
+        ({"url": "https://page", "statusCode": 404, "markdown": "Not Found"}, "Error scraping https://page"),
+        ({"url": "https://page", "statusCode": 200, "markdown": ""}, "No content extracted."),
+    ],
+)
+def test_outcrawl_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
+    monkeypatch.setattr(backends, "_post_json", lambda *_a, **_k: response)
+    assert backends.extract_page("https://page", "outcrawl", "key") == expected

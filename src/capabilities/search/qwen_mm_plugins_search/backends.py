@@ -2,7 +2,7 @@
 
 The public MCP tool schemas stay provider-neutral. ``QWEN_MM_SEARCH_BACKEND``
 can pin the transport at call time; otherwise configured keys are discovered in
-the order Serper, Tavily, Exa, Serply. This module normalizes provider responses into
+the order Serper, Tavily, Exa, Serply, Outcrawl. This module normalizes provider responses into
 the legacy Serper-shaped fields consumed by the tool formatters.
 """
 
@@ -14,18 +14,20 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply")
-AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply")
+SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply", "outcrawl")
+AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply", "outcrawl")
 BACKEND_KEY_ENVS = {
     "serper": "SERPER_API_KEY",
     "exa": "EXA_API_KEY",
     "tavily": "TAVILY_API_KEY",
     "serply": "SERPLY_API_KEY",
+    "outcrawl": "OUTCRAWL_API_KEY",
 }
 
 EXA_BASE = "https://api.exa.ai"
 TAVILY_BASE = "https://api.tavily.com"
 SERPLY_BASE = "https://api.serply.io"  # API reference: https://serply.io/docs
+OUTCRAWL_BASE = "https://api.outcrawl.ai"  # API reference: https://outcrawl.ai/docs
 DEFAULT_TIMEOUT = 60
 DEFAULT_MAX_RETRIES = 5
 SEARCH_SNIPPET_LIMIT = 1000
@@ -230,6 +232,18 @@ def search_text(query: str, backend: str, api_key: str) -> list[dict[str, Any]]:
             for doc in (data or {}).get("results", [])
         ]
 
+    if backend == "outcrawl":
+        data = _post_json(
+            f"{OUTCRAWL_BASE}/v1/search",
+            {"query": query, "limit": 10},
+            {"Authorization": f"Bearer {api_key}"},
+            max_retries=10,
+        )
+        return [
+            _normalized_result(doc, url_key="url", snippet_key="snippet", date_key="date")
+            for doc in (data or {}).get("hits", [])
+        ]
+
     raise ValueError(backend_error(backend))
 
 
@@ -280,5 +294,17 @@ def extract_page(url: str, backend: str, api_key: str) -> str:
         if text is None:
             return f"Error scraping {url}"
         return text.strip() or "No content extracted."
+
+    if backend == "outcrawl":
+        data = _post_json(
+            f"{OUTCRAWL_BASE}/v1/scrape",
+            {"url": url, "formats": ["markdown"], "onlyMainContent": True},
+            {"Authorization": f"Bearer {api_key}"},
+            max_retries=3,
+        )
+        status = (data or {}).get("statusCode")
+        if data is None or (isinstance(status, int) and status >= 400):
+            return f"Error scraping {url}"
+        return data.get("markdown") or "No content extracted."
 
     raise ValueError(backend_error(backend))
