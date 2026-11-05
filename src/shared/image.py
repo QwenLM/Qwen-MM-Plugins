@@ -181,10 +181,18 @@ def budget_to_pixels(budget: str, tokens_map: dict[str, int]) -> int:
 def smart_resize(
     height: int, width: int, min_pixels: int, max_pixels: int, factor: int = TOKEN_SIZE
 ) -> tuple[int, int]:
-    """Resize (h, w) into [min_pixels, max_pixels], snapped to a multiple of `factor` (the patch grid)."""
+    """Resize (h, w) within the pixel budget, snapped to a multiple of `factor` (the patch grid).
+
+    For very thin sources, fitting the budget can require changing the aspect ratio because each
+    dimension must be at least one patch. A budget smaller than one patch cannot be satisfied.
+    """
     if min_pixels > max_pixels:
         logging.warning("min_pixels (%d) > max_pixels (%d), clamping max_pixels to min_pixels", min_pixels, max_pixels)
         max_pixels = min_pixels
+    if factor <= 0:
+        raise ValueError("factor must be positive")
+    if max_pixels < factor * factor:
+        raise ValueError("max_pixels must fit at least one patch")
 
     # qwen-vl-utils' rule: snap to the grid, then ceil up to min_pixels or floor down to max_pixels.
     # The cap is checked last because the small presets use min_pixels == max_pixels, where the
@@ -199,6 +207,12 @@ def smart_resize(
         beta = math.sqrt(height * width / max_pixels)
         h_bar = max(factor, math.floor(height / beta / factor) * factor)
         w_bar = max(factor, math.floor(width / beta / factor) * factor)
+        if h_bar * w_bar > max_pixels:
+            # The short side hit the one-patch floor; cap the long side on the same grid.
+            if height <= width:
+                w_bar = (max_pixels // (h_bar * factor)) * factor
+            else:
+                h_bar = (max_pixels // (w_bar * factor)) * factor
     return h_bar, w_bar
 
 
