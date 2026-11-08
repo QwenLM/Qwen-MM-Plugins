@@ -62,6 +62,8 @@ When juggling heterogeneous assets (action-cam clips, VFX/stock footage, voiceov
 ## Tips
 
 **Resolution budgets**: `small` for preview, `normal` (~1024) default, `large` for fine detail.
+Extremely wide or tall media can be stretched to fit the budget because each dimension needs at least
+one patch. Use a larger budget or inspect smaller crops when aspect ratio matters.
 
 **Video strategy**: `fps=0` auto-selects. Skim with `fps=1, budget="normal"` in 5-min chunks, then detail with `fps=2, budget="large"` on interesting segments. Use `start_time`/`end_time` for windowing.
 
