@@ -1,4 +1,4 @@
-"""Offline contract tests for the Serper / Exa / Tavily / Serply search adapters."""
+"""Offline contract tests for the Serper / Exa / Tavily / Serply / Firecrawl search adapters."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("mcp")
 
 import shared.env as shared_env  # noqa: E402
-from qwen_mm_plugins_search import backends, serper  # noqa: E402
+from qwen_mm_plugins_search import backends, firecrawl, serper  # noqa: E402
 
 
 def _fake_env(values):
@@ -45,6 +45,8 @@ def test_explicit_backend_is_normalized_and_does_not_fallback(monkeypatch):
         ({"EXA_API_KEY": "e"}, "exa"),
         ({"EXA_API_KEY": "e", "SERPLY_API_KEY": "p"}, "exa"),
         ({"SERPLY_API_KEY": "p"}, "serply"),
+        ({"SERPLY_API_KEY": "p", "FIRECRAWL_API_KEY": "f"}, "serply"),
+        ({"FIRECRAWL_API_KEY": "f"}, "firecrawl"),
         ({}, "serper"),
     ],
 )
@@ -70,6 +72,7 @@ def test_blank_or_auto_selector_uses_configured_keys(monkeypatch, selector):
         ("exa", "EXA_API_KEY"),
         ("tavily", "TAVILY_API_KEY"),
         ("serply", "SERPLY_API_KEY"),
+        ("firecrawl", "FIRECRAWL_API_KEY"),
     ],
 )
 def test_backend_specific_key_resolution_and_explicit_override(monkeypatch, backend, env_name):
@@ -101,6 +104,7 @@ def test_shared_config_catalog_lists_backend_selector_and_keys():
     assert fields["EXA_API_KEY"] == (True, "")
     assert fields["TAVILY_API_KEY"] == (True, "")
     assert fields["SERPLY_API_KEY"] == (True, "")
+    assert fields["FIRECRAWL_API_KEY"] == (True, "")
 
 
 def test_serper_search_adapter_normalizes_results(monkeypatch):
@@ -280,3 +284,43 @@ def test_serply_extraction_adapter_returns_markdown_text(monkeypatch):
 def test_serply_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
     monkeypatch.setattr(backends, "_post_text", lambda *_a, **_k: response)
     assert backends.extract_page("https://page", "serply", "key") == expected
+
+
+def test_firecrawl_search_adapter_normalizes_results(monkeypatch):
+    calls = []
+
+    def fake_post(path, payload, api_key, **kwargs):
+        calls.append((path, payload, api_key, kwargs))
+        return {"success": True, "data": {"web": [{"url": "https://f", "title": "F", "description": "fc body"}]}}
+
+    monkeypatch.setattr(firecrawl, "post_firecrawl", fake_post)
+    docs = backends.search_text("q", "firecrawl", "key")
+
+    assert docs == [{"link": "https://f", "title": "F", "snippet": "fc body", "date": "N/A"}]
+    assert calls == [("search", {"query": "q", "limit": 10}, "key", {"max_retries": 10})]
+
+
+def test_firecrawl_search_adapter_handles_failed_request(monkeypatch):
+    monkeypatch.setattr(firecrawl, "post_firecrawl", lambda *_a, **_k: None)
+    assert backends.search_text("q", "firecrawl", "key") == []
+
+
+def test_firecrawl_extraction_adapter_returns_markdown(monkeypatch):
+    calls = []
+
+    def fake_post(path, payload, api_key, **kwargs):
+        calls.append((path, payload, api_key, kwargs))
+        return {"success": True, "data": {"markdown": "# Page\n\nbody", "metadata": {"statusCode": 200}}}
+
+    monkeypatch.setattr(firecrawl, "post_firecrawl", fake_post)
+    assert backends.extract_page("https://page", "firecrawl", "key") == "# Page\n\nbody"
+    assert calls == [("scrape", {"url": "https://page", "formats": ["markdown"]}, "key", {"max_retries": 3})]
+
+
+@pytest.mark.parametrize(
+    "response,expected",
+    [(None, "Error scraping https://page"), ({"success": True, "data": {}}, "No content extracted.")],
+)
+def test_firecrawl_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
+    monkeypatch.setattr(firecrawl, "post_firecrawl", lambda *_a, **_k: response)
+    assert backends.extract_page("https://page", "firecrawl", "key") == expected

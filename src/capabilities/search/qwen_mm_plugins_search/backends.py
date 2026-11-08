@@ -2,7 +2,7 @@
 
 The public MCP tool schemas stay provider-neutral. ``QWEN_MM_SEARCH_BACKEND``
 can pin the transport at call time; otherwise configured keys are discovered in
-the order Serper, Tavily, Exa, Serply. This module normalizes provider responses into
+the order Serper, Tavily, Exa, Serply, Firecrawl. This module normalizes provider responses into
 the legacy Serper-shaped fields consumed by the tool formatters.
 """
 
@@ -14,13 +14,14 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply")
-AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply")
+SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply", "firecrawl")
+AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply", "firecrawl")
 BACKEND_KEY_ENVS = {
     "serper": "SERPER_API_KEY",
     "exa": "EXA_API_KEY",
     "tavily": "TAVILY_API_KEY",
     "serply": "SERPLY_API_KEY",
+    "firecrawl": "FIRECRAWL_API_KEY",
 }
 
 EXA_BASE = "https://api.exa.ai"
@@ -230,6 +231,15 @@ def search_text(query: str, backend: str, api_key: str) -> list[dict[str, Any]]:
             for doc in (data or {}).get("results", [])
         ]
 
+    if backend == "firecrawl":
+        from qwen_mm_plugins_search.firecrawl import post_firecrawl
+
+        data = post_firecrawl("search", {"query": query, "limit": 10}, api_key, max_retries=10)
+        return [
+            _normalized_result(doc, url_key="url", snippet_key="description", date_key="date")
+            for doc in ((data or {}).get("data") or {}).get("web", [])
+        ]
+
     raise ValueError(backend_error(backend))
 
 
@@ -280,5 +290,13 @@ def extract_page(url: str, backend: str, api_key: str) -> str:
         if text is None:
             return f"Error scraping {url}"
         return text.strip() or "No content extracted."
+
+    if backend == "firecrawl":
+        from qwen_mm_plugins_search.firecrawl import post_firecrawl
+
+        data = post_firecrawl("scrape", {"url": url, "formats": ["markdown"]}, api_key, max_retries=3)
+        if data is None:
+            return f"Error scraping {url}"
+        return (data.get("data") or {}).get("markdown") or "No content extracted."
 
     raise ValueError(backend_error(backend))
