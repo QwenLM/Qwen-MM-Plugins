@@ -7,6 +7,7 @@ Run with:  python3 -m pytest tests/test_tools.py
 import base64
 import io
 
+import pytest
 from conftest import mcp_call
 
 from qwen_mm_plugins_core import get_handler, list_tools
@@ -339,6 +340,50 @@ def test_draw_bbox_accepts_reversed_corners(sample_image, tmp_path):
         assert annotated.size == (96, 64)
         # Pixel (60, 6) lies on the normalized box's top edge.
         assert annotated.getpixel((60, 6)) == (0, 255, 0), "box was not drawn where the corners describe"
+
+
+def _full_palette_image():
+    """A palette image with all 256 slots taken and in use, as in many GIFs and 8-bit PNGs."""
+    from PIL import Image
+
+    img = Image.new("P", (96, 64))
+    img.putpalette([channel for i in range(256) for channel in (i, 255 - i, 128)])
+    img.putdata([i % 256 for i in range(96 * 64)])
+    return img
+
+
+@pytest.mark.parametrize(
+    "mode,ext",
+    [
+        ("L", "jpg"),  # grayscale photo or scan
+        ("LA", "png"),  # grayscale with transparency
+        ("1", "png"),  # bilevel scan
+        ("P", "gif"),  # full 256-color palette
+        ("I;16", "tif"),  # 16-bit grayscale TIFF
+        ("CMYK", "jpg"),  # print-ready JPEG
+    ],
+)
+def test_draw_bbox_draws_requested_color_on_non_rgb_images(mode, ext, tmp_path):
+    from PIL import Image
+
+    src = tmp_path / f"source.{ext}"
+    (_full_palette_image() if mode == "P" else Image.new(mode, (96, 64))).save(src)
+    with Image.open(src) as reopened:
+        assert reopened.mode == mode
+
+    out = tmp_path / "annotated.png"
+    content = draw_bbox.handle(
+        {
+            "image_path": str(src),
+            "bboxes": [{"bbox": [200, 100, 800, 400], "color": "#00FF00"}],
+            "output_path": str(out),
+        }
+    )
+    assert not _is_error(content)
+    with Image.open(out) as annotated:
+        assert annotated.mode == ("RGBA" if mode == "LA" else "RGB")
+        # Pixel (60, 6) lies on the box's top edge.
+        assert annotated.convert("RGB").getpixel((60, 6)) == (0, 255, 0)
 
 
 # ── server protocol (real MCP client over stdio) ─────────────────────
