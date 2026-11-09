@@ -59,6 +59,10 @@ CONFIG_FIELDS = {
             str | None,
             Field(default=None, description="OpenAI-compatible calls to api.cheaperinference.com", repr=False),
         ),
+        "STANDARD_COMPUTE_API_KEY": (
+            str | None,
+            Field(default=None, description="OpenAI-compatible calls to api.stdcmpt.com", repr=False),
+        ),
         "MINIMAX_API_KEY": (
             str | None,
             Field(default=None, description="MiniMax text-to-speech generation", repr=False),
