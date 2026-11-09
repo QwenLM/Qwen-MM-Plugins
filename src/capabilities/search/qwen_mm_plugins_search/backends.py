@@ -246,13 +246,13 @@ def search_text(query: str, backend: str, api_key: str) -> list[dict[str, Any]]:
     if backend == "keenable":
         endpoint, headers = _keenable_route("search", api_key)
         data = _post_json(endpoint, {"query": query, "max_results": 10}, headers, max_retries=10)
-        # ``snippet`` holds the page text (``description`` is empty); results carry no publication date.
+        # ``snippet`` holds the page text (``description`` is empty); ``published_at`` is present only when known.
         return [
             _normalized_result(
                 {**doc, "snippet": (doc.get("snippet") or "")[:SEARCH_SNIPPET_LIMIT]},
                 url_key="url",
                 snippet_key="snippet",
-                date_key="date",
+                date_key="published_at",
             )
             for doc in (data or {}).get("results", [])
         ]

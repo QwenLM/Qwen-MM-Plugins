@@ -298,7 +298,7 @@ def test_keenable_search_adapter_routes_by_key_and_normalizes_results(monkeypatc
         calls.append((url, payload, headers, kwargs))
         return {
             "results": [
-                {"url": "https://k", "title": "K", "description": "", "snippet": long_text, "acquired_at": "2026"},
+                {"url": "https://k", "title": "K", "description": "", "snippet": long_text, "published_at": "2026-10-30T00:00:00Z", "acquired_at": "2026"},
                 {"url": "https://k2", "title": "", "description": "", "snippet": ""},
             ]
         }
@@ -307,7 +307,7 @@ def test_keenable_search_adapter_routes_by_key_and_normalizes_results(monkeypatc
     docs = backends.search_text("q", "keenable", api_key)
 
     assert docs == [
-        {"link": "https://k", "title": "K", "snippet": "k" * backends.SEARCH_SNIPPET_LIMIT, "date": "N/A"},
+        {"link": "https://k", "title": "K", "snippet": "k" * backends.SEARCH_SNIPPET_LIMIT, "date": "2026-10-30T00:00:00Z"},
         {"link": "https://k2", "title": "N/A", "snippet": "N/A", "date": "N/A"},
     ]
     url, payload, headers, kwargs = calls[0]
