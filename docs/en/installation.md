@@ -181,6 +181,7 @@ These are the settings most users need for cloud capabilities. The
 | `TAVILY_API_KEY` | Tavily web search and extraction |
 | `EXA_API_KEY` | Exa web search and extraction |
 | `SERPLY_API_KEY` | Serply web search and extraction |
+| `KEENABLE_API_KEY` | Keenable web search and extraction (optional: works keyless at lower rate limits) |
 
 Native `core` file reading needs no API key. Set values through the installer's **Configure** action,
 the shell environment, or `~/.qwen-mm-plugins/config`; environment variables take precedence.
@@ -189,9 +190,9 @@ when possible, without requiring user-managed OSS credentials. Existing fallback
 available when temporary upload cannot be used.
 
 With `QWEN_MM_SEARCH_BACKEND` unset or set to `auto`, text search uses the first configured key in
-this fixed order: Serper, Tavily, Exa, Serply. Setting it to `serper`, `tavily`, `exa`, or `serply` pins
-that provider;
-a missing key then raises an error instead of falling back.
+this fixed order: Serper, Tavily, Exa, Serply, Keenable. Setting it to `serper`, `tavily`, `exa`, `serply`,
+or `keenable` pins that provider;
+a missing key then raises an error instead of falling back, except that `keenable` also works without a key.
 `image_search` always uses Serper Lens, independently of `QWEN_MM_SEARCH_BACKEND`, and raises an
 error when `SERPER_API_KEY` is unavailable.
 
