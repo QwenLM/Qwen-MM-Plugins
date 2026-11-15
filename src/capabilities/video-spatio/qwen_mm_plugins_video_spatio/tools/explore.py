@@ -212,6 +212,16 @@ def _wrap180(a: float) -> float:
     return ((a + 540.0) % 360.0) - 180.0
 
 
+def _turn_toward(heading_deg: float) -> str | None:
+    if abs(heading_deg) > 135:
+        return "turn_back()"
+    if heading_deg > 45:
+        return "turn_right()"
+    if heading_deg < -45:
+        return "turn_left()"
+    return None
+
+
 def _cam_fov_sectors(scene: dict) -> list[tuple[float, float]]:
     """Return list of world-heading intervals (deg, wrapped to [-180,180]) that each camera has covered.
     Each element = (a_min, a_max) with a_min < a_max, possibly split into two if crossing ±180.
@@ -628,7 +638,7 @@ def handle_plan(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     if prior_rooms and not in_prior and gw_pref:
         g = gw_pref[0]
         h = g["heading_from_ref_deg"]
-        turn = "turn_right()" if h > 45 else ("turn_left()" if h < -45 else ("turn_back()" if abs(h) > 135 else None))
+        turn = _turn_toward(h)
         seq = []
         if turn:
             seq.append(turn)
@@ -678,7 +688,7 @@ def handle_plan(arguments: dict[str, Any]) -> list[dict[str, Any]]:
     if gw_pref:
         g = gw_pref[0]
         h = g["heading_from_ref_deg"]
-        turn = "turn_right()" if h > 45 else ("turn_left()" if h < -45 else ("turn_back()" if abs(h) > 135 else None))
+        turn = _turn_toward(h)
         seq = []
         if turn:
             seq.append(turn)
