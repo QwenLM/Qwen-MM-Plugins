@@ -226,7 +226,7 @@ class MobileManipulationExpert(CPUTool):
                 "distance_m": None,
                 "turn_action": None,
                 "direction": None,
-                "skill_sequence": [f"observation({label})", f"go_forward({label})"],
+                "skill_sequence": [f"observation({label})"],
             }
 
         angle_deg = self._inst_angle_deg(it, cam)

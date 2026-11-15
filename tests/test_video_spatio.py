@@ -236,6 +236,79 @@ def test_object_world_motion_reports_forward_along_negative_z(frames):
     assert result["move_vec"] == [0, -1]
 
 
+def test_mobile_manip_omits_ungrounded_go_forward_when_target_is_absent():
+    from qwen_mm_plugins_video_spatio.tools import mobile_manip
+
+    scene = {
+        "type": "video-spatio/scene@1",
+        "frame_indices": [0],
+        "frames": [],
+        "metric_scale": 1.0,
+        "instances": {
+            "0": [
+                {
+                    "id": "red square_0",
+                    "label": "red square",
+                    "frame_idx": 0,
+                    "bbox_1000": [400, 400, 600, 600],
+                    "point_1000": [500, 500],
+                    "depth_m": 0.8,
+                },
+                {
+                    "id": "blue square_1",
+                    "label": "blue square",
+                    "frame_idx": 0,
+                    "bbox_1000": [850, 400, 950, 600],
+                    "point_1000": [900, 500],
+                    "depth_m": 3.0,
+                },
+            ]
+        },
+        "cameras": {"0": {"frame_idx": 0, "pos_bev": [0.0, 0.0], "yaw_deg": 0.0, "fov_deg": 60.0}},
+    }
+
+    nav_missing = json.loads(
+        mobile_manip.handle({"scene": scene, "op": "plan_navigation", "target": "elephant", "frame": 0})[0]["text"]
+    )
+    assert nav_missing == {
+        "target": "elephant",
+        "found": False,
+        "angle_deg": None,
+        "distance_m": None,
+        "turn_action": None,
+        "direction": None,
+        "skill_sequence": ["observation(elephant)"],
+    }
+
+    move_missing = json.loads(
+        mobile_manip.handle({"scene": scene, "op": "plan_movement", "target": "elephant", "frame": 0})[0]["text"]
+    )
+    assert move_missing == {
+        "target": "elephant",
+        "reachable": False,
+        "total_distance_m": None,
+        "num_steps": 1,
+        "steps": [{"step": 1, "skill": "observation(elephant)"}],
+        "skill_sequence": ["observation(elephant)"],
+    }
+
+    # Grounded unreachable targets still emit grounded forward navigation.
+    move_far = json.loads(
+        mobile_manip.handle({"scene": scene, "op": "plan_movement", "target": "blue square", "frame": 0})[0]["text"]
+    )
+    assert move_far["reachable"] is False
+    assert move_far["total_distance_m"] == pytest.approx(3.0)
+    assert move_far["skill_sequence"] == ["go_forward(blue square)"]
+
+    # Grounded reachable targets require zero steps.
+    move_near = json.loads(
+        mobile_manip.handle({"scene": scene, "op": "plan_movement", "target": "red square", "frame": 0})[0]["text"]
+    )
+    assert move_near["reachable"] is True
+    assert move_near["steps"] == []
+    assert move_near["skill_sequence"] == []
+
+
 @pytest.mark.parametrize(
     "positions,bearings,reliable",
     [
