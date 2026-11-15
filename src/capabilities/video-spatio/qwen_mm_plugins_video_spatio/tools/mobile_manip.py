@@ -113,13 +113,26 @@ def handle(arguments: dict[str, Any]) -> list[dict[str, Any]]:
             except TypeError:
                 # older signatures may want (recon, target=...) — fall back
                 result = me.reachability(recon, target=target)
+        elif op == "check_object_in_view":
+            # signature: check_object_in_view(recon, images, frame=None, target=0)
+            frames_arg = getattr(recon, "_input_images", None) or []
+            kwargs = {"target": target}
+            if frame is not None:
+                kwargs["frame"] = int(frame)
+            result = me.check_object_in_view(recon, frames_arg, **kwargs)
+        elif op == "suggest_approach":
+            # signature: suggest_approach(recon, frame=None, target=0, obstacles=None)
+            kwargs = {"target": target}
+            if frame is not None:
+                kwargs["frame"] = int(frame)
+            result = me.suggest_approach(recon, **kwargs)
+        elif op == "search_object_across_frames":
+            # signature: search_object_across_frames(recon, images, target)
+            frames_arg = getattr(recon, "_input_images", None) or []
+            result = me.search_object_across_frames(recon, frames_arg, target=target)
         else:
-            # Original target-centric ops kept unchanged
-            fn = getattr(me, op)
-            try:
-                result = fn(recon, target, frame=int(frame)) if frame is not None else fn(recon, target)
-            except TypeError:
-                result = fn(recon, target)
+            # signature: track_object_trajectory(recon, target)
+            result = me.track_object_trajectory(recon, target=target)
     except Exception as e:  # noqa: BLE001
         return text_error(f"mobile_manip failed: {e}")
     return [json_text(result)]

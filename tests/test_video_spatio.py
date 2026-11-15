@@ -294,8 +294,13 @@ def test_claude_model_uses_the_configured_openai_compatible_transport(monkeypatc
         ("match_entities", {}),
         ("match_entities", {"op": "deduplicate"}),
         ("mobile_manip", {"target": "chair"}),
+        ("mobile_manip", {"op": "plan_movement", "target": "chair"}),
         ("mobile_manip", {"op": "reachability", "target": "chair"}),
         ("mobile_manip", {"op": "plan_active_search", "target": "door"}),
+        ("mobile_manip", {"op": "check_object_in_view", "target": "chair"}),
+        ("mobile_manip", {"op": "suggest_approach", "target": "chair"}),
+        ("mobile_manip", {"op": "search_object_across_frames", "target": "chair"}),
+        ("mobile_manip", {"op": "track_object_trajectory", "target": "chair"}),
         ("render_scene_views", {}),
         ("scene_map", {}),
         ("scene_map", {"op": "appearance_order"}),
@@ -334,3 +339,89 @@ def test_grounding_crop_uses_normalized_boxes_at_every_resolution(size):
 
     cropped = GroundingVerifier._crop_bbox(Image.new("RGB", size), [250, 250, 750, 750])
     assert cropped.size == (int(size[0] * 0.6), int(size[1] * 0.6))
+
+
+def test_mobile_manip_dispatches_target_and_frame_images_to_observation_ops(frames, monkeypatch):
+    from PIL import Image
+
+    from qwen_mm_plugins_video_spatio.tools import mobile_manip
+    from qwen_mm_plugins_video_spatio.tools._vlm import VLMShim
+
+    scene = {
+        "type": "video-spatio/scene@1",
+        "frame_indices": [0],
+        "frames": [],
+        "metric_scale": 1.0,
+        "instances": {
+            "0": [
+                {
+                    "id": "red square_0",
+                    "label": "red square",
+                    "frame_idx": 0,
+                    "bbox_1000": [100, 100, 300, 300],
+                    "point_1000": [200, 200],
+                    "depth_m": 2.0,
+                },
+                {
+                    "id": "blue square_1",
+                    "label": "blue square",
+                    "frame_idx": 0,
+                    "bbox_1000": [600, 100, 800, 300],
+                    "point_1000": [700, 200],
+                    "depth_m": 3.0,
+                },
+            ]
+        },
+        "cameras": {"0": {"frame_idx": 0, "pos_bev": [0.0, 0.0], "yaw_deg": 0.0, "fov_deg": 60.0}},
+    }
+
+    def run_op(op, target, **extra):
+        blocks = mobile_manip.handle({"scene": scene, "op": op, "target": target, **extra})
+        assert not blocks[0]["text"].startswith("Error"), blocks[0]["text"]
+        return json.loads(blocks[0]["text"])
+
+    assert run_op("check_object_in_view", "red square", frame=0) == {
+        "label": "red square",
+        "in_view": True,
+        "source": "instances",
+        "bbox_1000": [100, 100, 300, 300],
+    }
+    assert run_op("check_object_in_view", "blue square", frame=0) == {
+        "label": "blue square",
+        "in_view": True,
+        "source": "instances",
+        "bbox_1000": [600, 100, 800, 300],
+    }
+    assert run_op("check_object_in_view", "elephant", frame=0) == {
+        "label": "elephant",
+        "in_view": False,
+        "source": "vlm",
+        "skill_needed": "observation(elephant)",
+    }
+
+    approach = run_op("suggest_approach", "blue square", frame=0)
+    assert approach["target"] == "blue square"
+    assert approach["found"] is True
+
+    across = run_op("search_object_across_frames", "blue square")
+    assert across["label"] == "blue square"
+    assert across["found"] is True
+    assert across["first_seen_frame"] == 0
+
+    # Verify VLM fallbacks receive real PIL images rather than iterating target characters.
+    seen_images = []
+
+    def fake_ask(self, image, prompt, **kwargs):
+        seen_images.append((image, prompt))
+        return "Yes"
+
+    monkeypatch.setattr(VLMShim, "ask", fake_ask)
+    scene_with_frames = _build_scene(frames[:1], [[{"label": "chair", "bbox": [100, 100, 300, 300], "depth_m": 2.0}]])
+    vlm_hit = json.loads(
+        mobile_manip.handle({"scene": scene_with_frames, "op": "check_object_in_view", "target": "lamp", "frame": 0})[
+            0
+        ]["text"]
+    )
+    assert vlm_hit == {"label": "lamp", "in_view": True, "source": "vlm"}
+    assert len(seen_images) == 1
+    assert isinstance(seen_images[0][0], Image.Image)
