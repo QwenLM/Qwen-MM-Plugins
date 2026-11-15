@@ -334,3 +334,24 @@ def test_grounding_crop_uses_normalized_boxes_at_every_resolution(size):
 
     cropped = GroundingVerifier._crop_bbox(Image.new("RGB", size), [250, 250, 750, 750])
     assert cropped.size == (int(size[0] * 0.6), int(size[1] * 0.6))
+
+
+@pytest.mark.parametrize("yaw_deg", [160.0, 180.0, -160.0])
+def test_plan_exploration_turns_back_toward_a_gateway_behind_the_reference_camera(frames, yaw_deg):
+    from qwen_mm_plugins_video_spatio.tools import explore
+
+    # The camera turns around, sees a door, then turns back: the door is behind the first and last camera.
+    scene = _build_scene(
+        [*frames, frames[0]],
+        [[], [{"label": "door", "bbox": [450, 200, 550, 800], "depth_m": 3}], []],
+        camera_motions=[{"yaw_deg": yaw_deg}, {"yaw_deg": -yaw_deg}],
+    )
+    assert scene["cameras"]["2"]["yaw_deg"] == pytest.approx(0.0)
+    result = json.loads(explore.handle_plan({"scene": scene, "target": "bed"})[0]["text"])
+    assert result["strategy"] == "traverse_gateway"
+    assert abs(result["gateway_used"]["heading_from_ref_deg"]) > 135
+    assert result["skill_sequence"][0] == "turn_back()"
+    assert result["offline_hints"][0] == {
+        "action": "turn_back",
+        "offline_calls": explore._OFFLINE_ACTION_MAP["turn_back"],
+    }
