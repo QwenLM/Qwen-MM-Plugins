@@ -397,6 +397,31 @@ def test_draw_bbox_draws_requested_color_on_non_rgb_images(mode, ext, tmp_path):
         assert annotated.convert("RGB").getpixel((60, 6)) == (0, 255, 0)
 
 
+@pytest.mark.parametrize("ext", ["png", "tif"])
+def test_16bit_grayscale_keeps_its_tones(ext, tmp_path):
+    # 16-bit grayscale (depth, microscopy and medical exports) must be rescaled to 8 bits, not
+    # clamped: a plain convert("RGB") turns every value above 255 white.
+    from PIL import Image
+
+    src = tmp_path / f"gray16.{ext}"
+    img = Image.new("I;16", (96, 64))
+    img.putdata([0x8080 if x < 48 else 0x2020 for _y in range(64) for x in range(96)])
+    img.save(src)
+
+    frame = _decode_image(_blocks_by_type(image_reader.handle({"image_path": str(src)}), "image")[0])
+    left, right = frame.convert("L").getpixel((4, 4)), frame.convert("L").getpixel((frame.width - 5, 4))
+    assert abs(left - 128) <= 2 and abs(right - 32) <= 2, f"read_image returned {left}/{right}"
+
+    out = tmp_path / "annotated.png"
+    content = draw_bbox.handle(
+        {"image_path": str(src), "bboxes": [{"bbox": [800, 800, 900, 900]}], "output_path": str(out)}
+    )
+    assert not _is_error(content)
+    with Image.open(out) as annotated:
+        assert annotated.getpixel((4, 4)) == (128, 128, 128)
+        assert annotated.getpixel((91, 4)) == (32, 32, 32)
+
+
 # ── server protocol (real MCP client over stdio) ─────────────────────
 # Drives the installed/checked-out server binary through the official MCP SDK
 # client: full initialize handshake, tools/list, tools/call. This is the
