@@ -72,6 +72,19 @@ def find_font(size: int):
     return ImageFont.load_default()
 
 
+# Pillow opens 16-bit grayscale PNG and TIFF files in these modes. Converting them to L or RGB clamps
+# each value to 255 instead of rescaling it, so everything above the darkest 1/256 of the range
+# turns white.
+_GRAY16_MODES = ("I;16", "I;16L", "I;16B", "I;16N")
+
+
+def to_8bit(img):
+    """Return `img` with 16-bit grayscale reduced to 8-bit L (high byte kept); other modes unchanged."""
+    if img.mode in _GRAY16_MODES:
+        return img.convert("I").point(lambda v: v / 256).convert("L")
+    return img
+
+
 def draw_boxes(img, detections: list[dict[str, Any]]):
     """Draw bounding boxes (+ optional labels) on an RGB copy of `img` (RGBA if it has transparency).
 
@@ -84,7 +97,7 @@ def draw_boxes(img, detections: list[dict[str, Any]]):
     # The (r, g, b) colors below need an RGB canvas: grayscale, bilevel and 16-bit images reject them,
     # a palette with all 256 slots in use has no room for a new one, and CMYK paints every box black.
     has_alpha = img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
-    annotated = img.convert("RGBA" if has_alpha else "RGB")
+    annotated = to_8bit(img).convert("RGBA" if has_alpha else "RGB")
     draw = ImageDraw.Draw(annotated)
 
     short_edge = min(img.width, img.height)
@@ -170,7 +183,7 @@ def save_image(img, output_path: str, quality: int = 95) -> None:
     ext = os.path.splitext(output_path)[1].lower().lstrip(".")
     fmt = _EXT_FORMAT.get(ext, "PNG")
     if fmt == "JPEG" and img.mode not in ("RGB", "L"):
-        img = img.convert("RGB")
+        img = to_8bit(img).convert("RGB")
     save_kwargs = {"quality": quality} if fmt == "JPEG" else {}
     img.save(output_path, format=fmt, **save_kwargs)
 
@@ -228,7 +241,7 @@ def encode_image(img):
     else:
         fmt, mime, save_kwargs = "JPEG", "image/jpeg", {"quality": 90}
         if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
+            img = to_8bit(img).convert("RGB")
     img.save(buf, format=fmt, **save_kwargs)
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     return img, b64, mime
