@@ -2,7 +2,7 @@
 
 The public MCP tool schemas stay provider-neutral. ``QWEN_MM_SEARCH_BACKEND``
 can pin the transport at call time; otherwise configured keys are discovered in
-the order Serper, Tavily, Exa, Serply, Keenable. This module normalizes provider responses into
+the order Serper, Tavily, Exa, Serply, Keenable, SpecStream. This module normalizes provider responses into
 the legacy Serper-shaped fields consumed by the tool formatters.
 """
 
@@ -14,14 +14,15 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply", "keenable")
-AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply", "keenable")
+SUPPORTED_BACKENDS = ("serper", "exa", "tavily", "serply", "keenable", "specstream")
+AUTO_BACKEND_PRIORITY = ("serper", "tavily", "exa", "serply", "keenable", "specstream")
 BACKEND_KEY_ENVS = {
     "serper": "SERPER_API_KEY",
     "exa": "EXA_API_KEY",
     "tavily": "TAVILY_API_KEY",
     "serply": "SERPLY_API_KEY",
     "keenable": "KEENABLE_API_KEY",
+    "specstream": "SPECSTREAM_API_KEY",
 }
 # Backends that also answer without a key when selected explicitly; a key only raises rate limits.
 KEYLESS_BACKENDS = ("keenable",)
@@ -31,6 +32,7 @@ TAVILY_BASE = "https://api.tavily.com"
 SERPLY_BASE = "https://api.serply.io"  # API reference: https://serply.io/docs
 KEENABLE_BASE = "https://api.keenable.ai"  # API reference: https://docs.keenable.ai/api-reference
 KEENABLE_APP_TITLE = "Qwen-MM-Plugins"  # X-Keenable-Title app label, required on keyless calls
+SPECSTREAM_BASE = "https://api.specstream.ai"  # API reference: https://specstream.ai/agents.md
 DEFAULT_TIMEOUT = 60
 DEFAULT_MAX_RETRIES = 5
 SEARCH_SNIPPET_LIMIT = 1000
@@ -257,6 +259,30 @@ def search_text(query: str, backend: str, api_key: str) -> list[dict[str, Any]]:
             for doc in (data or {}).get("results", [])
         ]
 
+    if backend == "specstream":
+        data = _get_json(
+            f"{SPECSTREAM_BASE}/v1/web-search",
+            {"q": query, "num": 10, "speed": "fast", "passages": "true"},
+            {"Authorization": f"Bearer {api_key}"},
+            max_retries=10,
+        )
+        # With ``passages=true`` a source whose page was read carries ``highlights``, the passages
+        # closest to the query; a source not read in time keeps only its ``snippet``.
+        return [
+            _normalized_result(
+                {
+                    **doc,
+                    "snippet": ("\n".join(doc.get("highlights") or []) or doc.get("snippet") or "")[
+                        :SEARCH_SNIPPET_LIMIT
+                    ],
+                },
+                url_key="url",
+                snippet_key="snippet",
+                date_key="published",
+            )
+            for doc in ((data or {}).get("data") or {}).get("sources", [])
+        ]
+
     raise ValueError(backend_error(backend))
 
 
@@ -314,5 +340,17 @@ def extract_page(url: str, backend: str, api_key: str) -> str:
         if data is None:
             return f"Error scraping {url}"
         return data.get("content") or "No content extracted."
+
+    if backend == "specstream":
+        data = _post_json(
+            f"{SPECSTREAM_BASE}/v1/extract",
+            {"urls": [url], "format": "markdown"},
+            {"Authorization": f"Bearer {api_key}"},
+            max_retries=3,
+        )
+        results = ((data or {}).get("data") or {}).get("results", [])
+        if not results or results[0].get("status") != "ok":
+            return f"Error scraping {url}"
+        return results[0].get("text") or "No content extracted."
 
     raise ValueError(backend_error(backend))
