@@ -32,7 +32,9 @@ EnvBool = Annotated[
     BeforeValidator(lambda value: str(value).lower()),
     AfterValidator(lambda value: value in ("1", "true", "yes", "on")),
 ]
-SearchBackend = Annotated[Literal["auto", "serper", "tavily", "exa", "serply", "keenable"], BeforeValidator(str.lower)]
+SearchBackend = Annotated[
+    Literal["auto", "serper", "tavily", "exa", "serply", "keenable", "specstream"], BeforeValidator(str.lower)
+]
 
 # Ordinary settings: group -> name -> (Pydantic type, Field).
 # This is the single definition of defaults, constraints and Configure/docs metadata.
@@ -114,7 +116,7 @@ CONFIG_FIELDS = {
             SearchBackend,
             Field(
                 default="auto",
-                description="text search backend (auto: serper > tavily > exa > serply > keenable; or choose one)",
+                description="text search backend (auto: serper > tavily > exa > serply > keenable > specstream; or choose one)",
             ),
         ),
         "SERPER_API_KEY": (
@@ -139,6 +141,10 @@ CONFIG_FIELDS = {
                 description="Keenable web_search / web_extractor; optional, raises the keyless rate limits",
                 repr=False,
             ),
+        ),
+        "SPECSTREAM_API_KEY": (
+            str | None,
+            Field(default=None, description="SpecStream web_search / web_extractor", repr=False),
         ),
     },
     "Runtime paths & limits": {

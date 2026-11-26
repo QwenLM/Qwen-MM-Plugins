@@ -1,4 +1,4 @@
-"""Offline contract tests for the Serper / Exa / Tavily / Serply / Keenable search adapters."""
+"""Offline contract tests for the Serper / Exa / Tavily / Serply / Keenable / SpecStream search adapters."""
 
 from __future__ import annotations
 
@@ -47,6 +47,8 @@ def test_explicit_backend_is_normalized_and_does_not_fallback(monkeypatch):
         ({"SERPLY_API_KEY": "p"}, "serply"),
         ({"SERPLY_API_KEY": "p", "KEENABLE_API_KEY": "k"}, "serply"),
         ({"KEENABLE_API_KEY": "k"}, "keenable"),
+        ({"KEENABLE_API_KEY": "k", "SPECSTREAM_API_KEY": "m"}, "keenable"),
+        ({"SPECSTREAM_API_KEY": "m"}, "specstream"),
         ({}, "serper"),
     ],
 )
@@ -73,6 +75,7 @@ def test_blank_or_auto_selector_uses_configured_keys(monkeypatch, selector):
         ("tavily", "TAVILY_API_KEY"),
         ("serply", "SERPLY_API_KEY"),
         ("keenable", "KEENABLE_API_KEY"),
+        ("specstream", "SPECSTREAM_API_KEY"),
     ],
 )
 def test_backend_specific_key_resolution_and_explicit_override(monkeypatch, backend, env_name):
@@ -93,7 +96,7 @@ def test_backend_specific_key_resolution_and_explicit_override(monkeypatch, back
 
 def test_invalid_backend_message_lists_choices():
     error = backends.backend_error("other")
-    assert error and "serper, exa, tavily, serply, keenable" in error
+    assert error and "serper, exa, tavily, serply, keenable, specstream" in error
     assert backends.backend_error("exa") is None
 
 
@@ -105,6 +108,7 @@ def test_shared_config_catalog_lists_backend_selector_and_keys():
     assert fields["TAVILY_API_KEY"] == (True, "")
     assert fields["SERPLY_API_KEY"] == (True, "")
     assert fields["KEENABLE_API_KEY"] == (True, "")
+    assert fields["SPECSTREAM_API_KEY"] == (True, "")
 
 
 def test_serper_search_adapter_normalizes_results(monkeypatch):
@@ -350,6 +354,88 @@ def test_keenable_extraction_adapter_routes_by_key_and_returns_markdown(monkeypa
 def test_keenable_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
     monkeypatch.setattr(backends, "_get_json", lambda *_a, **_k: response)
     assert backends.extract_page("https://page", "keenable", "") == expected
+
+
+def test_specstream_search_adapter_prefers_passages_and_normalizes_results(monkeypatch):
+    calls = []
+    long_passage = "m" * (backends.SEARCH_SNIPPET_LIMIT + 50)
+
+    def fake_get(url, params, headers, **kwargs):
+        calls.append((url, params, headers, kwargs))
+        return {
+            "data": {
+                "sources": [
+                    {
+                        "url": "https://m",
+                        "title": "M",
+                        "snippet": "short",
+                        "highlights": ["first", "second"],
+                        "published": "2026-11-01",
+                    },
+                    {"url": "https://m2", "title": "M2", "snippet": "snippet only"},
+                    {"url": "https://m3", "title": "", "snippet": "", "highlights": [long_passage]},
+                ]
+            },
+            "error": None,
+        }
+
+    monkeypatch.setattr(backends, "_get_json", fake_get)
+    docs = backends.search_text("q", "specstream", "key")
+
+    assert docs == [
+        {"link": "https://m", "title": "M", "snippet": "first\nsecond", "date": "2026-11-01"},
+        {"link": "https://m2", "title": "M2", "snippet": "snippet only", "date": "N/A"},
+        {"link": "https://m3", "title": "N/A", "snippet": "m" * backends.SEARCH_SNIPPET_LIMIT, "date": "N/A"},
+    ]
+    url, params, headers, kwargs = calls[0]
+    assert url == f"{backends.SPECSTREAM_BASE}/v1/web-search"
+    assert params == {"q": "q", "num": 10, "speed": "fast", "passages": "true"}
+    assert headers == {"Authorization": "Bearer key"}
+    assert kwargs["max_retries"] == 10
+
+
+@pytest.mark.parametrize(
+    "response", [None, {"data": None, "error": {"code": "unauthorized"}}, {"data": {"sources": []}}]
+)
+def test_specstream_search_adapter_handles_failed_or_empty_request(monkeypatch, response):
+    monkeypatch.setattr(backends, "_get_json", lambda *_a, **_k: response)
+    assert backends.search_text("q", "specstream", "key") == []
+
+
+def test_specstream_extraction_adapter_returns_markdown(monkeypatch):
+    calls = []
+
+    def fake_post(url, payload, headers, **kwargs):
+        calls.append((url, payload, headers, kwargs))
+        return {
+            "data": {"results": [{"url": "https://page", "status": "ok", "title": "Page", "text": "# Page\n\nbody"}]}
+        }
+
+    monkeypatch.setattr(backends, "_post_json", fake_post)
+    assert backends.extract_page("https://page", "specstream", "key") == "# Page\n\nbody"
+
+    url, payload, headers, kwargs = calls[0]
+    assert url == f"{backends.SPECSTREAM_BASE}/v1/extract"
+    assert payload == {"urls": ["https://page"], "format": "markdown"}
+    assert headers == {"Authorization": "Bearer key"}
+    assert kwargs["max_retries"] == 3
+
+
+@pytest.mark.parametrize(
+    "response,expected",
+    [
+        (None, "Error scraping https://page"),
+        ({"data": {"results": []}}, "Error scraping https://page"),
+        (
+            {"data": {"results": [{"url": "https://page", "status": "failed", "reason": "timeout"}]}},
+            "Error scraping https://page",
+        ),
+        ({"data": {"results": [{"url": "https://page", "status": "ok", "text": ""}]}}, "No content extracted."),
+    ],
+)
+def test_specstream_extraction_failure_and_empty_body_are_reported(monkeypatch, response, expected):
+    monkeypatch.setattr(backends, "_post_json", lambda *_a, **_k: response)
+    assert backends.extract_page("https://page", "specstream", "key") == expected
 
 
 def test_selected_keenable_runs_keyless_through_the_tools(monkeypatch):

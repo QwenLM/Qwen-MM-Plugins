@@ -71,8 +71,8 @@ endpoint. Invalid mode values return an MCP tool error before the tool runs and 
 ## Search selection
 
 Leave `QWEN_MM_SEARCH_BACKEND` unset or set it to `auto` to select the first configured key in this
-fixed order: Serper, Tavily, Exa, Serply, Keenable. Set it to `serper`, `tavily`, `exa`, `serply`, or
-`keenable` to pin one provider; a
+fixed order: Serper, Tavily, Exa, Serply, Keenable, SpecStream. Set it to `serper`, `tavily`, `exa`, `serply`,
+`keenable`, or `specstream` to pin one provider; a
 missing matching key then raises an error instead of falling back. Pinned `keenable` also works without
 `KEENABLE_API_KEY`, using its keyless endpoint at lower rate limits. `image_search` always uses
 Serper Lens and therefore always requires `SERPER_API_KEY`.
@@ -112,12 +112,13 @@ come from [`CONFIG_FIELDS`](../../src/shared/env.py); `—` means unset or disab
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `QWEN_MM_SEARCH_BACKEND` | auto | text search backend (auto: serper > tavily > exa > serply > keenable; or choose one) |
+| `QWEN_MM_SEARCH_BACKEND` | auto | text search backend (auto: serper > tavily > exa > serply > keenable > specstream; or choose one) |
 | `SERPER_API_KEY` | — | Serper web_search / web_extractor and Serper-only image_search *(secret)* |
 | `TAVILY_API_KEY` | — | Tavily web_search / web_extractor *(secret)* |
 | `EXA_API_KEY` | — | Exa web_search / web_extractor *(secret)* |
 | `SERPLY_API_KEY` | — | Serply web_search / web_extractor *(secret)* |
 | `KEENABLE_API_KEY` | — | Keenable web_search / web_extractor; optional, raises the keyless rate limits *(secret)* |
+| `SPECSTREAM_API_KEY` | — | SpecStream web_search / web_extractor *(secret)* |
 
 ### Runtime paths & limits
 
